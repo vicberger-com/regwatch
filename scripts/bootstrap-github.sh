@@ -12,8 +12,9 @@ for s in ready claimed in-review blocked done; do label "status:$s" 0e8a16 "Stat
 label "gate" d93f0b "Phase gate decision for the owner"
 label "assumed" c2e0c6 "Answer assumed by an agent; owner to confirm"
 
-issue() { # title labels bodyfile
-  gh issue create --repo "$REPO" --title "$1" --label "$2" --body-file "$3" >/dev/null && echo "issue: $1"
+issue() { # title labels bodyfile  (REST API so it works where GraphQL is unavailable)
+  jq -n --arg t "$1" --arg l "$2" --rawfile b "$3" '{title:$t, body:$b, labels:($l|split(","))}' \
+    | gh api "repos/$REPO/issues" --input - --jq '"issue #\(.number): \(.title)"'
 }
 B=$(mktemp -d)
 
