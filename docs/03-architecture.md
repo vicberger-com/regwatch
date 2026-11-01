@@ -99,7 +99,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | mapshaper | build-time boundary simplification and conversion | MPL-2.0 | V `b44c0fa` | tooling | M6 |
 | i18n-iso-countries | ISO 3166 names | MIT | V `55c3a72` | dependency | M2 |
 | Apache ECharts | charts | Apache-2.0 | V `c5a48f5` | dependency | M6, M7 |
-| Puck (@puckeditor/core, formerly @measured/puck) | drag-and-drop layout editor | MIT | V `d14401c` | dependency | M7 |
+| Puck (@puckeditor/core 0.24.0, exact pin; formerly @measured/puck) | drag-and-drop layout editor; `Render` for server HTML (R-02, ADR-0005 proposed) | MIT | V `d14401c` | dependency | M7 |
 | dnd-kit | drag-and-drop primitives | MIT | V `3910e27` | dependency | M7 |
 | Gotenberg | HTML to PDF | MIT | V `3d4f655` | service | M8 |
 | WeasyPrint | fallback PDF | BSD-3 | V `4d3b7b6` | dependency | M8 |
@@ -122,6 +122,14 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
+| EUR-Lex / Cellar SPARQL and content API | EU legal data source | Commission Decision 2011/833/EU (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |
+| Federal Register API | US federal regulatory data source | US government work (data) | terms partly read 2026-11-01 (R-06, BL-27) | service (external API) | M3 |
+| legislation.gov.uk API and feeds | UK legislation data source | OGL v3.0 (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |
+| LibreTranslate 1.9.6 (official image) | default local translation provider | AGPL-3.0 | V `497f6c6` | service (unmodified) | M4 |
+| Argos Translate (library) | in-process translation | MIT; 1.11+ requires minisbd (AGPL-3.0, V `ecd8225`); 1.10.0 downloads a CC BY-SA spaCy model at import | V `63b84ec` (1.11.0), `561369a` (1.10.0) | rejected for launch (R-08 F1, F2; BL-40) | M4 |
+| Argos/OPUS-MT models zh, fr, es, pt → en 1.9 | translation models (data) | CC-BY-4.0 with attribution (package README) | S (no LICENSE file in package) | data, fetched by LibreTranslate | M4 |
+| Argos models de → en 1.3, ja → en 1.1 | translation models (data) | none stated | unverified (R-08 F3; BL-42) | data, fetched by LibreTranslate; owner decision | M4 |
+| Hosted translation API (Azure Translator EU or Google Translation v3 EU; DeepL paid tiers) | optional `http` provider | commercial terms | n/a (R-08 documentation review) | external service by key | M4 |
 
 Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against their LICENSE files. `ipp` (npm), whose repository has no LICENSE file (R-01 E1), was rejected by R-04 (#6, `docs/research/R-04-ipp-client.md`): the first release ships browser printing only, and no IPP client is registered until BL-15 is decided. R-01 also corrected the register text for the Puck package name, the structlog dual license and the ScanCode data license.
 
