@@ -1,0 +1,801 @@
+openapi: 3.1.0
+info:
+  title: regwatch API
+  version: 1.0.0-draft
+  description: |
+    Contract for the regulatory monitor HTTP API. This file is the agreement between API sessions and the web client.
+    Rules: JSON only; ids are UUID strings; timestamps are RFC 3339 in UTC; errors are RFC 9457 problem details;
+    list endpoints return the Page envelope; authentication is the session cookie `rw_session` set by POST /auth/login;
+    mutating requests must carry an Origin header matching the site origin (CSRF); every route except /health, /version
+    and /auth/login requires a session; a 403 means the session lacks the permission named in `x-permission`.
+    Until M0 wires generation, this hand-written file is canonical; afterwards the generated export must match it.
+servers:
+  - url: /api/v1
+tags:
+  - { name: system }
+  - { name: auth }
+  - { name: admin }
+  - { name: taxonomy }
+  - { name: capture }
+  - { name: items }
+  - { name: search }
+  - { name: reports }
+  - { name: outputs }
+  - { name: me }
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      security: []
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+  /version:
+    get:
+      tags: [system]
+      security: []
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { version: { type: string }, commit: { type: string } } } } } }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string }, remember_me: { type: boolean, default: false } } } } } }
+      responses:
+        "200": { description: Session cookie set, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "423": { description: Account locked, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+        "429": { $ref: "#/components/responses/Problem" }
+  /auth/logout:
+    post:
+      tags: [auth]
+      responses: { "204": { description: Session revoked } }
+  /auth/me:
+    get:
+      tags: [auth]
+      responses: { "200": { description: Current user, content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } } }
+  /auth/password:
+    post:
+      tags: [auth]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [current_password, new_password], properties: { current_password: { type: string }, new_password: { type: string, minLength: 12 } } } } } }
+      responses: { "204": { description: Changed }, "400": { $ref: "#/components/responses/Problem" } }
+
+  /branding:
+    get:
+      tags: [system]
+      responses: { "200": { description: Branding for authenticated users, content: { application/json: { schema: { $ref: "#/components/schemas/Branding" } } } } }
+  /legal:
+    get:
+      tags: [system]
+      responses: { "200": { description: Rendered legal page, content: { application/json: { schema: { type: object, properties: { html: { type: string }, required_markings: { type: string } } } } } } }
+
+  /admin/users:
+    get:
+      tags: [admin]
+      x-permission: users.manage
+      parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: q, in: query, schema: { type: string } }, { name: status, in: query, schema: { $ref: "#/components/schemas/UserStatus" } } ]
+      responses: { "200": { description: Users, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/User" } } } } ] } } } } }
+    post:
+      tags: [admin]
+      x-permission: users.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UserCreate" } } } }
+      responses: { "201": { description: Created; temporary password returned once, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/User" }, { type: object, properties: { temporary_password: { type: string } } } ] } } } }, "409": { $ref: "#/components/responses/Problem" } }
+  /admin/users/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [admin], x-permission: users.manage, responses: { "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }, "404": { $ref: "#/components/responses/Problem" } } }
+    patch:
+      tags: [admin]
+      x-permission: users.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UserUpdate" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } } }
+  /admin/users/{id}/reset-password:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [admin], x-permission: users.manage, responses: { "200": { description: One-time temporary password, content: { application/json: { schema: { type: object, properties: { temporary_password: { type: string } } } } } } } }
+  /admin/roles:
+    get: { tags: [admin], x-permission: roles.manage, responses: { "200": { description: Roles, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Role" } } } } } } }
+    post:
+      tags: [admin]
+      x-permission: roles.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RoleWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Role" } } } } }
+  /admin/roles/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [admin]
+      x-permission: roles.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RoleWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Role" } } } } }
+    delete: { tags: [admin], x-permission: roles.manage, responses: { "204": { description: Deleted }, "409": { $ref: "#/components/responses/Problem" } } }
+  /admin/permissions:
+    get: { tags: [admin], x-permission: roles.manage, responses: { "200": { description: Permission catalogue from registries.yaml, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Permission" } } } } } } }
+  /admin/settings:
+    get: { tags: [admin], x-permission: settings.manage, responses: { "200": { description: All settings with definitions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Setting" } } } } } } }
+  /admin/settings/{key}:
+    parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+    put:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [value], properties: { value: {} } } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Setting" } } } }, "400": { $ref: "#/components/responses/Problem" } }
+  /admin/feature-flags:
+    get: { tags: [admin], x-permission: settings.manage, responses: { "200": { description: Flags, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FeatureFlag" } } } } } } }
+  /admin/feature-flags/{key}:
+    parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+    patch:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/FeatureFlag" } } } }, "409": { description: Precondition unmet (for example hosted provider without data-processing basis), content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } } }
+  /admin/branding:
+    put:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BrandingWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Branding" } } } } }
+  /admin/branding/logo:
+    post:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } } } } } }
+      responses: { "200": { description: "Stored (PNG or sanitized SVG, 1 MB cap)", content: { application/json: { schema: { $ref: "#/components/schemas/Branding" } } } }, "415": { $ref: "#/components/responses/Problem" } }
+  /admin/legal:
+    put:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { page_markdown: { type: string, maxLength: 200000 }, required_markings: { type: string, maxLength: 2000 } } } } } }
+      responses: { "204": { description: Saved } }
+  /admin/audit:
+    get:
+      tags: [admin]
+      x-permission: audit.read
+      parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: actor, in: query, schema: { type: string, format: uuid } }, { name: action, in: query, schema: { type: string } }, { name: entity_type, in: query, schema: { type: string } }, { name: entity_id, in: query, schema: { type: string } }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } } ]
+      responses: { "200": { description: Audit rows, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } } } } ] } } } } }
+  /admin/printers:
+    get: { tags: [admin], x-permission: settings.manage, responses: { "200": { description: Printers, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Printer" } } } } } } }
+    post:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PrinterWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Printer" } } } } }
+  /admin/printers/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [admin]
+      x-permission: settings.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PrinterWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Printer" } } } } }
+    delete: { tags: [admin], x-permission: settings.manage, responses: { "204": { description: Deleted } } }
+  /admin/printers/{id}/test-page:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [admin], x-permission: settings.manage, responses: { "202": { description: Test page queued, content: { application/json: { schema: { $ref: "#/components/schemas/OutputJob" } } } } } }
+
+  /taxonomy/facets:
+    get: { tags: [taxonomy], x-permission: taxonomy.read, responses: { "200": { description: Facets with terms as a tree, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Facet" } } } } } } }
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FacetWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Facet" } } } } }
+  /taxonomy/facets/{key}:
+    parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+    patch:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FacetWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Facet" } } } } }
+    delete: { tags: [taxonomy], x-permission: taxonomy.manage, responses: { "204": { description: Deleted }, "409": { description: System facet or in use; hide instead, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } } } }
+  /taxonomy/facets/{key}/terms:
+    parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [taxonomy]
+      x-permission: taxonomy.read
+      parameters: [ { name: flat, in: query, schema: { type: boolean, default: false } }, { name: include_inactive, in: query, schema: { type: boolean, default: false } } ]
+      responses: { "200": { description: Terms, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Term" } } } } } }
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TermWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Term" } } } } }
+  /taxonomy/terms/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TermWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Term" } } } } }
+    delete: { tags: [taxonomy], x-permission: taxonomy.manage, responses: { "204": { description: Deleted or deactivated when referenced } } }
+  /taxonomy/terms/{id}/merge:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [into_term_id], properties: { into_term_id: { type: string, format: uuid } } } } } }
+      responses: { "200": { description: Items re-tagged, content: { application/json: { schema: { type: object, properties: { items_moved: { type: integer } } } } } } }
+  /taxonomy/terms/{id}/test-rules:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 50000 }, language: { type: string } } } } } }
+      responses: { "200": { description: Rule evaluation, content: { application/json: { schema: { type: object, properties: { matched: { type: boolean }, confidence: { type: number }, evidence: { type: array, items: { type: string } } } } } } } }
+  /taxonomy/view-dimensions:
+    get: { tags: [taxonomy], x-permission: taxonomy.read, responses: { "200": { description: Dimensions for the view selector, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ViewDimension" } } } } } } }
+  /taxonomy/import:
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/yaml: { schema: { type: string } } } }
+      responses: { "200": { description: Import summary, content: { application/json: { schema: { type: object, properties: { facets_created: { type: integer }, facets_updated: { type: integer }, terms_created: { type: integer }, terms_updated: { type: integer } } } } } } }
+  /taxonomy/export:
+    get: { tags: [taxonomy], x-permission: taxonomy.read, responses: { "200": { description: YAML export, content: { application/yaml: { schema: { type: string } } } } } }
+  /jurisdictions:
+    get:
+      tags: [taxonomy]
+      x-permission: taxonomy.read
+      parameters: [ { name: kind, in: query, schema: { type: string, enum: [country, subdivision, supranational] } }, { name: active, in: query, schema: { type: boolean } } ]
+      responses: { "200": { description: Jurisdictions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Jurisdiction" } } } } } }
+    post:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/JurisdictionWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Jurisdiction" } } } } }
+  /jurisdictions/regions:
+    get: { tags: [taxonomy], x-permission: taxonomy.read, responses: { "200": { description: UN M49 regions with member codes, content: { application/json: { schema: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, jurisdiction_codes: { type: array, items: { type: string } } } } } } } } } }
+  /jurisdictions/{code}:
+    parameters: [ { name: code, in: path, required: true, schema: { type: string } } ]
+    get: { tags: [taxonomy], x-permission: taxonomy.read, responses: { "200": { description: Jurisdiction, content: { application/json: { schema: { $ref: "#/components/schemas/Jurisdiction" } } } }, "404": { $ref: "#/components/responses/Problem" } } }
+    patch:
+      tags: [taxonomy]
+      x-permission: taxonomy.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/JurisdictionWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Jurisdiction" } } } } }
+
+  /sources:
+    get:
+      tags: [capture]
+      x-permission: sources.read
+      parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: kind, in: query, schema: { $ref: "#/components/schemas/SourceKind" } }, { name: health, in: query, schema: { type: string } }, { name: q, in: query, schema: { type: string } } ]
+      responses: { "200": { description: Sources, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Source" } } } } ] } } } } }
+    post:
+      tags: [capture]
+      x-permission: sources.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SourceWrite" } } } }
+      responses: { "201": { description: Created with its capture job, content: { application/json: { schema: { $ref: "#/components/schemas/Source" } } } }, "422": { description: Config failed the connector schema or the URL is not allowed, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } } }
+  /sources/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [capture], x-permission: sources.read, responses: { "200": { description: Source, content: { application/json: { schema: { $ref: "#/components/schemas/Source" } } } } } }
+    patch:
+      tags: [capture]
+      x-permission: sources.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SourceWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Source" } } } } }
+    delete: { tags: [capture], x-permission: sources.manage, responses: { "204": { description: Disabled and archived; items are kept } } }
+  /sources/{id}/test:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [capture], x-permission: sources.manage, responses: { "200": { description: Dry run; first candidates, content: { application/json: { schema: { type: object, properties: { candidates: { type: array, maxItems: 5, items: { $ref: "#/components/schemas/Candidate" } }, robots_decision: { type: string }, warnings: { type: array, items: { type: string } } } } } } } } }
+  /sources/{id}/health:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [capture], x-permission: sources.read, responses: { "200": { description: Health, content: { application/json: { schema: { $ref: "#/components/schemas/SourceHealth" } } } } } }
+  /capture-jobs:
+    get:
+      tags: [capture]
+      x-permission: sources.read
+      parameters: [ { name: source_id, in: query, schema: { type: string, format: uuid } } ]
+      responses: { "200": { description: Jobs, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CaptureJob" } } } } } }
+  /capture-jobs/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [capture]
+      x-permission: sources.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CaptureJobWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/CaptureJob" } } } } }
+  /capture-jobs/{id}/run-now:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [capture], x-permission: sources.manage, responses: { "202": { description: Run queued, content: { application/json: { schema: { $ref: "#/components/schemas/CaptureRun" } } } } } }
+  /capture-runs:
+    get:
+      tags: [capture]
+      x-permission: sources.read
+      parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: job_id, in: query, schema: { type: string, format: uuid } }, { name: status, in: query, schema: { type: string } } ]
+      responses: { "200": { description: Runs, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/CaptureRun" } } } } ] } } } } }
+
+  /items/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [items], x-permission: items.read, responses: { "200": { description: Item, content: { application/json: { schema: { $ref: "#/components/schemas/ItemDetail" } } } }, "404": { $ref: "#/components/responses/Problem" } } }
+  /items/{id}/versions:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [items], x-permission: items.read, responses: { "200": { description: Versions newest first, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ItemVersion" } } } } } } }
+  /items/{id}/diff:
+    parameters: [ { $ref: "#/components/parameters/id" }, { name: from, in: query, required: true, schema: { type: integer } }, { name: to, in: query, required: true, schema: { type: integer } } ]
+    get: { tags: [items], x-permission: items.read, responses: { "200": { description: Unified diff of plain text, content: { application/json: { schema: { type: object, properties: { from_version: { type: integer }, to_version: { type: integer }, changed_pct: { type: number }, unified_diff: { type: string } } } } } } } }
+  /items/{id}/reprocess:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [items], x-permission: items.reprocess, responses: { "202": { description: Queued } } }
+  /items/{id}/tags:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    put:
+      tags: [items]
+      x-permission: items.tag
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { add_term_ids: { type: array, items: { type: string, format: uuid } }, remove_term_ids: { type: array, items: { type: string, format: uuid } }, add_jurisdiction_codes: { type: array, items: { type: string } }, remove_jurisdiction_codes: { type: array, items: { type: string } }, feedback: { type: array, items: { type: object, properties: { term_id: { type: string, format: uuid }, feedback: { type: string, enum: [correct, incorrect] } } } } } } } } }
+      responses: { "200": { description: Updated item, content: { application/json: { schema: { $ref: "#/components/schemas/ItemDetail" } } } } }
+
+  /search:
+    post:
+      tags: [search]
+      x-permission: items.read
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Query" } } } }
+      responses: { "200": { description: Results, content: { application/json: { schema: { $ref: "#/components/schemas/SearchResult" } } } }, "400": { $ref: "#/components/responses/Problem" } }
+  /search/export.csv:
+    post:
+      tags: [search]
+      x-permission: outputs.csv
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Query" } } } }
+      responses: { "200": { description: "Streaming CSV (UTF-8 with BOM, formula-injection escaped)", content: { text/csv: { schema: { type: string } } } } }
+  /map/activity:
+    get:
+      tags: [search]
+      x-permission: items.read
+      parameters: [ { name: period_days, in: query, schema: { type: integer, default: 30, minimum: 1, maximum: 3660 } }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } }, { name: filters, in: query, description: URL-encoded JSON of Query.filters, schema: { type: string } }, { name: view_by, in: query, schema: { type: string, default: country } } ]
+      responses: { "200": { description: Per-jurisdiction activity, content: { application/json: { schema: { $ref: "#/components/schemas/MapActivity" } } } } }
+  /views:
+    get: { tags: [search], x-permission: items.read, responses: { "200": { description: Own and shared views, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SavedView" } } } } } } }
+    post:
+      tags: [search]
+      x-permission: items.read
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SavedViewWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/SavedView" } } } } }
+  /views/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [search]
+      x-permission: items.read
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/SavedViewWrite" } } } }
+      responses: { "200": { description: Updated (shared views need views.manage_shared), content: { application/json: { schema: { $ref: "#/components/schemas/SavedView" } } } } }
+    delete: { tags: [search], x-permission: items.read, responses: { "204": { description: Deleted } } }
+
+  /reports/templates:
+    get: { tags: [reports], x-permission: reports.print, responses: { "200": { description: Stock reports, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ReportTemplate" } } } } } } }
+  /reports/templates/{key}/instantiate:
+    parameters: [ { name: key, in: path, required: true, schema: { type: string } } ]
+    post: { tags: [reports], x-permission: reports.build, responses: { "201": { description: New layout copied from the template, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayout" } } } } } }
+  /reports/fields:
+    get: { tags: [reports], x-permission: reports.build, responses: { "200": { description: Whitelisted fields for the builder, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ReportField" } } } } } } }
+  /reports/layouts:
+    get: { tags: [reports], x-permission: reports.build, responses: { "200": { description: Own and shared layouts, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ReportLayout" } } } } } } }
+    post:
+      tags: [reports]
+      x-permission: reports.build
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayoutWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayout" } } } }, "422": { $ref: "#/components/responses/Problem" } }
+  /reports/layouts/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [reports], x-permission: reports.build, responses: { "200": { description: Layout, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayout" } } } } } }
+    patch:
+      tags: [reports]
+      x-permission: reports.build
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayoutWrite" } } } }
+      responses: { "200": { description: Updated; version incremented, content: { application/json: { schema: { $ref: "#/components/schemas/ReportLayout" } } } } }
+    delete: { tags: [reports], x-permission: reports.build, responses: { "204": { description: Deleted } } }
+  /reports/layouts/{id}/preview:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post:
+      tags: [reports]
+      x-permission: reports.build
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/ReportParams" } } } }
+      responses: { "200": { description: Server-rendered HTML identical to the PDF input, content: { text/html: { schema: { type: string } } } } }
+
+  /outputs:
+    get:
+      tags: [outputs]
+      x-permission: outputs.pdf
+      parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: scope, in: query, schema: { type: string, enum: [mine, all], default: mine } }, { name: kind, in: query, schema: { $ref: "#/components/schemas/OutputKind" } }, { name: status, in: query, schema: { type: string } }, { name: scheduled, in: query, schema: { type: boolean } } ]
+      responses: { "200": { description: Output jobs (all requires outputs.read_all), content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/OutputJob" } } } } ] } } } } }
+    post:
+      tags: [outputs]
+      x-permission: outputs.pdf
+      description: Permission checked per kind (outputs.email, outputs.print, outputs.csv, outputs.schedule when schedule is set).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OutputRequest" } } } }
+      responses: { "202": { description: Queued, content: { application/json: { schema: { $ref: "#/components/schemas/OutputJob" } } } }, "422": { description: "Destination rejected (recipient domain, printer, size)", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } } }
+  /outputs/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [outputs], x-permission: outputs.pdf, responses: { "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/OutputJob" } } } } } }
+    delete: { tags: [outputs], x-permission: outputs.pdf, responses: { "204": { description: Cancelled (schedule removed or queued job cancelled) } } }
+  /outputs/{id}/artifact:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    get: { tags: [outputs], x-permission: outputs.pdf, responses: { "302": { description: Redirect to a signed URL valid for 10 minutes }, "404": { $ref: "#/components/responses/Problem" } } }
+  /outputs/{id}/retry:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post: { tags: [outputs], x-permission: outputs.pdf, responses: { "202": { description: Requeued, content: { application/json: { schema: { $ref: "#/components/schemas/OutputJob" } } } } } }
+
+  /me/preferences:
+    get: { tags: [me], responses: { "200": { description: Preferences, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } } } }
+    patch:
+      tags: [me]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }, "400": { $ref: "#/components/responses/Problem" } }
+  /me/sessions:
+    get: { tags: [me], responses: { "200": { description: Active sessions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } } } }
+  /me/sessions/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    delete: { tags: [me], responses: { "204": { description: Revoked } } }
+
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: rw_session }
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    page: { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+    page_size: { name: page_size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+  responses:
+    Problem:
+      description: Error
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, description: "URI reference identifying the error class, for example https://regwatch/errors/validation" }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        request_id: { type: string }
+        errors: { type: array, items: { type: object, properties: { field: { type: string }, message: { type: string } } } }
+    Page:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items: { type: array, items: {} }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+    Health:
+      type: object
+      properties: { status: { type: string, enum: [ok, degraded, down] }, version: { type: string }, db: { type: string }, queue: { type: string }, checked_at: { type: string, format: date-time } }
+    UserStatus: { type: string, enum: [active, disabled, locked] }
+    User:
+      type: object
+      required: [id, email, display_name, status, roles]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        roles: { type: array, items: { type: string }, description: role keys }
+        must_change_password: { type: boolean }
+        last_login_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    UserCreate:
+      type: object
+      required: [email, display_name, roles]
+      properties: { email: { type: string, format: email }, display_name: { type: string, maxLength: 120 }, roles: { type: array, items: { type: string } } }
+    UserUpdate:
+      type: object
+      properties: { display_name: { type: string }, roles: { type: array, items: { type: string } }, status: { $ref: "#/components/schemas/UserStatus" } }
+    Me:
+      allOf:
+        - { $ref: "#/components/schemas/User" }
+        - type: object
+          properties:
+            permissions: { type: array, items: { type: string } }
+            preferences: { $ref: "#/components/schemas/Preferences" }
+    Role:
+      type: object
+      required: [id, key, label, permissions, system]
+      properties: { id: { type: string, format: uuid }, key: { type: string }, label: { type: string }, permissions: { type: array, items: { type: string } }, system: { type: boolean } }
+    RoleWrite:
+      type: object
+      properties: { key: { type: string, pattern: "^[a-z][a-z0-9_]{1,40}$" }, label: { type: string }, permissions: { type: array, items: { type: string } } }
+    Permission:
+      type: object
+      properties: { key: { type: string }, description: { type: string }, module: { type: string } }
+    Setting:
+      type: object
+      required: [key, value, type]
+      properties: { key: { type: string }, value: {}, type: { type: string }, default: {}, values: { type: array, items: { type: string } }, note: { type: string }, updated_at: { type: string, format: date-time }, updated_by: { type: string, format: uuid, nullable: true } }
+    FeatureFlag:
+      type: object
+      required: [key, enabled, description]
+      properties: { key: { type: string }, enabled: { type: boolean }, description: { type: string } }
+    Branding:
+      type: object
+      properties: { site_title: { type: string }, logo_url: { type: string, nullable: true }, company_name: { type: string }, company_short_name: { type: string }, company_address: { type: string }, primary_color: { type: string, nullable: true }, required_markings: { type: string } }
+    BrandingWrite:
+      type: object
+      properties: { site_title: { type: string, maxLength: 80 }, company_name: { type: string, maxLength: 200 }, company_short_name: { type: string, maxLength: 40 }, company_address: { type: string, maxLength: 500 }, primary_color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$", nullable: true } }
+    AuditEntry:
+      type: object
+      properties: { id: { type: string, format: uuid }, occurred_at: { type: string, format: date-time }, actor_user_id: { type: string, format: uuid, nullable: true }, actor_email: { type: string, nullable: true }, action: { type: string }, entity_type: { type: string }, entity_id: { type: string, nullable: true }, before: { nullable: true }, after: { nullable: true }, ip: { type: string, nullable: true }, request_id: { type: string, nullable: true } }
+    Printer:
+      type: object
+      properties: { id: { type: string, format: uuid }, name: { type: string }, ipp_url: { type: string }, default_media: { type: string }, enabled: { type: boolean } }
+    PrinterWrite:
+      type: object
+      properties: { name: { type: string }, ipp_url: { type: string, pattern: "^ipps?://" }, default_media: { type: string }, enabled: { type: boolean } }
+    Facet:
+      type: object
+      required: [id, key, label, value_type, multi, required, show_in_view_selector, show_in_filters, sort_order, system, hidden]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        label: { type: string }
+        value_type: { type: string, enum: [term, text, number, date, boolean] }
+        multi: { type: boolean }
+        required: { type: boolean }
+        show_in_view_selector: { type: boolean }
+        show_in_filters: { type: boolean }
+        sort_order: { type: integer }
+        system: { type: boolean }
+        hidden: { type: boolean }
+        terms: { type: array, items: { $ref: "#/components/schemas/Term" }, description: tree form (children nested) }
+    FacetWrite:
+      type: object
+      properties: { key: { type: string, pattern: "^[a-z][a-z0-9_]{1,40}$" }, label: { type: string }, value_type: { type: string, enum: [term, text, number, date, boolean] }, multi: { type: boolean }, required: { type: boolean }, show_in_view_selector: { type: boolean }, show_in_filters: { type: boolean }, sort_order: { type: integer }, hidden: { type: boolean } }
+    Term:
+      type: object
+      required: [id, facet_key, key, label, active]
+      properties:
+        id: { type: string, format: uuid }
+        facet_key: { type: string }
+        key: { type: string }
+        label: { type: string }
+        parent_id: { type: string, format: uuid, nullable: true }
+        synonyms: { type: array, items: { type: string } }
+        match_rules: { $ref: "#/components/schemas/MatchRules" }
+        color_token: { type: string, nullable: true }
+        active: { type: boolean }
+        item_count: { type: integer }
+        children: { type: array, items: { $ref: "#/components/schemas/Term" } }
+    TermWrite:
+      type: object
+      properties: { key: { type: string }, label: { type: string }, parent_id: { type: string, format: uuid, nullable: true }, synonyms: { type: array, items: { type: string } }, match_rules: { $ref: "#/components/schemas/MatchRules" }, color_token: { type: string, nullable: true }, active: { type: boolean } }
+    MatchRules:
+      type: object
+      properties: { keywords: { type: array, items: { type: string } }, regex: { type: array, items: { type: string } }, languages: { type: array, items: { type: string } }, min_hits: { type: integer, default: 1 }, weight: { type: number, default: 1.0 } }
+    ViewDimension:
+      type: object
+      properties: { key: { type: string, description: "country, region, regulation, or a facet key" }, label: { type: string }, kind: { type: string, enum: [builtin, facet] } }
+    Jurisdiction:
+      type: object
+      required: [id, code, name, kind, active]
+      properties: { id: { type: string, format: uuid }, code: { type: string }, name: { type: string }, kind: { type: string, enum: [country, subdivision, supranational] }, parent_code: { type: string, nullable: true }, region_code: { type: string, nullable: true }, geometry_ref: { type: string, nullable: true }, active: { type: boolean } }
+    JurisdictionWrite:
+      type: object
+      properties: { code: { type: string }, name: { type: string }, kind: { type: string, enum: [country, subdivision, supranational] }, parent_code: { type: string, nullable: true }, region_code: { type: string, nullable: true }, geometry_ref: { type: string, nullable: true }, active: { type: boolean } }
+    SourceKind: { type: string, enum: [rss, web_page, web_crawl, search_query, api_feed, manual] }
+    Source:
+      type: object
+      required: [id, name, kind, enabled, health]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { $ref: "#/components/schemas/SourceKind" }
+        url: { type: string, nullable: true }
+        config: { type: object, description: validated by docs/contracts/connectors.yaml }
+        default_jurisdiction_codes: { type: array, items: { type: string } }
+        default_term_ids: { type: array, items: { type: string, format: uuid } }
+        credibility: { type: string, enum: [official, secondary, news] }
+        robots_policy: { type: string, enum: [respect, override] }
+        override_reason: { type: string, nullable: true }
+        terms_url: { type: string, nullable: true }
+        language: { type: string, nullable: true }
+        enabled: { type: boolean }
+        health: { type: string, enum: [unknown, healthy, degraded, unhealthy] }
+        consecutive_failures: { type: integer }
+        job: { $ref: "#/components/schemas/CaptureJob" }
+        created_at: { type: string, format: date-time }
+    SourceWrite:
+      type: object
+      properties:
+        name: { type: string, maxLength: 200 }
+        kind: { $ref: "#/components/schemas/SourceKind" }
+        url: { type: string }
+        config: { type: object }
+        default_jurisdiction_codes: { type: array, items: { type: string } }
+        default_term_ids: { type: array, items: { type: string, format: uuid } }
+        credibility: { type: string, enum: [official, secondary, news] }
+        robots_policy: { type: string, enum: [respect, override] }
+        override_reason: { type: string }
+        terms_url: { type: string }
+        language: { type: string }
+        enabled: { type: boolean }
+        job: { $ref: "#/components/schemas/CaptureJobWrite" }
+    CaptureJob:
+      type: object
+      required: [id, source_id, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        source_id: { type: string, format: uuid }
+        cron: { type: string, nullable: true }
+        interval_seconds: { type: integer, nullable: true }
+        timezone: { type: string }
+        max_items_per_run: { type: integer }
+        rate_limit_per_minute: { type: integer }
+        render_js: { type: boolean }
+        extraction_rules: { type: object }
+        change_threshold_pct: { type: number }
+        enabled: { type: boolean }
+        next_run_at: { type: string, format: date-time, nullable: true }
+        last_run_at: { type: string, format: date-time, nullable: true }
+    CaptureJobWrite:
+      type: object
+      properties: { cron: { type: string, nullable: true }, interval_seconds: { type: integer, minimum: 900, nullable: true }, timezone: { type: string }, max_items_per_run: { type: integer, maximum: 2000 }, rate_limit_per_minute: { type: integer, minimum: 1, maximum: 120 }, render_js: { type: boolean }, extraction_rules: { type: object }, change_threshold_pct: { type: number, minimum: 0, maximum: 100 }, enabled: { type: boolean } }
+    CaptureRun:
+      type: object
+      properties: { id: { type: string, format: uuid }, job_id: { type: string, format: uuid }, started_at: { type: string, format: date-time }, finished_at: { type: string, format: date-time, nullable: true }, status: { type: string, enum: [running, success, partial, failed, skipped] }, items_new: { type: integer }, items_changed: { type: integer }, items_unchanged: { type: integer }, http_status: { type: integer, nullable: true }, bytes_fetched: { type: integer }, error_class: { type: string, nullable: true }, error_message: { type: string, nullable: true }, robots_decision: { type: string, nullable: true } }
+    SourceHealth:
+      type: object
+      properties: { source_id: { type: string, format: uuid }, health: { type: string }, consecutive_failures: { type: integer }, last_success_at: { type: string, format: date-time, nullable: true }, success_rate_7d: { type: number }, runs_7d: { type: integer }, last_error: { type: string, nullable: true } }
+    Candidate:
+      type: object
+      properties: { url: { type: string }, title: { type: string, nullable: true }, published_at: { type: string, format: date-time, nullable: true }, external_id: { type: string, nullable: true } }
+    ItemSummary:
+      type: object
+      required: [id, title, source_id, jurisdictions, status, last_changed_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        title_en: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        summary_en: { type: string, nullable: true }
+        canonical_url: { type: string }
+        source_id: { type: string, format: uuid }
+        source_name: { type: string }
+        language: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        last_changed_at: { type: string, format: date-time }
+        status: { type: string, enum: [new, updated, unchanged, archived] }
+        severity: { type: string, enum: [info, notable, major], nullable: true, description: highest severity of its change events in the query period }
+        jurisdictions: { type: array, items: { type: object, properties: { code: { type: string }, name: { type: string }, confidence: { type: number } } } }
+        terms: { type: array, items: { $ref: "#/components/schemas/TermAssignment" } }
+        attributes: { type: object }
+        highlights: { type: object, additionalProperties: { type: array, items: { type: string } } }
+    ItemDetail:
+      allOf:
+        - { $ref: "#/components/schemas/ItemSummary" }
+        - type: object
+          properties:
+            content_text: { type: string }
+            content_text_en: { type: string, nullable: true }
+            content_html_url: { type: string, nullable: true, description: signed URL to the sanitized snapshot }
+            current_version_no: { type: integer }
+            needs_review: { type: boolean }
+            translation_pending: { type: boolean }
+            regulation: { nullable: true, type: object, properties: { id: { type: string, format: uuid }, title: { type: string }, status: { type: string } } }
+            change_events: { type: array, items: { $ref: "#/components/schemas/ChangeEvent" } }
+    TermAssignment:
+      type: object
+      properties: { term_id: { type: string, format: uuid }, facet_key: { type: string }, key: { type: string }, label: { type: string }, confidence: { type: number }, assigned_by: { type: string, enum: [rule, model, user, source_default] }, feedback: { type: string, enum: [correct, incorrect], nullable: true } }
+    ItemVersion:
+      type: object
+      properties: { version_no: { type: integer }, created_at: { type: string, format: date-time }, run_id: { type: string, format: uuid, nullable: true }, content_hash: { type: string }, changed_pct: { type: number, nullable: true }, translations: { type: object } }
+    ChangeEvent:
+      type: object
+      properties: { id: { type: string, format: uuid }, item_id: { type: string, format: uuid }, jurisdiction_code: { type: string }, kind: { type: string, enum: [new_item, content_changed, status_changed, effective_date_reached] }, occurred_at: { type: string, format: date-time }, severity: { type: string, enum: [info, notable, major] }, summary: { type: string, nullable: true }, acknowledged_by: { type: string, format: uuid, nullable: true } }
+    Query:
+      type: object
+      properties:
+        q: { type: string, maxLength: 500, description: websearch syntax; empty means filter only }
+        filters: { $ref: "#/components/schemas/QueryFilters" }
+        sort: { type: string, enum: [relevance, last_changed_desc, last_changed_asc, published_desc, published_asc, title_asc], default: relevance }
+        page: { type: integer, minimum: 1, default: 1 }
+        page_size: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        highlight: { type: boolean, default: true }
+        facet_counts: { type: boolean, default: true }
+        columns: { type: array, items: { type: string }, description: CSV export only; from /reports/fields }
+    QueryFilters:
+      type: object
+      properties:
+        jurisdictions: { type: array, maxItems: 50, items: { type: string }, description: jurisdiction codes }
+        regions: { type: array, maxItems: 20, items: { type: string } }
+        terms: { type: object, additionalProperties: { type: array, maxItems: 20, items: { type: string } }, description: "facet key to term keys; OR within a facet, AND across facets" }
+        sources: { type: array, maxItems: 50, items: { type: string, format: uuid } }
+        status: { type: array, items: { type: string, enum: [new, updated, unchanged, archived] } }
+        severity: { type: array, items: { type: string, enum: [info, notable, major] } }
+        languages: { type: array, items: { type: string } }
+        credibility: { type: array, items: { type: string, enum: [official, secondary, news] } }
+        published: { $ref: "#/components/schemas/DateRange" }
+        changed: { $ref: "#/components/schemas/DateRange" }
+        needs_review: { type: boolean }
+    DateRange:
+      type: object
+      properties: { from: { type: string, format: date-time }, to: { type: string, format: date-time } }
+    SearchResult:
+      allOf:
+        - { $ref: "#/components/schemas/Page" }
+        - type: object
+          properties:
+            items: { type: array, items: { $ref: "#/components/schemas/ItemSummary" } }
+            facets: { type: object, additionalProperties: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string }, count: { type: integer } } } }, description: "facet key (or jurisdiction, region, source, severity) to counts" }
+            took_ms: { type: integer }
+    MapActivity:
+      type: object
+      required: [period_start, period_end, view_by, rows]
+      properties:
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        view_by: { type: string }
+        generated_at: { type: string, format: date-time }
+        stale: { type: boolean, description: true when served from a rollup older than 5 minutes }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [code, count, max_severity]
+            properties:
+              code: { type: string, description: jurisdiction code }
+              count: { type: integer }
+              last_changed_at: { type: string, format: date-time, nullable: true }
+              max_severity: { type: string, enum: [none, info, notable, major] }
+              breakdown: { type: object, additionalProperties: { type: integer }, description: counts per view_by value when view_by is not country }
+    SavedView:
+      type: object
+      required: [id, name, view_by, filters, period_days, color_scheme, shared]
+      properties: { id: { type: string, format: uuid }, user_id: { type: string, format: uuid, nullable: true }, name: { type: string }, view_by: { type: string }, filters: { $ref: "#/components/schemas/QueryFilters" }, q: { type: string, nullable: true }, period_days: { type: integer }, color_scheme: { type: string, enum: [recency, count, severity] }, is_default: { type: boolean }, shared: { type: boolean }, updated_at: { type: string, format: date-time } }
+    SavedViewWrite:
+      type: object
+      properties: { name: { type: string, maxLength: 120 }, view_by: { type: string }, filters: { $ref: "#/components/schemas/QueryFilters" }, q: { type: string }, period_days: { type: integer, minimum: 1, maximum: 3660 }, color_scheme: { type: string, enum: [recency, count, severity] }, is_default: { type: boolean }, shared: { type: boolean } }
+    ReportTemplate:
+      type: object
+      properties: { key: { type: string }, label: { type: string }, description: { type: string }, thumbnail_url: { type: string, nullable: true }, version: { type: integer }, parameters: { type: array, items: { $ref: "#/components/schemas/ReportParameterDef" } } }
+    ReportParameterDef:
+      type: object
+      properties: { key: { type: string }, label: { type: string }, type: { type: string, enum: [jurisdiction, period_days, date_range, facet_terms, saved_view] }, required: { type: boolean } }
+    ReportParams:
+      type: object
+      description: "Values for ReportParameterDef keys, for example jurisdiction DE and period_days 30"
+      additionalProperties: true
+    ReportField:
+      type: object
+      properties: { key: { type: string, description: dotted path such as item.title_en or jurisdiction.name }, label: { type: string }, type: { type: string }, sortable: { type: boolean }, group: { type: string } }
+    ReportLayout:
+      type: object
+      required: [id, name, layout, page_size, orientation, shared, version]
+      properties: { id: { type: string, format: uuid }, user_id: { type: string, format: uuid }, name: { type: string }, based_on_template_key: { type: string, nullable: true }, layout: { type: object, description: Puck data }, data_source: { $ref: "#/components/schemas/ReportDataSource" }, page_size: { type: string, enum: [A4, Letter] }, orientation: { type: string, enum: [portrait, landscape] }, shared: { type: boolean }, version: { type: integer }, updated_at: { type: string, format: date-time } }
+    ReportLayoutWrite:
+      type: object
+      properties: { name: { type: string, maxLength: 120 }, layout: { type: object }, data_source: { $ref: "#/components/schemas/ReportDataSource" }, page_size: { type: string, enum: [A4, Letter] }, orientation: { type: string, enum: [portrait, landscape] }, shared: { type: boolean } }
+    ReportDataSource:
+      type: object
+      properties: { saved_view_id: { type: string, format: uuid, nullable: true }, query: { $ref: "#/components/schemas/Query" }, limit: { type: integer, maximum: 5000, default: 500 } }
+    OutputKind: { type: string, enum: [pdf, email, print, csv] }
+    OutputRequest:
+      type: object
+      required: [kind, source]
+      properties:
+        kind: { $ref: "#/components/schemas/OutputKind" }
+        source:
+          type: object
+          description: exactly one of the properties
+          properties: { report_layout_id: { type: string, format: uuid }, report_template_key: { type: string }, saved_view_id: { type: string, format: uuid }, query: { $ref: "#/components/schemas/Query" } }
+        params: { $ref: "#/components/schemas/ReportParams" }
+        destination:
+          type: object
+          properties: { emails: { type: array, maxItems: 50, items: { type: string, format: email } }, subject: { type: string, maxLength: 200 }, message: { type: string, maxLength: 5000 }, printer_id: { type: string, format: uuid }, copies: { type: integer, minimum: 1, maximum: 20, default: 1 } }
+        schedule: { type: object, nullable: true, properties: { cron: { type: string }, timezone: { type: string } } }
+    OutputJob:
+      type: object
+      required: [id, kind, status, created_at]
+      properties: { id: { type: string, format: uuid }, kind: { $ref: "#/components/schemas/OutputKind" }, status: { type: string, enum: [queued, rendering, sent, failed, cancelled] }, requested_by: { type: string, format: uuid }, source_summary: { type: string }, destination_summary: { type: string }, artifact_available: { type: boolean }, artifact_bytes: { type: integer, nullable: true }, error_class: { type: string, nullable: true }, error_message: { type: string, nullable: true }, scheduled_cron: { type: string, nullable: true }, next_run_at: { type: string, format: date-time, nullable: true }, attempts: { type: integer }, created_at: { type: string, format: date-time }, finished_at: { type: string, format: date-time, nullable: true } }
+    Preferences:
+      type: object
+      properties:
+        theme: { type: string, enum: [light, dark, high-contrast, system], default: system }
+        accessibility_preset: { type: boolean, default: false }
+        font_scale: { type: integer, enum: [100, 112, 125, 150, 175, 200], default: 100 }
+        density: { type: string, enum: [compact, default, comfortable], default: default }
+        reduced_motion: { type: string, enum: [system, on, off], default: system }
+        toolbar_labels: { type: string, enum: [hover, always], default: hover }
+        locale: { type: string, default: en }
+        timezone: { type: string, default: UTC }
+        landing_view_id: { type: string, format: uuid, nullable: true }
+        session_idle_timeout_minutes: { type: integer, minimum: 15, description: capped by sessions.idle_timeout_max_minutes }
+        remember_me_default: { type: boolean, default: false }
+    SessionInfo:
+      type: object
+      properties: { id: { type: string, format: uuid }, created_at: { type: string, format: date-time }, last_seen_at: { type: string, format: date-time }, expires_at: { type: string, format: date-time }, ip: { type: string, nullable: true }, user_agent: { type: string, nullable: true }, current: { type: boolean } }
+
+security:
+  - session: []

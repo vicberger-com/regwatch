@@ -16,6 +16,7 @@ Start with `01-how-to-use.md`. Sections:
 | `08-security-compliance.md` | Threat model, controls, scraping etiquette, privacy, secrets, license compliance |
 | `09-enhancements-backlog.md` | 25 suggested enhancements, backlog seed, Phase 0 research items |
 | `10-open-questions-risks-glossary.md` | Owner decisions for G0, risks, glossary |
+| `contracts/` and `../openapi/regwatch.v1.yaml` | Shared contracts for parallel sessions: tooling decisions, OpenAPI, DDL, registries, environment variables, connector schemas, screen inventory, fixtures |
 | `templates/` | Task card, handoff, ADR, questions issue, PR template, component evaluation, security review, adversarial record, use-testing script |
 
 Source: the owner's requirements document (regulatory_application.docx), reviewed on 2026-11-01. A formatted copy of this package is published as a Claude document for review and comments.

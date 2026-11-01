@@ -9,6 +9,7 @@ Start here: [`docs/00-README.md`](docs/00-README.md), then [`docs/01-how-to-use.
 | Where | What |
 | --- | --- |
 | `docs/` | Design package: requirements, architecture, data model, module specs, process, testing, security, backlog |
+| `docs/contracts/`, `openapi/` | Contracts parallel sessions build against: tooling, OpenAPI, DDL, registries, environment, connectors, screens, fixtures |
 | `docs/decisions/` | Architecture decision records and the assumptions log |
 | `docs/research/` | Phase 0 open-source component evaluations |
 | `docs/evidence/phase-n/` | Test, review and gate evidence per phase |

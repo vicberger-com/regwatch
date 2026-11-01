@@ -18,6 +18,9 @@ Out: any business feature.
 ## Open-source components
 FastAPI, SQLAlchemy, Alembic, Celery, Valkey, PostgreSQL, Vite, React, Tailwind, shadcn/ui, Ruff, mypy, ESLint, Prettier, pytest, Vitest, Playwright, gitleaks, Trivy, pip-licenses, license-checker.
 
+## Contracts to implement
+`docs/contracts/M0-tooling.md` (exact tooling), `docs/contracts/schema.sql` (migration 0001), `docs/contracts/registries.yaml` (seed permissions, roles, settings, flags), `docs/contracts/env.example` (settings model), `openapi/regwatch.v1.yaml` (route stubs returning 501 until each module lands, so the web client can be generated on day one), `docs/contracts/fixtures.md` (fixture task, separate issue).
+
 ## Design notes
 - Python package `regwatch/` with sub-packages `api`, `core`, `capture`, `processing`, `search`, `reports`, `outputs`, `identity`, `taxonomy`; each module in this package exposes `router`, `models`, `services`, `tasks`.
 - Frontend `web/src/` with `app/` (shell, routing), `features/<module>/`, `components/ui/` (shadcn copies), `lib/api/` (generated client from OpenAPI via openapi-typescript, MIT).

@@ -7,7 +7,7 @@ This package is the single source of truth for building and testing the regulato
 | Role | Read first | Then | Produces |
 | --- | --- | --- | --- |
 | Orchestrator / lead session | 01, 06 (process), 02 (requirements) | Module list in 05 | Issues, task cards, phase gates, change report entries |
-| Module developer agent | 01, the one module spec in 05, 03 (architecture), 04 (data model) | 07 (testing), 08 (security) | Code, tests, ADRs, PR with checklist |
+| Module developer agent | 01, `contracts/00-README.md` and the contracts the module touches, the one module spec in 05 | 03 (architecture), 04 (data model), 07 (testing), 08 (security) | Code, tests, ADRs, PR with checklist |
 | Test / QA agent | 01, 07, the module spec under test | 02 (requirement IDs) | Test plans, test code, defect issues |
 | Security / adversarial agent | 01, 08, 07 section on adversarial analysis | Module spec | Threat findings, fixes, sign-off record |
 | Peer reviewer agent | 01, 06 review protocol, module spec | 07 definition of done | Review comments, approval or block |
@@ -26,6 +26,7 @@ This package is the single source of truth for building and testing the regulato
 8. **No secrets in the repository.** Secrets come from environment variables or the secrets manager named in section 08. CI runs a secret scanner on every push.
 9. **Model identity is never written into repository artifacts.** Commit messages, PR bodies and code comments do not name the AI model used.
 10. **Agents never widen scope silently.** Anything outside the module spec goes to `BACKLOG.md` with a proposal, not into the PR.
+11. **Contracts win.** `docs/contracts/` (tooling, OpenAPI, DDL, registries, environment, connector schemas, screens, fixtures) takes precedence over module specs and numbered sections. An agent that needs a contract changed opens a `CP-nn` issue and keeps building to the current contract until the change merges.
 
 ## 1.3 Claiming and handing off work
 
@@ -56,6 +57,7 @@ A module is done only when all of the following are true and linked from its tra
 | Artifact | Location |
 | --- | --- |
 | This design package | `docs/` (numbered files) |
+| Contracts shared by parallel sessions | `docs/contracts/` and `openapi/regwatch.v1.yaml` |
 | Module specs | `docs/modules/Mx-name.md` |
 | Decisions and assumptions | `docs/decisions/` |
 | Templates (issue, PR, ADR, handoff, review records) | `docs/templates/` |
