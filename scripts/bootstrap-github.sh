@@ -11,6 +11,7 @@ for t in feature bug test security docs question research usability; do label "t
 for s in ready claimed in-review blocked done; do label "status:$s" 0e8a16 "Status $s"; done
 label "gate" d93f0b "Phase gate decision for the owner"
 label "assumed" c2e0c6 "Answer assumed by an agent; owner to confirm"
+label "claude" 7B3FE4 "Add to an issue to have the Claude Code GitHub Action work on it"
 
 issue() { # title labels bodyfile  (REST API so it works where GraphQL is unavailable)
   jq -n --arg t "$1" --arg l "$2" --rawfile b "$3" '{title:$t, body:$b, labels:($l|split(","))}' \
