@@ -7,7 +7,7 @@
 Local accounts, sessions, roles and permissions, the administrator settings area, user management, runtime settings, feature flags and the audit log.
 
 ## Scope
-In: login, logout, password change, password reset by admin, account lockout, session management, roles and permissions, admin settings UI (users, roles, settings, feature flags, audit viewer), audit logging middleware.
+In: login, logout, password change, password reset by admin, account lockout, session management, roles and permissions, admin settings UI (users, roles, settings, feature flags, audit viewer, branding), audit logging middleware, branding configuration (owner answer to question 9, E26): logo upload (PNG or SVG, sanitized, 1 MB cap), application title, company legal name, short name, address, contact, and a legal page body (Markdown) holding required markings and notices, served at `/legal` and insertable into report headers, footers and email footers.
 Out: self-service registration (not wanted), SSO (Phase 5, M1b), multi-factor authentication (enhancement E7).
 
 ## Interfaces
@@ -16,6 +16,7 @@ Out: self-service registration (not wanted), SSO (Phase 5, M1b), multi-factor au
 - `GET|POST|PATCH /admin/users`, `GET|POST|PATCH /admin/roles`, `GET /admin/permissions`.
 - `GET|PUT /admin/settings/{key}`, `GET|PATCH /admin/feature-flags/{key}`.
 - `GET /admin/audit?actor=&entity=&from=&to=` paginated.
+- `GET /branding` (authenticated users: title, logo URL, colours), `PUT /admin/branding`, `GET /legal` (rendered legal page), `PUT /admin/legal`.
 - Permission dependency: `require("settings.manage")` used by every admin router; the frontend hides what the user cannot do and the API still enforces.
 
 ## Data
@@ -37,6 +38,7 @@ argon2-cffi (MIT), itsdangerous (BSD) for reset tokens, slowapi (MIT) for login 
 3. Ten wrong passwords lock the account and produce an audit row; the response does not reveal whether the email exists.
 4. Logout invalidates the server session; replaying the old cookie returns 401.
 5. Audit viewer shows before and after values for a role change.
+6. An admin uploads a logo and sets the title and legal text; the header, login page, report header and footer and the `/legal` page reflect them within one reload, and an SVG containing a script is rejected.
 
 ## Test plan
 - Unit: password policy, permission resolution, lockout timer, settings cache invalidation.

@@ -66,17 +66,19 @@ The source document (regulatory_application.docx, three paragraphs) was decompos
 
 ## 2.4 Global questioning-period record (Phase 0)
 
-Questions the owner should answer before Phase 1 ends. Each has the default used if unanswered.
+Owner answers received 2026-11-01 (issue #1). Items marked *answered* are decided; *assumed* items keep the default until the owner decides.
 
-1. Who are the users (compliance analysts, legal, security leadership)? Default: compliance and security analysts in one organisation.
-2. Which jurisdictions must be covered on day one? Default: EU, United States (federal), United Kingdom, Canada, Australia, Japan, Singapore, India, Brazil, plus EU member states via EUR-Lex.
-3. Which topics are in scope under "information technology and cybersecurity"? Default: cybersecurity, data protection and privacy, critical infrastructure, incident reporting, AI governance, digital identity, telecoms security, product security (such as the EU Cyber Resilience Act), cloud and outsourcing, cross-border data transfer.
-4. What is the acceptable freshness? Default: feeds every 15 minutes to 24 hours per source, configurable; map highlights default to a 30-day window.
-5. Is machine learning or a hosted language model allowed to touch captured text? Default: see G6.
-6. Where does the application run and who operates it? Default: see G1.
-7. Which SMTP relay and which printers exist? Default: see G10 and G14.
-8. Must the application integrate with existing identity providers? Default: see G13.
-9. Are there branding assets (logo, colours, typeface) to apply? Default: neutral corporate palette defined in the design system, replaceable through settings.
-10. What export formats beyond PDF are needed (CSV, Excel, JSON, DOCX)? Default: PDF and CSV in phase 4; Excel and DOCX backlog.
-11. Should changes be alerted proactively (email digest, webhook) in addition to the map? Default: daily email digest in phase 4 (enhancement E1 in section 9).
-12. What is the budget for paid search or news APIs? Default: zero; self-hosted options first.
+1. Who are the users (compliance analysts, legal, security leadership)? *Answered:* compliance and security analysts in one organisation.
+2. Which jurisdictions must be covered on day one? *Answered:* EU, United States (federal), United Kingdom, Canada, Australia, Japan, Singapore, India, Brazil, China, plus EU member states via EUR-Lex.
+3. Which topics are in scope under "information technology and cybersecurity"? *Answered:* cybersecurity, data protection and privacy, critical infrastructure, incident reporting, AI governance, digital identity, telecoms security, product security (such as the EU Cyber Resilience Act), cloud and outsourcing, cross-border data transfer, supply chain security.
+4. What is the acceptable freshness? *Answered:* feeds every 15 minutes to 24 hours per source, configurable; map highlights default to a 30-day window.
+5. Is machine learning or a hosted language model allowed to touch captured text? *Answered in part:* the owner wants foreign-language content translated to English with a setting to choose the translator provider, so captured text may be sent to an admin-selected translation provider (M4; enhancement E9 promoted into scope). Model-based classification stays off by default (G6) until the owner decides separately; recorded as *assumed*.
+6. Where does the application run and who operates it? *Answered:* Docker Compose on one Linux host, operated by the owner (G1).
+7. Which SMTP relay and which printers exist? *Answered:* admin-configured relay; browser print at launch (G10, G14).
+8. Must the application integrate with existing identity providers? *Answered:* local accounts; OpenID Connect in Phase 5 (G13).
+9. Are there branding assets (logo, colours, typeface) to apply? *Answered:* neutral palette and Inter by default, plus a branding configuration in settings (logo, application title, company name and related fields) and a company legal page holding required markings that can be inserted into reports and outputs (new enhancement E26, in scope for M1, M6 and M7).
+10. What export formats beyond PDF are needed (CSV, Excel, JSON, DOCX)? *Answered:* PDF and CSV in phase 4; Excel and DOCX backlog.
+11. Should changes be alerted proactively (email digest, webhook) in addition to the map? *Answered:* daily email digest in phase 4 (E1).
+12. What is the budget for paid search or news APIs? *Answered:* zero; self-hosted options first.
+13. License for this repository's own code? *Assumed:* none chosen yet; repository stays private; owner decision pending.
+14. Phase dates and pilot group? *Assumed:* unset; owner sets them at G0.

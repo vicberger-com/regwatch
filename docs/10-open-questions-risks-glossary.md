@@ -5,17 +5,18 @@
 | # | Decision | Default in this design | Where it bites |
 | --- | --- | --- | --- |
 | D1 | Deployment target and operator | Docker Compose on one Linux host | M0, M10 |
-| D2 | Day-one jurisdictions and topics | Section 2.4 defaults | M2 seeds, M3 sources |
-| D3 | Language model use and provider | Disabled; rules only | M4, section 8.4 |
+| D2 | Day-one jurisdictions and topics | Answered: defaults plus China and supply chain security | M2 seeds, M3 sources |
+| D3 | Language model use and provider | Translation: yes, admin-selectable provider (R-08). Classification by model: still disabled, owner to decide | M4, section 8.4 |
 | D4 | Search provider and budget | Self-hosted metasearch | M3, R-07 |
 | D5 | SMTP relay, allowed recipient domains, printers | Admin-configured; browser print at launch | M8 |
 | D6 | Identity: local only or SSO at launch | Local, SSO in P5 | M1 |
 | D7 | License policy exceptions (AGPL services) | Allowed unmodified behind a network boundary | ADR-0003 |
-| D8 | Branding and theme assets | Neutral palette, Inter | M6 |
+| D8 | Branding and theme assets | Answered: neutral palette and Inter, plus branding configuration and legal page (E26) | M1, M6, M7 |
 | D9 | Toolbar placement and default map encoding | Left rail; recency | M6 |
 | D10 | Retention periods | Items indefinite, artifacts 90 days, audit 2 years | M8, M10 |
 | D11 | Phase dates and pilot group | Unset | Section 6 |
-| D12 | Repository name, branch, registry | Owner's repository, main, GHCR | M0 |
+| D12 | Repository name, branch, registry | Answered: vicaberger/regwatch, main; registry GHCR assumed | M0 |
+| D13 | License for the application's own code | Open; repository private meanwhile | root LICENSE |
 
 ## 10.2 Risks
 

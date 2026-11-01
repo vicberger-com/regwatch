@@ -12,7 +12,7 @@ Suggestions are ranked by value to the stated goal (seeing what changed, where, 
 | E6 | Natural-language query box that compiles to the query DSL | Lowers the barrier for occasional users | M5, M6 | M | later |
 | E7 | Multi-factor authentication (TOTP) | Expected in corporate tools | M1 | S | P5 |
 | E8 | OpenID Connect single sign-on (M1b) | Corporate identity integration | M1 | M | P5 |
-| E9 | Machine translation of titles and summaries to English | Global coverage without language skills | M4 | M | later |
+| E9 | Machine translation of titles and summaries to English with a selectable provider | Global coverage without language skills; owner-requested (question 5) | M4 | M | P2 (in M4 scope) |
 | E10 | Multilingual taxonomy labels and UI locales | Non-English teams | M2, M9 | M | later |
 | E11 | Map colouring weighted by severity and confidence, with an uncertainty pattern | Avoids false alarms from low-confidence tagging | M6, M4 | S | P3 |
 | E12 | Timeline view of changes per jurisdiction or topic | Shows trajectory, not just current state | M6 | M | P4 |
@@ -29,6 +29,7 @@ Suggestions are ranked by value to the stated goal (seeing what changed, where, 
 | E23 | Side-by-side version diff with change highlighting inside the jurisdiction panel | Faster review of what changed | M6 | S | P3 (in M6 scope) |
 | E24 | Data quality page: untagged items, low-confidence tags, duplicates to merge | Keeps the taxonomy useful | M4, M6 | S | P4 |
 | E25 | Devcontainer and one-command demo dataset | Faster onboarding of agents and evaluators | M0 | S | P1 |
+| E26 | Branding configuration (logo, title, company fields) and company legal page with required markings insertable into reports and emails | Owner-requested (question 9); corporate look | M1, M6, M7, M8 | M | P1 settings, P3 UI, P4 reports |
 
 ## Initial BACKLOG.md seed
 
@@ -54,3 +55,4 @@ Suggestions are ranked by value to the stated goal (seeing what changed, where, 
 | R-05 | Measure MapLibre choropleth performance with 1:50m versus 1:110m Natural Earth and choose the vendored resolution | research, frontend |
 | R-06 | Check EUR-Lex, Federal Register, legislation.gov.uk API terms and rate limits; document in source configs | research, capture |
 | R-07 | Decide self-hosted SearXNG versus commercial search API for the first release based on quality on 20 benchmark queries | research, capture |
+| R-08 | Evaluate translation providers: Argos Translate (MIT, local), LibreTranslate (AGPL, unmodified service), hosted APIs; verify per-language model licenses; benchmark on 30 regulatory passages in zh, ja, de, fr, es, pt | research, capture |

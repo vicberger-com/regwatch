@@ -11,7 +11,7 @@ In: application shell (header with product name and user menu, left toolbar or t
 Out: report builder (M7), outputs (M8), user tab (M9).
 
 ## Interfaces
-- Routes: `/` (map), `/items`, `/items/:id`, `/jurisdictions/:code`, `/reports` (M7), `/outputs` (M8), `/me` (M9), `/admin/*` (M1, M2).
+- Routes: `/` (map), `/items`, `/items/:id`, `/jurisdictions/:code`, `/reports` (M7), `/outputs` (M8), `/me` (M9), `/admin/*` (M1, M2), `/legal` (company legal page from M1 branding, linked from the footer and the About dialog).
 - Consumes `GET /map/activity`, `POST /search`, `GET /taxonomy/view-dimensions`, `GET /views`.
 - Toolbar command registry: `commands.ts` exports `{id, label, icon, permission, shortcut, run}`; modules register commands (display, filter, search, print stock report, print custom report, change view, export).
 
@@ -25,6 +25,7 @@ React, TanStack Router and Query, MapLibre GL JS (BSD-3), Natural Earth GeoJSON 
 - View selector: options from facets flagged in M2 plus country and region; switching changes the legend and the panel grouping.
 - Filters: multi-select per facet with counts from M5, source, severity, status; active filters shown as removable chips in the toolbar.
 - Table view: same data as the map, sortable, with the same filters, meets REQ-18 for users of screen readers.
+- Header shows the configured logo and title from M1 branding; a neutral wordmark is used until branding is set.
 - Shell layout: 56 px header, 64 px icon toolbar on the left with labels on hover and always-visible labels in accessibility mode, main area, right side panel for details; density setting changes spacing tokens.
 - Performance budgets: first contentful paint under 2 s on a mid-range laptop, map render under 1 s for 250 features, bundle under 600 KB gzip excluding map data.
 

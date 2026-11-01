@@ -12,7 +12,7 @@ Out: pixel-level WYSIWYG beyond page blocks; charts beyond bar, line and the map
 
 ## Interfaces
 - `GET|POST|PATCH|DELETE /reports/layouts`, `POST /reports/layouts/{id}/preview` (returns HTML), `GET /reports/templates`, `POST /reports/templates/{key}/instantiate`.
-- Component palette (React, registered in `reports/components/registry.ts`): Heading, Paragraph, FieldValue (any whitelisted item field), ItemsTable (columns from field list, sorting, limit), ChangeList, JurisdictionSummary, MapSnapshot (server-rendered PNG of the current view through Playwright), BarChart and LineChart (ECharts, server-rendered to SVG), PageBreak, HeaderFooter with page numbers and date.
+- Component palette (React, registered in `reports/components/registry.ts`): Heading, Paragraph, FieldValue (any whitelisted item field), ItemsTable (columns from field list, sorting, limit), ChangeList, JurisdictionSummary, MapSnapshot (server-rendered PNG of the current view through Playwright), BarChart and LineChart (ECharts, server-rendered to SVG), PageBreak, HeaderFooter with page numbers and date, LegalMarkings (inserts the company legal page markings and branding fields from M1; owner answer to question 9).
 - Field whitelist served by `GET /reports/fields` from M4 and M2 metadata (never raw SQL from the client).
 
 ## Data
@@ -43,7 +43,7 @@ Puck (MIT), dnd-kit (MIT), ECharts (Apache-2.0) with SSR renderer, Paged.js (MIT
 ## Question bank
 1. Which five stock reports matter most? Default: the five listed.
 2. Page size default: A4 or Letter? Default: A4, per-user override.
-3. Must reports carry corporate header and footer with classification markings? Default: optional header and footer blocks with free text.
+3. Must reports carry corporate header and footer with classification markings? *Answered:* yes; the LegalMarkings and HeaderFooter components pull logo, company name and required markings from M1 branding, and stock reports include them by default.
 4. Are shared organisation-wide layouts needed? Default: yes, admin-curated.
 
 ## Enhancements to propose
