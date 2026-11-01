@@ -122,6 +122,11 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
+| LibreTranslate 1.9.6 (official image) | default local translation provider | AGPL-3.0 | V `497f6c6` | service (unmodified) | M4 |
+| Argos Translate (library) | in-process translation | MIT; 1.11+ requires minisbd (AGPL-3.0, V `ecd8225`); 1.10.0 downloads a CC BY-SA spaCy model at import | V `63b84ec` (1.11.0), `561369a` (1.10.0) | rejected for launch (R-08 F1, F2; BL-40) | M4 |
+| Argos/OPUS-MT models zh, fr, es, pt → en 1.9 | translation models (data) | CC-BY-4.0 with attribution (package README) | S (no LICENSE file in package) | data, fetched by LibreTranslate | M4 |
+| Argos models de → en 1.3, ja → en 1.1 | translation models (data) | none stated | unverified (R-08 F3; BL-42) | data, fetched by LibreTranslate; owner decision | M4 |
+| Hosted translation API (Azure Translator EU or Google Translation v3 EU; DeepL paid tiers) | optional `http` provider | commercial terms | n/a (R-08 documentation review) | external service by key | M4 |
 
 Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against their LICENSE files. `ipp` (npm), whose repository has no LICENSE file (R-01 E1), was rejected by R-04 (#6, `docs/research/R-04-ipp-client.md`): the first release ships browser printing only, and no IPP client is registered until BL-15 is decided. R-01 also corrected the register text for the Puck package name, the structlog dual license and the ScanCode data license.
 
