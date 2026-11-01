@@ -9,7 +9,7 @@ Which boundary dataset, resolution and delivery format should the map vendor, an
 
 ## Answer (summary)
 
-Vendor **Natural Earth v5.1.2 admin-0 countries at 1:50m**, simplified at build time and delivered as **one static GeoJSON file** (about 170 KB gzip). Produce it from the Natural Earth release with **mapshaper** (MPL-2.0, build-time tooling) in a small build script. Drop world-atlas and topojson-client. Do not use PMTiles for the boundary layer. Natural Earth's default (de facto) point of view applies, with its 1:50m disputed and breakaway areas drawn on top as a neutral layer. MapLibre GL JS 6.16.0 rendered every 1:50m candidate in well under 1 s, and the hatch patterns work. Equal Earth works only through an *experimental* custom-projection API, so it needs a Mercator fallback. MapLibre alone takes about 451 KB gzip of the 600 KB bundle budget.
+Vendor **Natural Earth v5.1.2 admin-0 countries at 1:50m**, simplified at build time and delivered as **one static GeoJSON file** (about 170 KB gzip). Produce it from the Natural Earth release with **mapshaper** (MPL-2.0, build-time tooling) in a small build script. Drop world-atlas and topojson-client. Do not use PMTiles for the boundary layer. Natural Earth's default (de facto) point of view applies, with its 1:50m disputed and breakaway areas drawn on top as a neutral layer. MapLibre GL JS 6.16.0 rendered every 1:110m and 1:50m candidate within 1 s at the median, even with software rendering: 451 ms to 579 ms for the chosen file, while unsimplified 1:50m reached 1,005 ms in its worst run. The hatch patterns work. Equal Earth works only through an *experimental* custom-projection API, so it needs a Mercator fallback. MapLibre alone takes about 451 KB gzip of the 600 KB bundle budget.
 
 ## Candidates
 
@@ -110,7 +110,7 @@ Natural Earth admin-1 at 1:50m covers only 9 countries (AUS, BRA, CAN, CHN, IDN,
 | TopoJSON | 108,379 | 39,021 | 746,786 | 229,808 | 242,086 | 83,226 | 3,643,202 | 910,636 |
 | PMTiles archive, z0 to z5 (tiles gzip inside) | 282,569 | n/a | 742,751 | n/a | 443,336 | n/a | not built | not built |
 
-Disputed-areas overlay (1:50m, simplified the same way): 13,043 raw, 4,046 gzip. For PMTiles, the browser downloads only the header, the directory and the visible tiles: {{PMXFER}}.
+Disputed-areas overlay (1:50m, simplified the same way): 13,043 raw, 4,046 gzip. For PMTiles, the browser downloads only the header, the directory and the visible tiles: at the initial world view, 1:50m simplified loaded 9 requests and 85,262 bytes (tiles are stored gzipped, so this is close to the wire size), against 169,015 bytes gzip for the whole slim GeoJSON.
 
 Code (gzip -9): `maplibre-gl.mjs` 294,033, `maplibre-gl-worker.mjs` 146,852, `maplibre-gl.css` 10,180, which totals **451,065** (75% of the 600 KB budget). `pmtiles` reader 7,542. `topojson-client` `feature` 735.
 
@@ -148,7 +148,7 @@ Code (gzip -9): `maplibre-gl.mjs` 294,033, `maplibre-gl-worker.mjs` 146,852, `ma
 | slim 1:10m | Equal Earth | default | 110 | 1,829 (1,744 to 1,937) | 2,353 | 261 | 9 |
 | slim 1:50m simplified | Mercator | hatch patterns | 9 | 641 (599 to 659) | 936 | n/a | 10 |
 | slim 1:50m simplified | Equal Earth | hatch patterns | 8 | 523 (496 to 560) | 838 | n/a | 10 |
-| slim 1:50m simplified + disputed overlay | Equal Earth | default | {{DISPARSE}} | {{DISFIRST}} | {{DISREADY}} | {{DISRECOLOR}} | {{DISFPS}} |
+| slim 1:50m simplified + disputed overlay | Equal Earth | default | 5 | 491 (476 to 627); baseline in the same pass 464 (427 to 506) | 788 | 316 | 12 |
 
 ### Reading the numbers
 
@@ -157,6 +157,7 @@ Code (gzip -9): `maplibre-gl.mjs` 294,033, `maplibre-gl-worker.mjs` 146,852, `ma
 - **Frame rate:** 8 to 17 fps everywhere, including 1:110m. The software rasteriser sets the ceiling, not the data. Simplifying 1:50m did not change the frame rate measurably here, but it cut payload by 70% and first render by about 30%. A frame-rate check on GPU hardware remains for M6 (Lighthouse CI and Playwright on a GPU runner).
 - **GeoJSON or TopoJSON:** at 1:50m simplified they are equal within run-to-run spread (579 ms against 546 ms in Mercator; 451 ms against 479 ms in Equal Earth). TopoJSON saves 86 KB gzip, but it adds a main-thread decode and a runtime dependency whose last release was in 2019.
 - **PMTiles:** fastest first render and fewest bytes per view in Mercator, but see the projection section.
+- **Disputed overlay:** it added about 27 ms to first render (second pass, same session baseline) and 4 KB gzip.
 - **Errors:** none. The only console output was Chromium's "GPU stall due to ReadPixels" notice, caused by the screenshot.
 
 ### Commands
@@ -180,6 +181,8 @@ stat -c %s FILE; gzip -9 -c FILE | wc -c
 node serve.mjs $S/site 8765 &
 node bench.cjs results/full.json 5 raw_110m:mercator slim_110m:mercator … slim_50s:ee:1 pm_50s:ee
 python3 -I summarize.py results/full.json
+# second pass: disputed overlay (dis=1) and PMTiles bytes from Resource Timing
+DIS=0 node bench2.cjs results/p2_dis0.json 5 slim_50s:ee pm_50s:mercator topo_50s:ee; DIS=1 node bench2.cjs results/p2_dis1.json 5 slim_50s:ee
 ```
 
 ## Projection and high-contrast patterns
