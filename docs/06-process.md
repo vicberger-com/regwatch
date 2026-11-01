@@ -82,6 +82,8 @@ Setup (owner, once): add the repository secret `ANTHROPIC_API_KEY`, an API key c
 
 Using it with this plan: comment `@claude claim this issue and implement it per docs/01-how-to-use.md` on a `status:ready` issue, or add the `claude` label. The run counts as a session: it must post the questions issue, cite requirement IDs, update the changelog and backlog, and leave a handoff note, exactly as a hand-started session would. Review the resulting pull request like any other (section 7.4); the review workflow gives a first pass automatically.
 
+Tool permissions: the action grants only file tools by default; `claude.yml` adds an allow-list (web fetch and search, `gh api`, `git ls-remote`, `curl` to GitHub and package registries, and the project's build and test commands) so research and implementation runs can work unattended. Widen it only through a pull request.
+
 Cost controls: `--max-turns 80` and a 90-minute job timeout in `claude.yml`, 30 minutes for reviews, one run per issue or PR at a time through concurrency groups. GitHub Actions minutes and API tokens are both consumed; an OAuth token bills the subscription instead of the API.
 
 ## 6.8 Commit and PR conventions
