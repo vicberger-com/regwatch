@@ -9,3 +9,4 @@ Every answer an agent assumed because the owner had not answered by the time wor
 | 2026-11-01 | P0 | Q13: license for the application's own code | None chosen; repository private | #1 | pending |
 | 2026-11-01 | P0 | Q14: phase dates and pilot group | Unset; set at G0 | #1 | pending |
 | 2026-11-01 | P0 | Container registry | GHCR | #1 | pending |
+| 2026-11-01 | P0 (R-06) | License of Federal Register API data | US government work, no reuse restriction (as in 4.5); the FR legal-status page could not be read from automation | #8 | pending (BL-27) |
