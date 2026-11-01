@@ -33,7 +33,7 @@ Reading: the browser talks only to the API through the proxy. Workers do all out
 | Report builder | Puck visual editor with custom field components; dnd-kit for list ordering | MIT (both) | Puck already provides drag-and-drop page composition, saved JSON layouts and a plugin API, which covers REQ-12 and REQ-13. react-grid-layout (MIT) is the fallback if Puck's layout model proves too page-centric. |
 | PDF rendering | Gotenberg container (Chromium and LibreOffice behind an HTTP API) | MIT | Renders the same HTML the browser prints, so screen and PDF match. WeasyPrint (BSD) is the fallback without a browser engine. |
 | Email | aiosmtplib plus Python stdlib email; Mailpit in development | MIT (both) | Any SMTP relay; no vendor SDK. |
-| Printing | Browser print dialog always; server-side IPP printing via a small Node bridge using the `ipp` package behind a feature flag | MIT | pycups is GPL-2 and excluded; IPP Everywhere covers modern network printers. Research item R-04 confirms the library before Phase 4. |
+| Printing | Browser print dialog always; server-side IPP printing behind a feature flag, deferred from the first release (R-04, BL-13, BL-15) | n/a | pycups is GPL-2 and excluded; no Node IPP client passed the license gate. Python clients (ippx, aioipp; MIT) printed to a test server, but need a contract change (BL-15). |
 | Authentication | Local accounts with Argon2id hashing (argon2-cffi), server-side sessions, optional OpenID Connect via Authlib in Phase 5; Keycloak as the reference identity provider for testing | MIT, BSD-3, Apache-2.0 | Keeps Phase 1 small; SSO added without changing the permission model. |
 | Authorization | Role and permission tables in PostgreSQL enforced by a FastAPI dependency; Casbin considered if policies grow beyond role-to-permission | Apache-2.0 (pycasbin) | Explicit tables are auditable and simple for the admin UI in M1. |
 | Content extraction | trafilatura 1.8 or later, readability-lxml fallback, Scrapy for crawl rules, Playwright for JavaScript-rendered pages | Apache-2.0, Apache-2.0, BSD-3, Apache-2.0 | trafilatura versions before 1.8.0 were GPLv3 and must not be pinned. |
@@ -105,7 +105,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | WeasyPrint | fallback PDF | BSD-3 | V `4d3b7b6` | dependency | M8 |
 | aiosmtplib | SMTP client | MIT | V `9cc4254` | dependency | M8 |
 | Mailpit | development mail catcher | MIT | V `364916b` | tooling | M8 |
-| ipp (npm) | IPP printing bridge | MIT (claimed; no LICENSE file) | S (blocked, R-01 E1) | dependency | M8 |
+| ipp (npm) | IPP printing bridge | none (MIT claimed; no LICENSE file) | rejected (R-01 E1, R-04) | not used; print bridge deferred (BL-13) | M8 |
 | argon2-cffi | password hashing | MIT | V `1fcae4f` | dependency | M1 |
 | Authlib | OpenID Connect client | BSD-3 | V `46b9487` | dependency | M1 |
 | Keycloak | reference identity provider for tests | Apache-2.0 | V `24ed1da` | tooling, optional service | M1 |
@@ -123,7 +123,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
 
-Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against their LICENSE files. Still at S: `ipp` (npm), whose repository has no LICENSE file (R-01 E1; R-04 decides). R-01 also corrected the register text for the Puck package name, the structlog dual license and the ScanCode data license.
+Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against their LICENSE files. `ipp` (npm), whose repository has no LICENSE file (R-01 E1), was rejected by R-04 (#6, `docs/research/R-04-ipp-client.md`): the first release ships browser printing only, and no IPP client is registered until BL-15 is decided. R-01 also corrected the register text for the Puck package name, the structlog dual license and the ScanCode data license.
 
 ## 3.7 Architecture decision records to write in Phase 0
 
