@@ -1,6 +1,6 @@
 # Claude Code GitHub Action, automation mode: reviews every non-draft pull request from a branch in this repository
 # and posts findings as inline comments (or one summary comment when it finds none).
-# Uses the same CLAUDE_CODE_OAUTH_TOKEN secret as claude.yml (claude.ai plan billing).
+# Uses the same ANTHROPIC_API_KEY secret as claude.yml (Claude Console credits).
 # Docs: https://code.claude.com/docs/en/github-actions#run-a-skill
 name: Claude Code Review
 
@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 1
       - uses: anthropics/claude-code-action@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: "https://github.com/anthropics/claude-plugins-official.git"
           plugins: "code-review@claude-plugins-official"
           prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
