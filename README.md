@@ -1,0 +1,19 @@
+# regwatch
+
+Working codename (placeholder; rename is an owner decision). An application that monitors global legal and regulatory status and changes for information technology and cybersecurity topics, stores them in a taxonomy-driven database, shows them on a world map, and produces reports and outputs to email, printers and PDF.
+
+**Status:** design accepted, Phase 0 (discovery and open-source review) open. No application code yet.
+
+Start here: [`docs/00-README.md`](docs/00-README.md), then [`docs/01-how-to-use.md`](docs/01-how-to-use.md) if you are an AI session or agent working on this repository.
+
+| Where | What |
+| --- | --- |
+| `docs/` | Design package: requirements, architecture, data model, module specs, process, testing, security, backlog |
+| `docs/decisions/` | Architecture decision records and the assumptions log |
+| `docs/research/` | Phase 0 open-source component evaluations |
+| `docs/evidence/phase-n/` | Test, review and gate evidence per phase |
+| `CHANGELOG.md` | Change report (Keep a Changelog) |
+| `BACKLOG.md` | Feature and change backlog awaiting owner decisions |
+| `scripts/bootstrap-github.sh` | Creates labels and the Phase 0 issues with the GitHub CLI |
+
+License for this repository's own code is an owner decision (D13 in `docs/10-open-questions-risks-glossary.md`); third-party components follow the policy in `docs/03-architecture.md` section 3.5.
