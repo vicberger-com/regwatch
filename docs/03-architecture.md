@@ -122,6 +122,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
+| EUR-Lex / Cellar SPARQL and content API | EU legal data source | Commission Decision 2011/833/EU (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |
+| Federal Register API | US federal regulatory data source | US government work (data) | terms partly read 2026-11-01 (R-06, BL-27) | service (external API) | M3 |
+| legislation.gov.uk API and feeds | UK legislation data source | OGL v3.0 (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |
 | LibreTranslate 1.9.6 (official image) | default local translation provider | AGPL-3.0 | V `497f6c6` | service (unmodified) | M4 |
 | Argos Translate (library) | in-process translation | MIT; 1.11+ requires minisbd (AGPL-3.0, V `ecd8225`); 1.10.0 downloads a CC BY-SA spaCy model at import | V `63b84ec` (1.11.0), `561369a` (1.10.0) | rejected for launch (R-08 F1, F2; BL-40) | M4 |
 | Argos/OPUS-MT models zh, fr, es, pt → en 1.9 | translation models (data) | CC-BY-4.0 with attribution (package README) | S (no LICENSE file in package) | data, fetched by LibreTranslate | M4 |
