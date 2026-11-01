@@ -9,7 +9,7 @@ Which internet search provider should the M3 `search_query` connector use in the
 
 ## Answer in brief
 
-Use **self-hosted SearXNG** (official image, unmodified, separate `search` container) as the Phase 2 provider, but only as a discovery supplement to the RSS, web page and API feed connectors, and with the engine set and pacing below. It is the only option that costs nothing at 200 to 500 queries a day and fits the license policy. It is fragile: in this benchmark 7 of 9 configured upstream engines were blocked or broken, and every useful result came from DuckDuckGo, which started serving CAPTCHAs after 7 queries. Fallback: the **Exa** or **Brave Search API** free tier behind the same provider interface, for a small set of high-value queries (about 30 to 80 a day), after the owner accepts the terms noted in the comparison. Neither free tier covers the full volume.
+Use **self-hosted SearXNG** (official image, unmodified, separate `search` container) as the Phase 2 provider, but only as a discovery supplement to the RSS, web page and API feed connectors, and with the engine set and pacing below. It is the only option that costs nothing at 200 to 500 queries a day and fits the license policy. It is fragile: in this benchmark 7 of 9 configured upstream engines were blocked or broken, and almost every useful result came from DuckDuckGo (and Yahoo when its page parsed). DuckDuckGo started serving CAPTCHAs after 7 queries, and in a repeat run only answered 9 of 20 queries. Fallback: the **Exa** or **Brave Search API** free tier behind the same provider interface, for a small set of high-value queries (about 30 to 80 a day), after the owner accepts the terms noted in the comparison. Neither free tier covers the full volume.
 
 ## 1. Benchmark query set (written before any query ran)
 
@@ -121,22 +121,24 @@ Position string: one letter per rank 1 to 10 (O, S, I as in section 1). "Answeri
 
 Scoring notes: Q06 rank 3 (`csrc.nist.rip`, an unofficial mirror) is scored I, because the connector must not treat lookalike domains as official. Agency home pages with no link to the instrument (sec.gov, nist.gov) are I; Q18's gov.br/anpd home page is scored O as the only pointer to the right agency.
 
-Per engine, run 1 (top-10 slots filled, and how many were O or S): Bing 137 slots, 2 relevant; DuckDuckGo 58 slots, 57 relevant; Yahoo 16 slots, 15 relevant. From this host, Bing answers but ignores most of the query (often matching only the first word: "cyber", "Japan", "Bill", "CAC"), so its results push relevant ones down and fill whole pages when DuckDuckGo is missing.
+Per engine, run 1 (top-10 slots filled, and how many were O or S; a result found by two engines counts for both): Bing 137 slots, 2 relevant; DuckDuckGo 58 slots, 57 relevant; Yahoo 16 slots, 15 relevant. From this host, Bing answers but ignores most of the query (often matching only the first word: "cyber", "Japan", "Bill", "CAC"), so its results push relevant ones down and fill whole pages when DuckDuckGo is missing.
 
 ### 2.3 Failures, blocking and CAPTCHAs
 
 | Engine | Run 1 (20 queries) | Run 2 (20 queries, after 20 min) |
 | --- | --- | --- |
-| Google | access denied on all 20; suspended | RUN2_GOOGLE |
-| Qwant | access denied on all 20; suspended | RUN2_QWANT |
-| Brave (web scraping, not the API) | HTTP 429 on all 20; suspended | RUN2_BRAVE |
-| DuckDuckGo | answered 11; first CAPTCHA at Q08 (about 1 minute in), then CAPTCHA on 7 and timeout on 2 of the remaining 13 | RUN2_DDG |
-| Yahoo | parsing error 16, HTTP 500 1; answered 3 | RUN2_YAHOO |
-| Wikipedia | HTTP 429 on 19 | RUN2_WIKI |
-| Bing | always answered; results mostly off-topic (2.2) | RUN2_BING |
+| Google | access denied on all 20; suspended | same, all 20 |
+| Qwant | access denied on all 20; suspended | same, all 20 |
+| Brave (web scraping, not the API) | HTTP 429 on all 20; suspended | same, all 20 |
+| DuckDuckGo | answered 11; first CAPTCHA at Q08 (about 1 minute in), then CAPTCHA on 7 and timeout on 2 of the remaining 13 | answered 9 (a different set, including Q04, Q18, Q20); CAPTCHA 7, timeout 4 |
+| Yahoo | parsing error 16, HTTP 500 1; answered 3 | parsing error 16; answered 4 |
+| Wikipedia | HTTP 429 on 19 | HTTP 429 on 20 |
+| Bing | always answered; results mostly off-topic (2.2) | always answered; again off-topic, and different off-topic pages for the same query (Q08, Q19 overlap 0 of 10 with run 1) |
 | Startpage, Mojeek | not loadable (`inactive` upstream, proof-of-work CAPTCHA) | same |
 
-No request to SearXNG itself failed; it always returned within 6.1 s, because blocked engines are suspended rather than retried. The failure mode is silent: a JSON response with fewer or worse results and an `unresponsive_engines` list. RUN2_SUMMARY
+No request to SearXNG itself failed; it always returned within 6.1 s, because blocked engines are suspended rather than retried. The failure mode is silent: a JSON response with fewer or worse results and an `unresponsive_engines` list.
+
+Run 2 (median latency 1.27 s, max 6.01 s, no errors) was not hand-scored again; it is used for repeatability. Top-10 overlap with run 1 averaged about 6 of 10 URLs. Results from DuckDuckGo or Yahoo filled 55 top-10 slots in run 2 against 63 in run 1; in run 1, 62 of those 63 were relevant (O or S). Across both runs, a non-Bing engine answered 15 of the 20 queries at least once. Run 2 found the expected official sources for three queries that got nothing in run 1: Q04 (cisa.gov CIRCIA pages, federalregister.gov docket 2026-02948), Q18 (in.gov.br Resolução CD/ANPD 15/2024, gov.br/anpd) and Q20 (english.www.gov.cn and chinalawtranslate.com). So result quality depends on which engine happens to be unblocked, not on the query. Q09, Q11, Q13, Q14 and Q19 (Canada, Australia, both Japan queries, Chinese-language) never reached a working engine, so this benchmark says nothing about DuckDuckGo's quality for them.
 
 ### 2.4 Operational burden
 
