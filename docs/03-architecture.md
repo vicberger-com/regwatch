@@ -66,63 +66,63 @@ Allowed for bundled code and assets: MIT, BSD-2, BSD-3, ISC, Apache-2.0, Postgre
 
 ## 3.6 Component register
 
-Verification status: **V** means an agent opened the LICENSE file in the project repository during this design; **S** means confirmed through package indexes or project pages and must be re-verified against the LICENSE file by the Phase 0 research agent before use. Reuse mode: dependency, service (runs unmodified behind HTTP), vendored (code copied with attribution), pattern (approach borrowed, code rewritten), tooling (development or test only).
+Verification status: **V** means an agent opened the LICENSE file in the project repository at a tagged release, or, for a repository that has no tags, at default-branch HEAD on the date recorded (marked "untagged"); the short commit SHA(s) at which it was read follow the V (full SHAs, tags and file paths in `docs/research/R-01-license-verification.md`); **S** means confirmed through package indexes or project pages and must be re-verified against the LICENSE file by the Phase 0 research agent before use. Reuse mode: dependency, service (runs unmodified behind HTTP), vendored (code copied with attribution), pattern (approach borrowed, code rewritten), tooling (development or test only).
 
 | Component | Role | License | Status | Reuse mode | Module |
 | --- | --- | --- | --- | --- | --- |
-| FastAPI | API framework | MIT | S | dependency | M0 |
-| Pydantic | validation, settings | MIT | S | dependency | M0 |
-| SQLAlchemy, Alembic | ORM, migrations | MIT | S | dependency | M0 |
-| PostgreSQL 16 | database | PostgreSQL | S | service | M0 |
-| pgvector | vector index (optional) | PostgreSQL | S | dependency | M5 |
-| Celery | task queue | BSD-3 | S | dependency | M3 |
-| Valkey | broker and cache | BSD-3 | S | service | M3 |
-| feedparser | RSS and Atom parsing | BSD-2 | S | dependency | M3 |
-| Scrapy | crawling framework | BSD-3 | S | dependency | M3 |
-| trafilatura 1.8+ | main-text extraction | Apache-2.0 (GPLv3 before 1.8.0) | S | dependency | M3 |
-| readability-lxml | fallback extraction | Apache-2.0 | S | dependency | M3 |
-| Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | S | dependency, tooling | M3, tests |
-| changedetection.io | change-detection approach | Apache-2.0 | S | pattern | M3, M4 |
-| SearXNG | metasearch | AGPL-3.0 | S | service (unmodified) | M3 |
-| httpx | HTTP client with timeouts | BSD-3 | S | dependency | M3 |
-| langdetect or lingua-py | language detection | Apache-2.0 | S | dependency | M4 |
-| spaCy (optional) | entity extraction | MIT | S | dependency | M4 |
-| rapidfuzz | fuzzy dedupe | MIT | S | dependency | M4 |
-| React, React DOM | UI | MIT | S | dependency | M6 |
-| Vite | build | MIT | S | tooling | M6 |
-| TanStack Query, Table, Router | data and routing | MIT | S | dependency | M6 |
-| Tailwind CSS | styling | MIT | S | dependency | M6 |
-| shadcn/ui, Radix UI | accessible components | MIT | S | vendored (by design) | M6 |
-| MapLibre GL JS | map rendering | BSD-3 | S | dependency | M6 |
-| Natural Earth 1:50m admin-0 | country boundaries | Public domain | S | vendored data | M6 |
-| world-atlas / topojson-client | simplified topology | ISC | S | dependency | M6 |
-| i18n-iso-countries | ISO 3166 names | MIT | S | dependency | M2 |
-| Apache ECharts | charts | Apache-2.0 | S | dependency | M6, M7 |
-| Puck (@measured/puck) | drag-and-drop layout editor | MIT | S | dependency | M7 |
-| dnd-kit | drag-and-drop primitives | MIT | S | dependency | M7 |
-| Gotenberg | HTML to PDF | MIT | S | service | M8 |
-| WeasyPrint | fallback PDF | BSD-3 | S | dependency | M8 |
-| aiosmtplib | SMTP client | MIT | S | dependency | M8 |
-| Mailpit | development mail catcher | MIT | S | tooling | M8 |
-| ipp (npm) | IPP printing bridge | MIT | S | dependency | M8 |
-| argon2-cffi | password hashing | MIT | S | dependency | M1 |
-| Authlib | OpenID Connect client | BSD-3 | S | dependency | M1 |
-| Keycloak | reference identity provider for tests | Apache-2.0 | S | tooling, optional service | M1 |
-| pycasbin (optional) | policy engine | Apache-2.0 | S | dependency | M1 |
-| Caddy | reverse proxy | Apache-2.0 | S | service | M10 |
-| structlog, OpenTelemetry, prometheus-client | observability | MIT, Apache-2.0, Apache-2.0 | S | dependency | M10 |
-| Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | S | tooling | M10 |
-| pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | S | tooling | tests |
-| Vitest, Testing Library | frontend tests | MIT | S | tooling | tests |
-| axe-core, @axe-core/playwright | accessibility tests | MPL-2.0 | S | tooling | tests |
-| k6 | load tests | AGPL-3.0 | S | tooling | tests |
-| OWASP ZAP | dynamic security scan | Apache-2.0 | S | tooling | security |
-| Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | S | tooling | security |
-| Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | S | tooling | security |
-| ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0, BSD-3, MIT | S | tooling | compliance |
-| Ollama (optional) | local model server | MIT | S | service | M4 |
+| FastAPI | API framework | MIT | V `7a0a3f0` | dependency | M0 |
+| Pydantic | validation, settings | MIT | V `aa540ac` | dependency | M0 |
+| SQLAlchemy, Alembic | ORM, migrations | MIT | V `2f6968c`, `47da01c` | dependency | M0 |
+| PostgreSQL 16 | database | PostgreSQL | V `7d3e000` | service | M0 |
+| pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
+| Celery | task queue | BSD-3 | V `3f4d8d7` | dependency | M3 |
+| Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
+| feedparser | RSS and Atom parsing | BSD-2 | V `14425f6` | dependency | M3 |
+| Scrapy | crawling framework | BSD-3 | V `8026dee` | dependency | M3 |
+| trafilatura 1.8+ | main-text extraction | Apache-2.0 (GPLv3 before 1.8.0) | V `e2f85c9` | dependency | M3 |
+| readability-lxml | fallback extraction | Apache-2.0 | V `7159b09` | dependency | M3 |
+| Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | V `bcb9deb` | dependency, tooling | M3, tests |
+| changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
+| SearXNG | metasearch | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
+| httpx | HTTP client with timeouts | BSD-3 | V `26d48e0` | dependency | M3 |
+| langdetect or lingua-py | language detection | Apache-2.0 | V `d0c8e85`, `754ce21` | dependency | M4 |
+| spaCy (optional) | entity extraction | MIT | V `4331199` | dependency | M4 |
+| rapidfuzz | fuzzy dedupe | MIT | V `377d0c0` | dependency | M4 |
+| React, React DOM | UI | MIT | V `61aa00d` | dependency | M6 |
+| Vite | build | MIT | V `981f07f` | tooling | M6 |
+| TanStack Query, Table, Router | data and routing | MIT | V `a6be1ce`, `95c4768`, `6b9fe6d` | dependency | M6 |
+| Tailwind CSS | styling | MIT | V `c2b24dd` | dependency | M6 |
+| shadcn/ui, Radix UI | accessible components | MIT | V `96da9cc`, `9aebdd4` | vendored (by design) | M6 |
+| MapLibre GL JS | map rendering | BSD-3 | V `538a768` | dependency | M6 |
+| Natural Earth 1:50m admin-0 | country boundaries | Public domain | V `f1890d9` | vendored data | M6 |
+| world-atlas / topojson-client | simplified topology | ISC | V `a912c0a`, `71e5bd6` | dependency | M6 |
+| i18n-iso-countries | ISO 3166 names | MIT | V `55c3a72` | dependency | M2 |
+| Apache ECharts | charts | Apache-2.0 | V `c5a48f5` | dependency | M6, M7 |
+| Puck (@puckeditor/core, formerly @measured/puck) | drag-and-drop layout editor | MIT | V `d14401c` | dependency | M7 |
+| dnd-kit | drag-and-drop primitives | MIT | V `3910e27` | dependency | M7 |
+| Gotenberg | HTML to PDF | MIT | V `3d4f655` | service | M8 |
+| WeasyPrint | fallback PDF | BSD-3 | V `4d3b7b6` | dependency | M8 |
+| aiosmtplib | SMTP client | MIT | V `9cc4254` | dependency | M8 |
+| Mailpit | development mail catcher | MIT | V `364916b` | tooling | M8 |
+| ipp (npm) | IPP printing bridge | MIT (claimed; no LICENSE file) | S (blocked, R-01 E1) | dependency | M8 |
+| argon2-cffi | password hashing | MIT | V `1fcae4f` | dependency | M1 |
+| Authlib | OpenID Connect client | BSD-3 | V `46b9487` | dependency | M1 |
+| Keycloak | reference identity provider for tests | Apache-2.0 | V `24ed1da` | tooling, optional service | M1 |
+| pycasbin (optional) | policy engine | Apache-2.0 | V `f858158` | dependency | M1 |
+| Caddy | reverse proxy | Apache-2.0 | V `72dd0fb` | service | M10 |
+| structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 | V `8174a86`, `ad75594`, `9b6b971` | dependency | M10 |
+| Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
+| pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
+| Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
+| axe-core, @axe-core/playwright | accessibility tests | MPL-2.0 | V `e797173`, `2375f7f` | tooling | tests |
+| k6 | load tests | AGPL-3.0 | V `e088784` | tooling | tests |
+| OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |
+| Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | V `4fe07d8`, `92ae8b8`, `12cbff4` | tooling | security |
+| Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
+| ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
+| Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
 
-Status note: during this design session the following were re-confirmed through public project pages: trafilatura (Apache-2.0 from 1.8.0), changedetection.io (Apache-2.0), Puck (MIT), Gotenberg (MIT), MapLibre GL JS (BSD-3). The Phase 0 research agent upgrades every row to V and records the commit hash of the LICENSE file read.
+Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against their LICENSE files. Still at S: `ipp` (npm), whose repository has no LICENSE file (R-01 E1; R-04 decides). R-01 also corrected the register text for the Puck package name, the structlog dual license and the ScanCode data license.
 
 ## 3.7 Architecture decision records to write in Phase 0
 
