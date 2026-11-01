@@ -4,9 +4,11 @@
 # Docs: https://code.claude.com/docs/en/github-actions#run-a-skill
 name: Claude Code Review
 
+# DISABLED 2026-11-01 by owner decision: the Console account behind ANTHROPIC_API_KEY has no balance, so every
+# automatic review would fail. Manual runs only. To re-enable, restore:
+#   pull_request: {types: [opened, synchronize, ready_for_review, reopened]}
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}

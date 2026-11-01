@@ -7,15 +7,15 @@
 # Docs: https://code.claude.com/docs/en/github-actions
 name: Claude Code
 
+# DISABLED 2026-11-01 by owner decision: work runs as Claude Code cloud sessions instead (billed to the claude.ai
+# cloud session credit), and the Console account behind ANTHROPIC_API_KEY has no balance. Manual runs only.
+# To re-enable, restore these triggers:
+#   issue_comment: {types: [created]}
+#   pull_request_review_comment: {types: [created]}
+#   pull_request_review: {types: [submitted]}
+#   issues: {types: [opened, labeled]}
 on:
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
-  pull_request_review:
-    types: [submitted]
-  issues:
-    types: [opened, labeled]
+  workflow_dispatch:
 
 concurrency:
   group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}

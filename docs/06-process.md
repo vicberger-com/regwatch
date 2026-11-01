@@ -71,6 +71,8 @@ Change proposals that alter an accepted design (schema, API, scope) are issues t
 
 ## 6.7 Claude Code GitHub Actions
 
+**Status: disabled since 2026-11-01** (owner decision). Both workflows below run only on manual dispatch. Work is assigned as Claude Code cloud sessions instead, one per issue, billed to the owner's claude.ai cloud session credit. Re-enable by restoring the triggers listed in each workflow's header comment once a funded Console account backs `ANTHROPIC_API_KEY`.
+
 Two workflows in `.github/workflows/` let the owner assign work from GitHub without starting a session by hand:
 
 | Workflow | Trigger | What happens |

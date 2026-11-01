@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Changed
+- Claude Code GitHub Actions disabled (manual dispatch only); issue work runs as cloud sessions billed to the cloud session credit (REQ-26)
 - Component register: 50 of 51 rows upgraded from S to V with the commit SHAs at which each LICENSE file was read. `ipp` (npm) stays at S because its repository has no LICENSE file. Register text corrected for the Puck package name (`@puckeditor/core`), the structlog dual license (MIT OR Apache-2.0) and the ScanCode data license (CC-BY-4.0) (#3, REQ-19, REQ-20)
 - Owner approved the design package and the recorded Phase 0 answers; commit `6636de1` marks the baseline (#2, REQ-21, REQ-23)
 - Owner answers to the Phase 0 questions recorded: China added to day-one jurisdictions, supply chain security added to topics, translation with a selectable provider added to M4, branding configuration and legal page added to M1, M6 and M7 (#1, REQ-02, REQ-03, REQ-16, REQ-17)
