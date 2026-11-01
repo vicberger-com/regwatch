@@ -66,7 +66,7 @@ Allowed for bundled code and assets: MIT, BSD-2, BSD-3, ISC, Apache-2.0, Postgre
 
 ## 3.6 Component register
 
-Verification status: **V** means an agent opened the LICENSE file in the project repository at a tagged release; the short commit SHA(s) at which it was read follow the V (full SHAs, tags and file paths in `docs/research/R-01-license-verification.md`); **S** means confirmed through package indexes or project pages and must be re-verified against the LICENSE file by the Phase 0 research agent before use. Reuse mode: dependency, service (runs unmodified behind HTTP), vendored (code copied with attribution), pattern (approach borrowed, code rewritten), tooling (development or test only).
+Verification status: **V** means an agent opened the LICENSE file in the project repository at a tagged release, or, for a repository that has no tags, at default-branch HEAD on the date recorded (marked "untagged"); the short commit SHA(s) at which it was read follow the V (full SHAs, tags and file paths in `docs/research/R-01-license-verification.md`); **S** means confirmed through package indexes or project pages and must be re-verified against the LICENSE file by the Phase 0 research agent before use. Reuse mode: dependency, service (runs unmodified behind HTTP), vendored (code copied with attribution), pattern (approach borrowed, code rewritten), tooling (development or test only).
 
 | Component | Role | License | Status | Reuse mode | Module |
 | --- | --- | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | readability-lxml | fallback extraction | Apache-2.0 | V `7159b09` | dependency | M3 |
 | Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | V `bcb9deb` | dependency, tooling | M3, tests |
 | changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
-| SearXNG | metasearch | AGPL-3.0 | V `9ded3be` | service (unmodified) | M3 |
+| SearXNG | metasearch | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
 | httpx | HTTP client with timeouts | BSD-3 | V `26d48e0` | dependency | M3 |
 | langdetect or lingua-py | language detection | Apache-2.0 | V `d0c8e85`, `754ce21` | dependency | M4 |
 | spaCy (optional) | entity extraction | MIT | V `4331199` | dependency | M4 |

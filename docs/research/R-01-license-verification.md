@@ -10,12 +10,12 @@ For every row in the component register, open the project's own LICENSE file at 
 ## Method
 
 1. Resolve each upstream repository and follow any renames (`gh api repos/<owner>/<repo>`).
-2. Pick the release with GraphQL `latestRelease`. When a repository has no GitHub releases, or its "latest" release is a pre-release or a sibling package, use the newest final tag instead (see the notes below).
+2. Pick the release with GraphQL `latestRelease`. When a repository has no GitHub releases, or its "latest" release is a pre-release or a sibling package, use the newest final tag instead. When a repository has no tags at all, read it at default-branch HEAD and record the date (see the notes below).
 3. Resolve the tag to its commit SHA (`gh api repos/<o>/<r>/commits/<tag>`).
 4. Fetch the license file at that SHA (`gh api repos/<o>/<r>/license?ref=<sha>`). This returns the file path, GitHub's licensee classification and the full text.
 5. Read the head of every file. Read the whole file wherever the classifier returned `NOASSERTION`, the file held more than one license, or the register expected an edge case.
 
-"Commit" below is the full SHA of the tagged commit at which the license file was read. The register in 3.6 shows the first seven characters.
+"Commit" below is the full SHA of the commit at which the license file was read: the tagged commit, or default-branch HEAD on the stated date for a repository with no tags (SearXNG, N4; `ipp`, E1). The register in 3.6 shows the first seven characters.
 
 ## Results
 
