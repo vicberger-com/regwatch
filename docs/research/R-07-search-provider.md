@@ -143,7 +143,7 @@ Run 2 (median latency 1.27 s, max 6.01 s, no errors) was not hand-scored again; 
 ### 2.4 Operational burden
 
 - Upstream engines treat a self-hosted instance as a scraper. From a datacenter address, Google, Qwant and Brave refused from the first query, and DuckDuckGo started CAPTCHAs within about a minute of steady use. SearXNG's engine code changes with the upstream sites; the project ships near-daily images, and engines get marked `inactive` when a site adds proof-of-work checks (Startpage, Mojeek). Expect to pull new images often and re-check which engines still work.
-- At 200 to 500 queries a day the steady rate is one query every 3 to 7 minutes, far gentler than this benchmark. Whether DuckDuckGo tolerates that over weeks is not measured here (BL-27).
+- At 200 to 500 queries a day the steady rate is one query every 3 to 7 minutes, far gentler than this benchmark. Whether DuckDuckGo tolerates that over weeks is not measured here (BL-32).
 - Because degradation is silent, the connector has to read `unresponsive_engines` and record it in `capture_run`; otherwise a source looks healthy while returning dictionary pages.
 - Running costs: one small container, no key, no fee. AGPL-3.0 is acceptable as an unmodified service behind the network boundary (3.5); the register row is unchanged.
 
@@ -177,7 +177,7 @@ Sources: brave.com/search/api, api-dashboard.search.brave.com/terms-of-service, 
 
 **What would change this:**
 - A budget of roughly £15 to £50 or $25 to $75 a month: Mojeek Business (storage rights, published limits) or Brave with storage rights becomes the primary provider, with SearXNG as the free fallback.
-- A soak test (BL-27) from the production host showing DuckDuckGo blocks at production pace: SearXNG becomes unusable unattended, and the fallback API becomes primary even at a cost, or search is cut back to free-tier volume.
+- A soak test (BL-32) from the production host showing DuckDuckGo blocks at production pace: SearXNG becomes unusable unattended, and the fallback API becomes primary even at a cost, or search is cut back to free-tier volume.
 - Search volume falling below about 30 a day once the feed and API connectors are in place: a free commercial tier alone would cover it with less maintenance.
 - A change to Exa's or Brave's free tier or terms; recheck both before Phase 2 starts.
 
