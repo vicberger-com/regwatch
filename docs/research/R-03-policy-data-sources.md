@@ -13,20 +13,40 @@ Fit codes: **(a)** capture source for M3 (connector kind named), **(b)** seed fo
 
 1. GitHub-hosted material was read from a clone at a recorded commit (`git clone --depth`); the commit and the files read are listed in each block. Licenses and terms are quoted from those files.
 2. **Network limit.** This session's network policy refused every host other than GitHub (proxy `connect_rejected` for `unctad.org`, `policy.openssf.org`, `openssf.org`, `eur-lex.europa.eu`; DNS refusal for `unctad.org` in the fetch tool). No live endpoint, terms page or `robots.txt` on those hosts could be opened. Where a block depends on such a page it says **not verified** and states nothing about content, license or cadence. Search-engine snippets were seen for UNCTAD but are **not** used as evidence.
-3. Candidate discovery used GitHub repository search for official owners (`usnistgov`, `usgpo`, `legislation`) and for regulation trackers. Third-party trackers without a license are included only to record why they are rejected.
+3. **Follow-up pass (BL-24, 2026-11-01, later the same day).** The environment's network access was widened, and C7 to C15 were then read live. Pages were fetched with `curl` using a descriptive User-Agent (`regwatch-research/0.1 (R-03)`); pages that render in the browser were read with headless Chromium (Playwright). Each site's `robots.txt` was read before its content pages. The UNCTAD tracker was tried once directly and gave no response. An Internet Archive fallback could not be run from this session, so C2 stays unverified. Sites that answered with a block or a timeout are recorded as such, and no attempt was made to get around them.
+4. Candidate discovery used GitHub repository search for official owners (`usnistgov`, `usgpo`, `legislation`) and for regulation trackers. Third-party trackers without a license are included only to record why they are rejected.
 
 ## Summary
 
 | # | Candidate | Owner | Access | License or terms (as read) | Last update seen | Verified at | Fit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | C1 | OpenSSF Global Cyber Policy WG repository | OpenSSF (Linux Foundation) | Git repository (Markdown tables, PDFs); Jekyll site `policy.openssf.org` | `LICENSE` Apache-2.0; `CHARTER.md`: documentation CC-BY-4.0, data CDLA-Permissive-1.0 | 2026-09-25 (repo); regulations table 2025-04-18; CRA tables 2025-12-01 | `3e45ac6` | (b) CRA terms; (c) EU/UK index; (a) optional `rss` on commits, secondary |
-| C2 | UNCTAD Global Cyberlaw Tracker | UNCTAD | not verified | not verified | not verified | host blocked | provisional (c), pending verification |
+| C2 | UNCTAD Global Cyberlaw Tracker | UNCTAD | not verified | not verified | not verified | blocked, then no response (2026-11-01) | provisional (c), pending verification |
 | C3 | legislation.gov.uk API and Publication Log | The National Archives (UK) | Atom feeds (`/data.feed`), CLML XML (`/data.xml`), HTML | Open Government Licence v3.0; EU-origin items also Commission Decision 2011/833/EU; fair-use policy (3,000 requests per 5 min) | docs repo 2025-07-01; live feed not fetched | docs `2812c7a` | (a) `rss` or `api_feed` (`legislation_gov_uk`) |
 | C4 | govinfo bulk data (Federal Register, CFR, eCFR, bills) | US Government Publishing Office | Bulk XML; directory listings as XML or JSON (`/bulkdata/json/...`) | US government works not subject to copyright; no downstream restriction except representing an official version | guide repo 2026-06-11; live listing not fetched | guide `83a8517` | (a) `api_feed` (`generic_json`) for CFR and eCFR; complements the Federal Register API starter |
 | C5 | NIST OSCAL content (CSF 2.0, SSDF SP 800-218, AI RMF 1.0, SP 800-53) | NIST | Git repository; OSCAL catalogs in XML, JSON, YAML | Public domain in the US plus CC0-1.0 worldwide | 2026-10-22 | `f0de6d8` | (b) seed for a control-framework facet and topic match rules |
 | C6 | Asenion (Fairly AI) AI regulation and policy tracker | Fairly AI (company) | README pointing to a Google My Maps map | no stated license | 2026-09-18 | `ab887aa` | (d) not usable |
+| C7 | Canada: Justice Laws consolidated Acts and regulations (XML) | Department of Justice Canada | Git repository of XML (`justicecanada/laws-lois-xml`); HTML site | `LICENSE.md`: Open Government Licence - Canada; Reproduction of Federal Law Order (quoted in FAQ) | repo 2026-10-15; site "current to 2026-09-30" | `0507465`, site 2026-11-01 | (a) `rss` on the repository's commit feed, plus fetch from the clone or site |
+| C8 | Australia: Federal Register of Legislation | Office of Parliamentary Counsel | HTML; PDF, DOC, ePub downloads | CC BY 4.0 with prescribed attribution wording | not stated | site 2026-11-01 | (a) `web_page` (listing) |
+| C9 | Japan: e-Gov 法令検索 (Law Search) and Law API | Digital Agency | Law API v1 and v2; XML bulk download; HTML | 公共データ利用規約 第1.0版 (PDL1.0) | API v1 spec dated 2024-07-29 | site 2026-11-01 | (a) `api_feed` (`generic_json`, API v2) |
+| C10 | Singapore: CSA legislation pages | Cyber Security Agency | HTML | all rights reserved; written permission needed to reproduce | page "Last updated on 25 February 2026" | site 2026-11-01 | (a) `web_page`, internal monitoring only |
+| C11 | India: India Code, e-Gazette, MeitY | Government of India | not reached | not verified | not verified | timeout or access denied | unverified |
+| C12 | Brazil: LexML portal | Senado Federal (LexML network) | HTML search; SRU interface (`/sru`) | not found | not stated | site 2026-11-01 (SRU 503) | (c), (a) pending SRU and terms |
+| C13 | Brazil: ANPD (data protection authority) | ANPD on gov.br | HTML | gov.br footer: CC BY-ND 3.0 | not stated | site 2026-11-01 | (a) `web_page`; no derived seeds |
+| C14 | China: CAC 政策法规 (policy and regulation) listing | Cyberspace Administration of China | HTML listing, rendered in the browser | "© 版权所有" (all rights reserved); no reuse licence stated | listing entries to 2026-10-23 | site 2026-11-01 | (a) `web_page` (listing, `render_js`), internal only |
+| C15 | China: national laws and regulations database `flk.npc.gov.cn` | NPC Standing Committee | HTML | `robots.txt` forbids automated collection | not stated | `robots.txt` 2026-11-01 | (c) reference only; no capture |
 
-**Coverage of day-one jurisdictions.** The verified candidates cover the EU (C1, and via C3's EU-origin copies), the UK (C1, C3) and US federal (C4, C5). None of them covers Canada, Australia, Japan, Singapore, India, Brazil or China. Sources for those (and UNCTAD) sit on hosts this session could not reach; BL-24 carries that verification.
+**Coverage of day-one jurisdictions.**
+- **EU:** C1, and the EU-origin copies in C3.
+- **UK:** C1 and C3.
+- **US federal:** C4 and C5.
+- **Canada:** C7.
+- **Australia:** C8.
+- **Japan:** C9.
+- **Singapore:** C10. The statutes portal `sso.agc.gov.sg` returned HTTP 403 to this session.
+- **Brazil:** C12 and C13.
+- **China:** C14 and C15.
+- **India:** no source verified (C11). The starter list in 4.5 also has no Indian source.
 
 ## Evaluation blocks
 
@@ -54,7 +74,7 @@ Each block follows `docs/templates/COMPONENT_EVALUATION.md`, adapted for data: t
 ### C2 UNCTAD Global Cyberlaw Tracker
 
 **Capability needed:** worldwide jurisdiction reference for cyber-related law · **Module:** M2 (jurisdictions), M3 · **URL:** https://unctad.org/page/global-cyberlaw-tracker (from issue #5 and R-03 wording; page not opened) · **Version evaluated:** none
-**License or terms:** **not verified.** `unctad.org` was refused by the session network policy, so the tracker page, any download, the UNCTAD terms of use and `robots.txt` were not opened. · **Policy result:** unknown
+**License or terms:** **not verified.** `unctad.org` was first refused by the session network policy. In the follow-up pass, one direct request got no HTTP response, and an Internet Archive fallback could not be run from this session. The tracker page, any download, the UNCTAD terms of use and `robots.txt` were therefore not opened. · **Policy result:** unknown
 
 | Criterion | Score | Evidence |
 | --- | --- | --- |
@@ -77,7 +97,7 @@ Each block follows `docs/templates/COMPONENT_EVALUATION.md`, adapted for data: t
 | Coverage | 4 | `what-we-have.md`: "almost all UK primary and secondary legislation published since 1988"; UK only, plus EU-origin copies |
 | Structure | 5 | Atom feeds for every list and search (`/data.feed`); CLML XML for documents (`/data.xml`) |
 | Update cadence | 3 | not stated as a schedule; `api/overview.md`: website and API "updated at the same time", with caching delay |
-| Machine access and etiquette | 5 | `fair-use.md`: identify with a User-Agent with contact, "follow the rules in our robots.txt", "must not exceed ... 3,000 requests in any 5 minute period", conservative crawl rate "e.g. 10 requests per 5-10 seconds" if no crawl-delay. The live `robots.txt` was not reachable; the `robots.txt` in the docs repo applies to the documentation site only |
+| Machine access and etiquette | 5 | `fair-use.md`: identify with a User-Agent with contact, "follow the rules in our robots.txt", "must not exceed ... 3,000 requests in any 5 minute period", conservative crawl rate "e.g. 10 requests per 5-10 seconds" if no crawl-delay. Live `robots.txt` (read 2026-11-01): `User-agent: *` with `Crawl-delay: 5` and sitemaps, and no `Disallow`. The `robots.txt` in the docs repo applies to the documentation site only |
 
 **Decision:** (a) `rss` for the Publication Log, `api_feed` provider `legislation_gov_uk` for document fetch.
 **Reasoning:** The Publication Log (`https://www.legislation.gov.uk/update/data.feed`, filterable by date, content type `legislation|draft|associated-documents|changes` and document type per `api/publication-log.md`) is a better change signal than per-type feeds; the docs say not to poll the unfiltered feed. M3's defaults (8.3: one request per 2 s) sit well under the fair-use limit.
@@ -96,7 +116,7 @@ Each block follows `docs/templates/COMPONENT_EVALUATION.md`, adapted for data: t
 | Coverage | 3 | US federal only; collections named in README: FR, CFR, BILLS; guides for eCFR and bill summaries |
 | Structure | 4 | listings as XML or JSON by adding `/xml` or `/json` (README; `Accept` header required or HTTP 406); documents in published XML schemas |
 | Update cadence | 2 | not stated in the guides |
-| Machine access | 3 | bulk download; `govinfo.gov` `robots.txt` and site terms not reachable |
+| Machine access | 3 | bulk download. Live `robots.txt` (read 2026-11-01) disallows paths such as `/core/` and `/app/search/*`, does not disallow `/bulkdata`, and publishes bulkdata sitemaps for FR, CFR and ECFR. Site terms page not read |
 
 **Decision:** (a) `api_feed` provider `generic_json` against the JSON listings, later phase (BL-22).
 **Reasoning:** The Federal Register API already in the starter list covers new rules; govinfo adds the codified CFR and eCFR, which matter for "status" rather than "change", so it can wait until the starter set runs.
@@ -127,16 +147,112 @@ Each block follows `docs/templates/COMPONENT_EVALUATION.md`, adapted for data: t
 Covers AI and AI-adjacent regulation in categories (general, generative AI, data and privacy, employment, government and military, health, finance and insurance, other) with a status colour legend; the data live in a Google My Maps map linked from the README, not in the repository.
 **Decision:** (d) not usable. **Reasoning:** no license, data held on a third-party map service, and the "Policy and Framework Tracker" section of the README is empty; its category list is noted only as a cross-check for the AI governance topic.
 
-### Leads not assessed (hosts unreachable from this session)
+### Day-one jurisdictions (C7 to C15, follow-up pass 2026-11-01)
 
-Named so BL-24 can pick them up; no claims are made about them here: EuroVoc thesaurus (EU Publications Office) as an M2 seed; national gazettes or law portals for Canada, Australia, Japan, Singapore, India, Brazil and China; the starter-list agencies in `docs/04-data-model.md` 4.5.
+These blocks use the same fields as the blocks above, in a shorter form. "robots" is the site's live `robots.txt` as read on the date shown.
+
+#### C7 Canada: Justice Laws Website and XML repository
+- **Owner and URLs:** Department of Justice Canada. Site: https://laws-lois.justice.gc.ca. XML: https://github.com/justicecanada/laws-lois-xml at `0507465` ("Laws Site Update 2026-10-15").
+- **Coverage:** consolidated federal Acts and regulations in English and French, plus annual statutes. The site says "both language versions being equally authoritative".
+- **Format and access:** XML in a Git repository (`eng/`, `fra/`, DTD and XSLT included); HTML site. The site FAQ names the repository as the download for "all consolidated federal Acts and regulations".
+- **Cadence:** the FAQ says "The Justice Laws Website is generally updated every two weeks". The home page said "current to 2026-09-30". Recent repository commits: 2026-09-22, 2026-09-28, 2026-10-15.
+- **Terms:**
+  - Repository `LICENSE.md`: "Open Government Licence - Canada", linking http://open.canada.ca/en/open-government-licence-canada. The file does not state a version.
+  - Site FAQ quoting the Reproduction of Federal Law Order: "anyone may, without charge or request for permission, reproduce enactments and consolidations of enactments of the Government of Canada ... provided due diligence is exercised in ensuring the accuracy of the materials reproduced and the reproduction is not represented as an official version."
+- **robots:** `/robots.txt` returns the site's "Page not Found" page, so no robots file is served. Using the repository avoids crawling the site at all.
+- **Fit:** (a). Use `rss` on the repository's commit Atom feed as the change signal, then fetch the changed XML. `connectors.yaml` has no git connector kind; a sitemap or git connector is already a backlog idea (BL-06).
+
+#### C8 Australia: Federal Register of Legislation
+- **Owner and URL:** Office of Parliamentary Counsel. https://www.legislation.gov.au
+- **Coverage:** Commonwealth Constitution, Acts, legislative and notifiable instruments, gazettes, Administrative Arrangements, prerogative instruments, and Norfolk Island (from the site menu).
+- **Format and access:** HTML. "Downloads from the website are usually offered in a choice of file formats (pdf, doc and ePub)".
+  - An OData endpoint at `api.prod.legislation.gov.au` answered a `$metadata` request. No documentation or terms for it were found on the pages read, so treat it as undocumented.
+- **Cadence:** not stated.
+- **Terms** (https://www.legislation.gov.au/terms-of-use):
+  - "With the exception of the Commonwealth Coat of Arms, and where otherwise noted, all content on the Federal Register of Legislation ... is provided under Creative Commons Attribution 4.0 International (the CC BY 4.0 licence)".
+  - Attribution must include "Sourced from the Federal Register of Legislation at [full date of download]" (unchanged content) or "Based on content from ..." (changed content).
+- **robots:** `User-agent: *`, `Crawl-delay: 10`, `Disallow: /assets/`. The listed sitemap is a placeholder ("This is an example sitemap.xml").
+- **Fit:** (a) `web_page` in listing mode at one request per 10 s. Switch to `api_feed` (`generic_json`) only after OPC documents the API (BL-24).
+
+#### C9 Japan: e-Gov 法令検索 (Law Search) and Law API
+- **Owner and URL:** Digital Agency (デジタル庁). https://laws.e-gov.go.jp
+- **Coverage:** current national law (憲法・法律・政令・勅令・府省令・規則: constitution, acts, cabinet and imperial orders, ministerial ordinances and rules).
+  - The API v1 page lists calls for the law list by type, laws updated on a given date (「日付を指定 指定した日付に更新した法令名一覧」), full text, and single articles.
+  - The site also links the Japanese Law Translation database.
+- **Format and access:** 法令API Version1 (XML; spec 「2024年7月29日更新」, updated 2024-07-29); 法令API Version2 (OpenAPI page `lawapi-v2-oas`); XML bulk download (「XML一括ダウンロード」); and an updated-laws list (「更新法令一覧」).
+- **Cadence:** not stated as a schedule. Changes are queryable by update date.
+- **Terms** (https://laws.e-gov.go.jp/terms/):
+  - 「本サイトの著作権は、特記されていない限りデジタル庁に帰属し、権利表記の記載がない限り「公共データ利用規約（第1.0版）」（PDL1.0）が適用されています」 ("unless otherwise noted, copyright belongs to the Digital Agency and the Public Data License 1.0 applies").
+  - Users must cite the source, must mark edits, and must not present edited content "as if the State created it".
+- **robots:** `/robots.txt` returns the application page, so no robots file is served.
+- **Fit:** (a) `api_feed` (`generic_json`) against API v2, with daily queries by update date. Content is Japanese; translation per M4.
+
+#### C10 Singapore: Cyber Security Agency legislation pages
+- **Owner and URL:** CSA. https://www.csa.gov.sg/legislation/
+- **Coverage:** Cybersecurity Act, Codes of Practice, notices, forms and consultations. The page says "Last updated on 25 February 2026".
+- **Format and access:** HTML. No feed was found.
+- **Cadence:** not stated.
+- **Terms** (https://www.csa.gov.sg/terms-of-use/): "Except as otherwise provided, the Contents of this website shall not be reproduced, republished, uploaded, posted, transmitted or otherwise distributed in any way, without the prior written permission of CSA."
+- **robots:** `Allow: /`, `Disallow: /search`.
+- **Fit:** (a) `web_page` in single mode with change detection, for internal monitoring only. No text goes into seeds, and nothing goes into external outputs without CSA permission.
+- **Not reached:** Singapore Statutes Online (`sso.agc.gov.sg`) answered HTTP 403 "Request blocked" (CloudFront) to this session. The PDPC site loads but was not assessed.
+
+#### C11 India: no official source reached
+`www.indiacode.nic.in` timed out with no bytes on two tries (25 s and 40 s), and `egazette.gov.in` timed out on one try. `www.meity.gov.in` served `robots.txt` (`Allow: /`) but answered its home page with "Access Denied" (Akamai). **Fit:** unverified. India is a day-one jurisdiction, and neither 4.5 nor this research has a working source for it (BL-24).
+
+#### C12 Brazil: LexML portal
+- **Owner and URL:** a national network run from the Senado Federal. https://www.lexml.gov.br
+- **Coverage:** an aggregator. `desc_acervo.html` lists providers and counts: for example, Senado Federal 291,420 documents (federal legislation and bills) and Câmara dos Deputados 258,444, plus state, municipal, court and agency collections.
+- **Format and access:** HTML search; an SRU interface at `/sru`, which returned HTTP 503 when checked; URN resolution at `/urn`.
+- **Cadence:** not stated.
+- **Terms:** not found. The documentation host `projeto.lexml.gov.br` did not resolve.
+- **robots:** `Disallow: /busca/`, `/doc/`, `/linker/`; `Allow: /urn` and `/sru`; `Crawl-delay: 5`; the `Python-Requests` User-Agent is disallowed (the SafeFetcher User-Agent is descriptive, per 8.3).
+- **Fit:** (c) reference now. Becomes (a) `api_feed` (`generic_json` over SRU) once SRU answers and terms are found.
+
+#### C13 Brazil: ANPD (national data protection authority)
+- **Owner and URL:** ANPD, on gov.br. https://www.gov.br/anpd/pt-br
+- **Coverage:** the authority's own site. Its content pages were not read in this pass, so coverage is not stated here.
+- **Format and access:** HTML. No RSS link was found on the page.
+- **Cadence:** not stated.
+- **Terms:** the gov.br footer says 「Todo o conteúdo deste site está publicado sob a licença Creative Commons Atribuição-SemDerivações 3.0 Não Adaptada」 ("all content is published under CC BY-ND 3.0").
+- **robots:** `gov.br/robots.txt` allows anonymous areas and does not disallow `/anpd`.
+- **Fit:** (a) `web_page` in listing mode. Because of the no-derivatives (ND) clause, no seed text is derived from it; internal monitoring is unaffected.
+
+#### C14 China: Cyberspace Administration of China, policy and regulation listing
+- **Owner and URL:** CAC. https://www.cac.gov.cn/wxzw/zcfg/A093703index_1.htm
+- **Coverage:** the listing has tabs for 法律, 行政法规, 部门规章, 司法解释, 规范性文件, 政策文件 and 政策解读 (laws, administrative regulations, departmental rules, judicial interpretations, normative documents, policy documents, interpretations).
+- **Format and access:** HTML; the listing is rendered in the browser. Entries seen were dated up to 2026-10-23.
+- **Cadence:** not stated.
+- **Terms:** the footer reads "© 版权所有" (all rights reserved). No reuse licence was found.
+- **robots:** disallows only `/zfz/`, `/wxb_zfz/`, `/wxzf/` and `/vmsfile/newVideo.html?vid=*`.
+- **Fit:** (a) `web_page` in listing mode with `render_js`, language zh with translation, internal monitoring only. One plain request was reset by the peer, so keep a low rate and allow retries.
+
+#### C15 China: national laws and regulations database (国家法律法规数据库)
+- **URL:** https://flk.npc.gov.cn
+- **robots:** begins 「#禁止使用任何自动化工具、脚本、爬虫程序采集或复制网站数据」 ("the use of any automated tool, script or crawler to collect or copy site data is prohibited"), followed by `User-agent: *` and `Disallow: /`.
+- **Fit:** (c) reference only, for analysts' manual lookup. M3 must not capture it, and no robots override is acceptable.
 
 ## Recommendation
 
 ### Starter sources (proposed changes to `docs/04-data-model.md` 4.5; not edited here)
 
 1. **Keep** legislation.gov.uk and make the entry concrete: `rss` source on the Publication Log filtered to legislation and drafts, for example `https://www.legislation.gov.uk/update/legislation/data.feed` and `https://www.legislation.gov.uk/update/draft/data.feed`; `credibility=official`; `config.terms_url` = OGL v3.0 reuse page; per-host limit at or below 8.3 defaults (well under 3,000 requests per 5 min). The URLs come from `api/publication-log.md`; check them live in Phase 2 per 4.5.
-2. **Do not add** OpenSSF, UNCTAD or govinfo to the day-one starter list. OpenSSF is secondary and EU-only; UNCTAD is unverified; govinfo is a later-phase complement (BL-22, BL-23, BL-24).
+2. **Make the national entries concrete** (each with `config.terms_url` set to the terms page quoted above):
+   - **Canada:** add Justice Laws XML (C7) beside Canada OPC.
+   - **Australia:** add the Federal Register of Legislation (C8) beside OAIC, at one request per 10 s.
+   - **Japan:** add the e-Gov Law API v2 (C9) beside Japan NISC.
+   - **Singapore:** add the CSA legislation page (C10) beside Singapore CSA news.
+   - **Brazil:** keep Brazil ANPD as a `web_page` listing (C13).
+   - **China:** point "China CAC" at the 政策法规 listing (C14).
+3. **Flag in 4.5:**
+   - China's `flk.npc.gov.cn` (C15) must not be captured.
+   - Singapore, Australia and China terms limit use to internal monitoring.
+   - India has no verified source (C11).
+4. **Do not add** OpenSSF, UNCTAD, govinfo or LexML to the day-one starter list:
+   - OpenSSF is secondary and EU-only.
+   - UNCTAD is unverified.
+   - govinfo is a later-phase complement (BL-22, BL-23).
+   - LexML's SRU and terms are unconfirmed (BL-24).
 
 ### Taxonomy seeds (proposed changes to 4.5 and the M2 seed YAML; not edited here)
 
@@ -151,6 +267,6 @@ Named so BL-24 can pick them up; no claims are made about them here: EuroVoc the
 
 ### Register and policy
 
-- No code enters the repository from these sources, so no component register row is needed now. When `seed/` takes derived data, add data rows (C1 CC-BY-4.0, C3 OGL-UK-3.0, C5 CC0-1.0) to 3.6; not done here because `docs/03-architecture.md` is being edited by other sessions.
-- 3.5 names CC-BY-4.0 for data but not OGL-UK-3.0, CDLA-Permissive-1.0, EU Commission Decision 2011/833/EU reuse terms or US public domain government works. BL-20 proposes an ADR to list them.
+- No code enters the repository from these sources, so no component register row is needed now. When `seed/` takes derived data, add data rows (C1 CC-BY-4.0, C3 OGL-UK-3.0, C5 CC0-1.0, and C7, C8 or C9 if their text is used) to 3.6; not done here because `docs/03-architecture.md` is being edited by other sessions.
+- 3.5 names CC-BY-4.0 for data, but not these terms: OGL-UK-3.0, Open Government Licence - Canada, Japan's PDL1.0, CDLA-Permissive-1.0, EU Commission Decision 2011/833/EU reuse terms, or US public domain government works. BL-20 proposes an ADR to list them, and to record CC BY-ND 3.0 (C13) and all-rights-reserved sites (C10, C14) as "monitor internally, never derive or redistribute".
 - No existing ADR is changed by this finding; ADR-0003 (license policy) is the one BL-20 would amend.
