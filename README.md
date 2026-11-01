@@ -2,7 +2,7 @@
 
 Working codename (placeholder; rename is an owner decision). An application that monitors global legal and regulatory status and changes for information technology and cybersecurity topics, stores them in a taxonomy-driven database, shows them on a world map, and produces reports and outputs to email, printers and PDF.
 
-**Status:** design accepted, Phase 0 (discovery and open-source review) open. No application code yet.
+**Status:** design package and Phase 0 answers approved by the owner on 2026-11-01 (tag `design-approved`). Phase 0 (discovery and open-source review) is open: claim issues #3 to #11. No application code yet.
 
 Start here: [`docs/00-README.md`](docs/00-README.md), then [`docs/01-how-to-use.md`](docs/01-how-to-use.md) if you are an AI session or agent working on this repository.
 

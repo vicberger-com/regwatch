@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Changed
+- Owner approved the design package and the recorded Phase 0 answers; tag `design-approved` marks the baseline (#2, REQ-21, REQ-23)
 - Owner answers to the Phase 0 questions recorded: China added to day-one jurisdictions, supply chain security added to topics, translation with a selectable provider added to M4, branding configuration and legal page added to M1, M6 and M7 (#1, REQ-02, REQ-03, REQ-16, REQ-17)
 
 ### Added
