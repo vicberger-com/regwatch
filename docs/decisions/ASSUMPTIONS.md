@@ -14,3 +14,4 @@ Every answer an agent assumed because the owner had not answered by the time wor
 | 2026-11-01 | P0 (M6) | R-05 Q3: is Antarctica drawn? | Yes, neutral, as code AQ | #7 | pending |
 | 2026-11-01 | P0 (M7) | R-02: does "keyboard-only drag and drop" (REQ-18, WCAG 2.2 AA) require keyboard dragging itself? | No; keyboard alternatives (select, Move up and Move down, Add) satisfy WCAG 2.1.1 and 2.5.7 | #4 | pending |
 | 2026-11-01 | P0 (R-06) | License of Federal Register API data | US government work, no reuse restriction (as in 4.5); the FR legal-status page could not be read from automation | #8 | pending (BL-27) |
+| 2026-11-01 | P0 (M4) | Item size for translation load (R-08) | Title plus summary about 700 characters; full text about 15,000 characters; about 200 non-English items a day | #11 | pending |
