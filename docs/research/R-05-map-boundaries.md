@@ -94,16 +94,116 @@ Natural Earth admin-1 at 1:50m covers only 9 countries (AUS, BRA, CAN, CHN, IDN,
 
 ## Measurements
 
-Pending in the next commit (benchmark running).
+### Environment
+
+- **Runner:** cloud container, 4 vCPU Intel Xeon @ 2.80 GHz, 15 GB RAM, **no GPU**. Node 22.23.4, pnpm 10.28.0.
+- **Browser:** Playwright 1.63.0 headless Chromium 153.0.8010.12. WebGL reports `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))`, which is a CPU software rasteriser. Every frame rate below is therefore a pessimistic lower bound, not what a laptop GPU would show. Load and parse times are less affected.
+- **Page:** 1280 × 800 at device scale 1, world view (zoom 1.2 Mercator, 1.25 Equal Earth). A fill layer uses a `match` expression on `id` over five colour steps (`--map-0` to `--map-4`), with a white 0.6 px border line layer. Files come from a local static server with `Cache-Control: no-store` and no compression, so fetch times exclude network transfer.
+- **Runs:** 5 runs per case, each in a fresh browser context. The tables show the median.
+
+### Payload (bytes)
+
+| Candidate | 1:110m raw | 1:110m gzip -9 | 1:50m raw | 1:50m gzip -9 | 1:50m simplified raw | 1:50m simplified gzip -9 | 1:10m raw | 1:10m gzip -9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| NE release GeoJSON (all fields) | 838,726 | 209,293 | 3,083,490 | 1,023,959 | n/a | n/a | 13,287,234 | 4,723,018 |
+| Slim GeoJSON | 194,851 | 65,647 | 1,678,732 | 566,757 | **470,726** | **169,015** | 9,107,447 | 2,637,198 |
+| TopoJSON | 108,379 | 39,021 | 746,786 | 229,808 | 242,086 | 83,226 | 3,643,202 | 910,636 |
+| PMTiles archive, z0 to z5 (tiles gzip inside) | 282,569 | n/a | 742,751 | n/a | 443,336 | n/a | not built | not built |
+
+Disputed-areas overlay (1:50m, simplified the same way): 13,043 raw, 4,046 gzip. For PMTiles, the browser downloads only the header, the directory and the visible tiles: {{PMXFER}}.
+
+Code (gzip -9): `maplibre-gl.mjs` 294,033, `maplibre-gl-worker.mjs` 146,852, `maplibre-gl.css` 10,180, which totals **451,065** (75% of the 600 KB budget). `pmtiles` reader 7,542. `topojson-client` `feature` 735.
+
+### Timing, Mercator (median of 5, ms)
+
+"Parse" is main-thread `JSON.parse`, plus the TopoJSON decode where it applies. "First render" runs from `addSource` to the first `idle`, including worker tiling and drawing. "Ready" runs from navigation start to that `idle`. "Recolor" is `setPaintProperty` with a new step mapping, up to `idle`. "fps" is the requestAnimationFrame rate during a 6 s scripted pan and zoom (four `easeTo` legs, zoom 1.3 to 4).
+
+| Candidate | Parse | First render (min to max) | Ready | Recolor | fps | p95 frame |
+| --- | --- | --- | --- | --- | --- | --- |
+| raw 1:110m | 14 | 528 (498 to 621) | 858 | 318 | 13 | 117 |
+| slim 1:110m | 2 | 451 (414 to 526) | 747 | 313 | 14 | 100 |
+| topo 1:110m | 2 + 7 | 493 (462 to 567) | 805 | 337 | 14 | 100 |
+| pm 1:110m | n/a | 516 (485 to 582) | 705 | 72¹ | 17 | 83 |
+| raw 1:50m | 40 | 896 (870 to 987) | 1,302 | 412 | 10 | 133 |
+| slim 1:50m | 27 | 828 (704 to 1,005) | 1,178 | 365 | 11 | 133 |
+| topo 1:50m | 16 + 23 | 765 (722 to 903) | 1,146 | 368 | 10 | 150 |
+| pm 1:50m | n/a | 544 (495 to 598) | 776 | 91¹ | 14 | 100 |
+| **slim 1:50m simplified** | 10 | **579** (552 to 667) | 896 | 339 | 11 | 133 |
+| topo 1:50m simplified | 2 + 11 | 546 (506 to 691) | 868 | 366 | 11 | 133 |
+| pm 1:50m simplified | n/a | 521 (511 to 608) | 717 | 84¹ | 15 | 83 |
+| raw 1:10m | 122 | 2,372 (2,143 to 2,927) | 3,073 | 550 | 8 | 217 |
+| slim 1:10m | 93 | 2,289 (2,067 to 2,420) | 2,839 | 589 | 8 | 183 |
+| topo 1:10m | 89 + 57 | 2,307 (1,910 to 2,523) | 2,812 | 466 | 8 | 183 |
+
+¹ Not comparable: the PMTiles page used a five-branch expression instead of the 240-entry `match`, because it has no feature list in the main thread.
+
+### Timing, Equal Earth and high contrast (median of 5, ms)
+
+| Candidate | Projection | Theme | Parse | First render (min to max) | Ready | Recolor | fps |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| slim 1:110m | Equal Earth | default | 2 | 412 (339 to 443) | 752 | 232 | 14 |
+| slim 1:50m | Equal Earth | default | 19 | 643 (613 to 788) | 966 | 263 | 11 |
+| **slim 1:50m simplified** | Equal Earth | default | 8 | **451** (426 to 538) | 804 | 241 | 12 |
+| topo 1:50m simplified | Equal Earth | default | 2 + 10 | 479 (449 to 528) | 851 | 242 | 13 |
+| slim 1:10m | Equal Earth | default | 110 | 1,829 (1,744 to 1,937) | 2,353 | 261 | 9 |
+| slim 1:50m simplified | Mercator | hatch patterns | 9 | 641 (599 to 659) | 936 | n/a | 10 |
+| slim 1:50m simplified | Equal Earth | hatch patterns | 8 | 523 (496 to 560) | 838 | n/a | 10 |
+| slim 1:50m simplified + disputed overlay | Equal Earth | default | {{DISPARSE}} | {{DISFIRST}} | {{DISREADY}} | {{DISRECOLOR}} | {{DISFPS}} |
+
+### Reading the numbers
+
+- **Render budget (under 1 s for 250 features):** every 1:110m and 1:50m candidate met it in software rendering. The worst was unsimplified 1:50m at 896 ms. 1:10m missed it (1.8 s to 2.4 s).
+- **Recolour (M6 acceptance criterion 1, under 500 ms):** met at 1:50m (239 ms to 412 ms) but not at 1:10m (466 ms to 589 ms).
+- **Frame rate:** 8 to 17 fps everywhere, including 1:110m. The software rasteriser sets the ceiling, not the data. Simplifying 1:50m did not change the frame rate measurably here, but it cut payload by 70% and first render by about 30%. A frame-rate check on GPU hardware remains for M6 (Lighthouse CI and Playwright on a GPU runner).
+- **GeoJSON or TopoJSON:** at 1:50m simplified they are equal within run-to-run spread (579 ms against 546 ms in Mercator; 451 ms against 479 ms in Equal Earth). TopoJSON saves 86 KB gzip, but it adds a main-thread decode and a runtime dependency whose last release was in 2019.
+- **PMTiles:** fastest first render and fewest bytes per view in Mercator, but see the projection section.
+- **Errors:** none. The only console output was Chromium's "GPU stall due to ReadPixels" notice, caused by the screenshot.
+
+### Commands
+
+The proof of concept lived in a scratch directory outside the repository (`$S`) and is not committed.
+```
+# data: NE v5.1.2 sparse checkout (commit f1890d9)
+git clone --depth 1 --branch v5.1.2 --filter=blob:none --no-checkout https://github.com/nvkelso/natural-earth-vector $S/ne
+git -C $S/ne sparse-checkout set --no-cone /LICENSE.md /geojson/ne_{110m,50m,10m}_admin_0_countries.geojson /geojson/ne_50m_admin_0_breakaway_disputed_areas.geojson && git -C $S/ne checkout
+# proof-of-concept packages
+cd $S/poc && pnpm add maplibre-gl@6.16.0 pmtiles@4.5.0 topojson-client@3.1.0 i18n-iso-countries@7.14.0 && pnpm add -D mapshaper@0.7.101 geojson-vt@4 vt-pbf@3 esbuild
+# slim GeoJSON, TopoJSON, simplified variant (r = 110m | 50m | 10m)
+pnpm exec mapshaper ne_${r}_admin_0_countries.geojson -filter-fields ADM0_A3,ISO_A2_EH,NAME -rename-fields id=ADM0_A3,iso=ISO_A2_EH,name=NAME -o slim_${r}.geojson format=geojson precision=0.001
+pnpm exec mapshaper ne_${r}_admin_0_countries.geojson -filter-fields … -rename-fields … -o topo_${r}.json format=topojson quantization=100000
+pnpm exec mapshaper ne_50m_admin_0_countries.geojson -filter-fields … -rename-fields … -simplify 25% keep-shapes -o slim_50s.geojson format=geojson precision=0.001
+# PMTiles: geojson-vt (maxZoom 5, tolerance 3, extent 4096, buffer 64) -> vt-pbf -> pmtiles 3.8.1 Writer (gzip tiles)
+node tile.mjs $S/poc slim_${r}.geojson tiles_${r} 5 && uv run --no-project --with 'pmtiles==3.*' python -I topm.py tiles_${r} pm_${r}.pmtiles
+# sizes
+stat -c %s FILE; gzip -9 -c FILE | wc -c
+# benchmark: static server, then 5 runs per case in headless Chromium
+node serve.mjs $S/site 8765 &
+node bench.cjs results/full.json 5 raw_110m:mercator slim_110m:mercator … slim_50s:ee:1 pm_50s:ee
+python3 -I summarize.py results/full.json
+```
 
 ## Projection and high-contrast patterns
 
-Pending in the next commit.
+- **Equal Earth:** MapLibre GL JS 6.16.0 has no built-in Equal Earth. Its style specification (26.5.1) accepts `mercator`, `globe` and `vertical-perspective`. Version 6.16.0 does have an **experimental** `addProjection(crs)` that takes `forward` and `inverse` functions and a quad tile matrix set. GeoJSON sources need a worker-side `setProjectionHandler`, loaded with `importScriptInWorkers`. The proof of concept registered `custom:equal-earth` with a 25-line Equal Earth function (Šavrič, Patterson and Jenny 2018, spherical, Newton inverse). It used `origin [-XMAX, XMAX]` and an extent of `2 × XMAX`, where `XMAX` is `forward([180, 0])[0]`. Countries rendered correctly in the Equal Earth shape, with fills, borders, recolouring and feature state, and first render was no slower than Mercator. Limits: the API is marked experimental; a registered projection renders a single world with no wrap-around; and **every tile source must already be cut in the CRS's own grid**. A PMTiles archive cut in Web Mercator rendered under Equal Earth with no error, but kept its Mercator shapes, so it would silently show the wrong projection.
+- **Hatch patterns (high-contrast theme):** `fill-pattern` with a data-driven `match` over five 16 px images generated on a canvas and added with `map.addImage` rendered correctly in both projections. It added about 60 ms to 70 ms to first render. Hatch density and line weight grow with the colour step, so the step can be read without colour (WCAG 1.4.1). Line spacing and contrast should be tuned with the design tokens in M6.
 
 ## Why not 1:10m
 
-Pending in the next commit.
+1:10m adds only two codes over 1:50m (GI, UM). Its slim GeoJSON is 2.6 MB gzip, its first render took 1.8 s to 2.4 s (over budget), and recolouring took up to 589 ms (over the 500 ms criterion). It is needed only as the source of NE's worldview files (BL-25) and admin-1 subdivisions (BL-26), and both would be simplified at build time.
 
 ## Recommendation
 
-Pending in the next commit.
+1. **Dataset:** Natural Earth v5.1.2 `ne_50m_admin_0_countries`, plus `ne_50m_admin_0_breakaway_disputed_areas` as a neutral overlay.
+2. **Resolution:** 1:50m simplified at build time (`-simplify 25% keep-shapes`, `precision=0.001`). It draws every day-one jurisdiction at 169 KB gzip, and first render took 451 ms in Equal Earth and 579 ms in Mercator.
+3. **Format:** slim GeoJSON (`id`, `iso`, `name`), served compressed. TopoJSON is an acceptable fallback if payload ever matters more than a runtime dependency. PMTiles is rejected for boundaries because it cannot follow the Equal Earth CRS. It stays an option for a Mercator basemap or for subdivisions.
+4. **TopoJSON tooling:** none is needed. world-atlas (archived) and topojson-client are dropped (BL-12). mapshaper (MPL-2.0, active, tooling only) does the build. topojson-server was not chosen because it has been inactive since 2019.
+5. **MapLibre:** it meets the render budget. The bundle budget is tight: 451 KB of 600 KB. Equal Earth relies on an experimental API, so pin the version exactly, keep a Mercator fallback and add a projection test.
+6. **Jurisdictions:** `geometry_ref = ADM0_A3`, using the mapping rules above. Supranational bodies have no geometry. Subdivisions come later (BL-26).
+7. **Borders:** NE default point of view, with a neutral overlay for disputed and breakaway areas and a non-endorsement statement on the legal page. A different worldview per deployment is BL-25.
+
+Open questions for the owner, recorded as `assumed` in `docs/decisions/ASSUMPTIONS.md`:
+- **Q1:** Is NE's default point of view with a neutral disputed overlay acceptable, or must the default be a named worldview?
+- **Q2:** Should overseas regions (GF, GP, MQ, RE, YT) shade with France?
+- **Q3:** Should Antarctica be hidden?
+
+Not covered: register rows for `pmtiles` and tippecanoe were not added, because neither is adopted. The 3.2 basemap note that mentions PMTiles is unchanged.
