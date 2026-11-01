@@ -14,6 +14,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - Claude Code GitHub Actions: interactive `@claude` and `claude`-label workflow, automatic pull request review workflow, root `CLAUDE.md` with the session rules (REQ-26)
 - Contracts set for parallel sessions: M0 tooling decisions, OpenAPI 3.1 contract (68 paths, 58 schemas, validated), canonical DDL, registries (permissions, roles, settings, flags, tasks, events), environment variable contract, connector configuration schemas, screen inventory with design brief, fixtures inventory (REQ-01, REQ-25)
 - Research item R-01 license verification: `docs/research/R-01-license-verification.md` covers 71 upstream repositories with release tag, commit SHA, license file and SPDX ID (#3, REQ-19, REQ-20)
+- Research item R-02 report builder: Puck 0.24.0 has no keyboard drag and drop but its overrides allow keyboard alternatives, and its `Render` produces server HTML in Node; scored against dnd-kit, react-grid-layout and GrapesJS; ADR-0005 proposed (BL-16 to BL-19) (#4, REQ-12, REQ-13, REQ-18)
 - Research item R-08 translation providers (#1, REQ-02)
 - Design package `docs/` with requirements, architecture, data model, eleven module specifications, process, testing, security and backlog (REQ-01, REQ-19 to REQ-27)
 - Agent templates for task cards, handoffs, ADRs, questioning issues, pull requests, component evaluations, security reviews, adversarial records and use-testing scripts (REQ-23, REQ-25)

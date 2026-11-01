@@ -98,7 +98,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | world-atlas / topojson-client | simplified topology | ISC | V `a912c0a`, `71e5bd6` | dependency | M6 |
 | i18n-iso-countries | ISO 3166 names | MIT | V `55c3a72` | dependency | M2 |
 | Apache ECharts | charts | Apache-2.0 | V `c5a48f5` | dependency | M6, M7 |
-| Puck (@puckeditor/core, formerly @measured/puck) | drag-and-drop layout editor | MIT | V `d14401c` | dependency | M7 |
+| Puck (@puckeditor/core 0.24.0, exact pin; formerly @measured/puck) | drag-and-drop layout editor; `Render` for server HTML (R-02, ADR-0005 proposed) | MIT | V `d14401c` | dependency | M7 |
 | dnd-kit | drag-and-drop primitives | MIT | V `3910e27` | dependency | M7 |
 | Gotenberg | HTML to PDF | MIT | V `3d4f655` | service | M8 |
 | WeasyPrint | fallback PDF | BSD-3 | V `4d3b7b6` | dependency | M8 |

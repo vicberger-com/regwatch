@@ -111,7 +111,7 @@ Fixture: the three items, plus a `Heading` whose text is `<script>alert(1)</scri
 | Single source of components | Yes. The canvas, preview, PDF and email all use the same React `render` | No. Each of about 12 components exists twice and needs a parity test (feasible: identical output above) |
 | Charts (BarChart, LineChart) | ECharts SSR to SVG runs in the same process | Needs a Node step or a Playwright screenshot from Python |
 | Fit with current contracts | Needs a Node runtime service; `M0-tooling.md` and 3.2 rejected a second backend language. Needs a `CP-nn` (BL-17) | Fits as written (M7 spec) |
-| Escaping and injection | React escapes text; forbid `dangerouslySetInnerHTML` (ESLint `react/no-danger`) and Puck `richtext` for untrusted text | Autoescape on; forbid `|safe` |
+| Escaping and injection | React escapes text; forbid `dangerouslySetInnerHTML` (ESLint `react/no-danger`) and Puck `richtext` for untrusted text | Autoescape on; forbid the `safe` filter |
 | Input | Validated layout JSON plus rows the API already resolved; no database access, no egress | The same |
 
 Puck `Render` fits better technically. Jinja2 is cheaper only while the component palette stays small. The decision belongs to the owner, through ADR-0005.
