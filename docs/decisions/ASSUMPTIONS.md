@@ -9,3 +9,6 @@ Every answer an agent assumed because the owner had not answered by the time wor
 | 2026-11-01 | P0 | Q13: license for the application's own code | None chosen; repository private | #1 | pending |
 | 2026-11-01 | P0 | Q14: phase dates and pilot group | Unset; set at G0 | #1 | pending |
 | 2026-11-01 | P0 | Container registry | GHCR | #1 | pending |
+| 2026-11-01 | P0 (M6) | R-05 Q1: which disputed-borders point of view does the map use? | Natural Earth default view, with NE's disputed and breakaway areas drawn neutral on top and a non-endorsement statement on the legal page | #7 | pending |
+| 2026-11-01 | P0 (M6) | R-05 Q2: do overseas regions drawn inside France (GF, GP, MQ, RE, YT) shade with FR? | No; they are list-only jurisdictions with no geometry | #7 | pending |
+| 2026-11-01 | P0 (M6) | R-05 Q3: is Antarctica drawn? | Yes, neutral, as code AQ | #7 | pending |
