@@ -94,8 +94,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Tailwind CSS | styling | MIT | V `c2b24dd` | dependency | M6 |
 | shadcn/ui, Radix UI | accessible components | MIT | V `96da9cc`, `9aebdd4` | vendored (by design) | M6 |
 | MapLibre GL JS | map rendering | BSD-3 | V `538a768` | dependency | M6 |
-| Natural Earth 1:50m admin-0 | country boundaries | Public domain | V `f1890d9` | vendored data | M6 |
-| world-atlas / topojson-client | simplified topology | ISC | V `a912c0a`, `71e5bd6` | dependency | M6 |
+| Natural Earth 1:50m admin-0 | country boundaries and disputed-areas overlay (v5.1.2, built to GeoJSON by script; R-05, ADR-0004) | Public domain | V `f1890d9` | vendored data | M6 |
+| world-atlas / topojson-client | simplified topology | ISC | V `a912c0a`, `71e5bd6` | reject: GeoJSON built from Natural Earth instead (R-05, BL-12) | M6 |
+| mapshaper | build-time boundary simplification and conversion | MPL-2.0 | V `b44c0fa` | tooling | M6 |
 | i18n-iso-countries | ISO 3166 names | MIT | V `55c3a72` | dependency | M2 |
 | Apache ECharts | charts | Apache-2.0 | V `c5a48f5` | dependency | M6, M7 |
 | Puck (@puckeditor/core, formerly @measured/puck) | drag-and-drop layout editor | MIT | V `d14401c` | dependency | M7 |
