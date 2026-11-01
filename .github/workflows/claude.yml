@@ -1,9 +1,9 @@
 # Claude Code GitHub Action, interactive mode.
 # Trigger: mention @claude in an issue or pull request comment, in a PR review, or in a new issue body or title;
 # or add the "claude" label to an issue. Claude replies in a tracking comment, works on a claude/* branch and opens a PR.
-# Authentication: add the repository secret ANTHROPIC_API_KEY (Claude Console key), or replace the
-# anthropic_api_key line with   claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}   for a Claude subscription
-# token generated locally with `claude setup-token`.
+# Authentication: add the repository secret CLAUDE_CODE_OAUTH_TOKEN (generated locally with `claude setup-token`,
+# bills the owner's Claude subscription). To use a Claude Console API key instead, replace the claude_code_oauth_token
+# line with   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 # Docs: https://code.claude.com/docs/en/github-actions
 name: Claude Code
 
@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 1
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           label_trigger: "claude"
           track_progress: true
           branch_prefix: "claude/"
