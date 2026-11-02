@@ -6,3 +6,9 @@ __pycache__/
 dist/
 .recall/
 .remember/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/

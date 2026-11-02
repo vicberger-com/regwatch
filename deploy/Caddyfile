@@ -1,0 +1,15 @@
+# Development reverse proxy: /api/* to the API, everything else to the Vite dev server.
+# TLS and security headers for production land in deploy/compose.prod.yaml (M10).
+{
+	admin 127.0.0.1:2019
+}
+
+:80 {
+	header -Server
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:5173
+	}
+}

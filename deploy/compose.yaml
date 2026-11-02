@@ -1,0 +1,154 @@
+# Development stack. Service, network and volume names are contract names
+# (docs/contracts/M0-tooling.md). Run from the repository root with `make dev`.
+# Images are pinned by tag and digest (docs/08-security-compliance.md 8.6 item 4).
+name: regwatch
+
+x-app: &app
+  build:
+    context: ../api
+    target: dev
+  image: regwatch-api:dev
+  env_file: .env
+  networks: [regwatch]
+  restart: unless-stopped
+
+services:
+  proxy:
+    image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks: [regwatch, edge]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ../api/src:/app/src:ro
+      - objectstore:/data/objectstore
+    depends_on:
+      db: { condition: service_healthy }
+      queue: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/version', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # Celery lands with M3; until then both run an idle stub (regwatch.core.entrypoints).
+  worker:
+    <<: *app
+    command: ["regwatch-worker"]
+    volumes:
+      - objectstore:/data/objectstore
+    depends_on:
+      api: { condition: service_healthy }
+
+  beat:
+    <<: *app
+    command: ["regwatch-beat"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  db:
+    image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
+    environment:
+      POSTGRES_USER: regwatch
+      POSTGRES_DB: regwatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/dev-env.sh to create deploy/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "regwatch", "-d", "regwatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  queue:
+    image: valkey/valkey:9@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Internal-only sidecar (ADR-0001 decision 3).
+  pdf:
+    image: gotenberg/gotenberg:8@sha256:13672f317b443c793e972b1bd2155ec62a3e7b6891b411e8196442cc053ee5f5
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Development only: catches all outgoing mail; UI on http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks: [regwatch, edge]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional egress sidecars. They need internet access, which the internal `regwatch`
+  # network does not give; the separate egress segment is BL-48 (needs a CP issue).
+  # Pin by digest when M3 (search) and M4 (translate) first use them.
+  search:
+    image: searxng/searxng:latest
+    profiles: [search]
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  translate:
+    image: libretranslate/libretranslate:v1.9.6
+    profiles: [translate]
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+  # print-bridge (profile `print`) is deferred: ADR-0001 decision 6, BL-13, BL-15.
+  # Nothing is built for it until a CP issue settles the print path.
+
+networks:
+  regwatch:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata:
+  objectstore:
+  caddy-data:
