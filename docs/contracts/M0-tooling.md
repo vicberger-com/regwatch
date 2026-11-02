@@ -50,7 +50,7 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 
 ## Compose services (names are part of the contract)
 
-`proxy` (caddy:2), `api`, `worker`, `beat`, `db` (postgres:16), `queue` (valkey/valkey:8), `pdf` (gotenberg/gotenberg:8), `search` (searxng/searxng, profile `search`), `print-bridge` (profile `print`), `mailpit` (axllent/mailpit, development only), `translate` (profile `translate`, LibreTranslate or an Argos service as decided by R-08). Internal network `regwatch`; only `proxy` publishes 80 and 443; `mailpit` publishes 8025 in development. Volumes `pgdata`, `objectstore`, `caddy-data`.
+`proxy` (caddy:2), `api`, `worker`, `beat`, `db` (postgres:16), `queue` (valkey/valkey:9), `pdf` (gotenberg/gotenberg:8), `search` (searxng/searxng, profile `search`), `print-bridge` (profile `print`), `mailpit` (axllent/mailpit, development only), `translate` (profile `translate`, LibreTranslate or an Argos service as decided by R-08). Internal network `regwatch`; only `proxy` publishes 80 and 443; `mailpit` publishes 8025 in development. Volumes `pgdata`, `objectstore`, `caddy-data`.
 
 ## CI (`.github/workflows/ci.yml`)
 

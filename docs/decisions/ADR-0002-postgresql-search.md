@@ -1,6 +1,6 @@
 # ADR-0002: PostgreSQL 16 as the system of record and the first search engine, with Meilisearch as a measured fallback
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-03, REQ-09, REQ-11 (also REQ-15, REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-03, REQ-09, REQ-11 (also REQ-15, REQ-20)
 **Research:** R-01 rows 5 and 6 (#3), R-07 (#9), R-08 (#11); `docs/03-architecture.md` 3.2; `docs/04-data-model.md` 4.3, 4.4; `docs/modules/M5-search-query.md`; `docs/contracts/schema.sql`
 
 ## Context
@@ -62,3 +62,12 @@
 1. Should item full text (`item_version.content_text`) be searchable? The contract indexes titles and summaries only. Adding full text needs a `CP-nn` to `schema.sql`, and its effect on index size and latency is not measured.
 2. Is search through English translations acceptable for zh and ja items, given R-08's finding on ja quality?
 3. Do you accept the BL-07 trigger: search p95 above 300 ms at 1 million items with 10 concurrent users, after index tuning, with Meilisearch added as a sidecar while PostgreSQL stays the system of record?
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1: not at launch; titles, summaries and English translations are searchable; revisit after the Phase 2 search benchmark.
+- Q2: yes for Chinese; Japanese items also match their original-language title until a hosted provider is chosen (BL-44).
+- Q3 accepted: the BL-07 trigger.

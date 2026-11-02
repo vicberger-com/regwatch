@@ -1,6 +1,6 @@
 # ADR-0003: License policy, the service-boundary exception for unmodified AGPL services, and data terms
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-19, REQ-20 (also REQ-02, REQ-27)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-19, REQ-20 (also REQ-02, REQ-27)
 **Research:** R-01 (#3), R-03 (#5), R-04 (#6), R-07 (#9), R-08 (#11); `docs/03-architecture.md` 3.5 and 3.6; `docs/08-security-compliance.md` 8.3 and 8.6; BL-20
 
 ## Context
@@ -77,3 +77,13 @@
 2. Do you accept the data-terms list and the three use classes (BL-20)?
 3. May class (ii) sources (CC BY-ND, all rights reserved) be machine-translated for internal display? A translation is an adaptation, and its legal effect under those terms is not established (R-03 C10, C13, C14).
 4. Between gates, may anyone other than you approve an exception? This ADR assumes no: you approve at the next gate, and the service stays off until then.
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1 approved: the service exception for SearXNG and LibreTranslate under conditions (a) to (e).
+- Q2 accepted: the data-terms list and three use classes (BL-20).
+- Q3: yes for titles and summaries only, for internal monitoring, shown with the original and a machine-translation label; take legal advice before any output leaves the organisation.
+- Q4: only the owner approves exceptions, at the next gate.
