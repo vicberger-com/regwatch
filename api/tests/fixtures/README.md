@@ -75,6 +75,57 @@ uv run python -m tests.fixtures.validate_corpus --snapshot-seed   # after #28 me
 - `js_rendered.html`: the content arrives only after its script fetches `js_rendered_data.json`.
 - **robots.txt variants:** `robots_allow.txt`, `robots_disallow.txt`, `robots_crawl_delay.txt`.
 - **Redirect configs:** `redirect_chain.json`, `private_redirect.json`.
-- `zip_bomb.html.gz` is generated on each request by the fixture server (second #12 pull request) and never committed.
+- `zip_bomb.html.gz` is served at `/pages/zip_bomb.html.gz` and generated on each request.
 
-The fixture server, the synthetic data generator and the security payloads are added in the second #12 pull request.
+## Fixture server
+
+```python
+from tests.support.fixture_server import FixtureServer
+
+with FixtureServer() as server:  # ephemeral ports on 127.0.0.1, starts in under 2 s
+    httpx.get(server.url("/feeds/valid_rss.xml"))
+    httpx.get(server.raw("/lie/short"))  # byte-level misbehaviour on the raw listener
+```
+
+In pytest, use the `fixture_server` fixture (registered in `tests/conftest.py`; one server per session, state reset per test). To run it standalone: `make fixture-server`, or `uv run python -m tests.support.fixture_server --port 8099 --raw-port 8098`.
+
+| Route (app listener) | Behaviour |
+| --- | --- |
+| `/feeds/{name}`, `/pages/{name}`, `/corpus/{name}` | fixture files with realistic content types; only listed file names are served |
+| `/robots.txt` | the current variant (`allow` by default); `PUT /_control/robots/{allow,disallow,crawl_delay}` switches it |
+| `POST /_control/reset` | resets the robots variant, the sequence positions and the request log |
+| any route `?delay_ms=N`, `?status=N` | wait before answering; override the status code |
+| `/status/{code}?retry_after=S` | that status, with an optional `Retry-After` |
+| `/delay/{ms}` | answers after the delay |
+| `/redirect/chain/{n}` | `n` hops (301, 302, 303, 307, 308) to `/pages/page_v1.html` |
+| `/redirect/loop/a` | a and b redirect to each other |
+| `/redirect/to?url=U&code=C` | an open redirect to any URL |
+| `/redirect/private/{name}` | 302 to a private or metadata target in `private_redirect.json`: loopback, `169.254.169.254`, IPv6 and IPv4-mapped forms, decimal and hex IPs, RFC 1918 ranges, `file:` and `gopher:` |
+| `/slow/body?chunks=&interval_ms=&chunk_bytes=` | a body trickled in chunks |
+| `/size/{n}?chunked=1` | a body of exactly `n` bytes (up to 4 GiB), with or without `Content-Length` |
+| `/bomb/gzip?mib=N&nested=1` | `Content-Encoding: gzip` that inflates to N MiB of zeros (default 1 GiB, about 1 KiB on the wire per MiB); `nested=1` sends `gzip, gzip` |
+| `/sequence/{name}` | the next page of the named sequence on each request |
+| `/pages/listing/item-{01..30}.html` | item pages for the listing |
+
+| Route (raw listener) | Behaviour |
+| --- | --- |
+| `/lie/short`, `/lie/long`, `/lie/content-length?declared=&actual=` | `Content-Length` that claims more or fewer bytes than are sent |
+| `/raw/slow-headers?interval_ms=` | the status line and headers sent one byte at a time and never finished |
+| `/raw/hang?seconds=` | reads the request and never answers |
+| `/raw/garbage` | bytes that are not HTTP |
+
+Every request is recorded in `server.state.requests` (method, path, query, headers, listener), so tests can assert the User-Agent, robots fetches and request counts.
+
+## Synthetic data
+
+`synthetic/generate.py` (seed 42) writes PostgreSQL COPY files and a `load.sql` for N items across 250 jurisdictions: 245 ISO 3166-1 codes plus EU, COE, OECD, UN and INTL. Jurisdictions follow a Zipf-like skew, dates are denser towards the present, and severity is about 60 percent info, 30 percent notable and 10 percent major. Output goes to `synthetic/out/`, which is git-ignored. On 2026-11-02, 1,000,000 items generated in 76 s and loaded into `docs/contracts/schema.sql` on PostgreSQL 16 in 294 s; the target is 10 minutes. Performance runs themselves are out of scope for #12.
+
+## Security payloads
+
+Each file in `api/tests/security/payloads/` starts with a comment header naming its `# encoding:`:
+
+- `raw`: `xss.txt`.
+- `escaped`: `prompt_injection.txt`, `csv_formula.txt` and `email_header.txt`, so CR, LF, zero-width and bidi characters stay visible.
+- `spec`: `oversized.txt`, whose payloads are built at test time, one character past each contract limit.
+
+Load them with `tests.support.payloads.load(category)` and `oversized(name)`.

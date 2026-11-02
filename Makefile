@@ -64,7 +64,9 @@ backup: ## Back up PostgreSQL and the object store
 restore: ## Restore from FILE=
 	@echo "make restore: lands with M10 operations hardening"; exit 1
 
-
-.PHONY: fixtures-check
+.PHONY: fixtures-check fixture-server
 fixtures-check: ## Validate the test corpus and run the fixture smoke tests (#12)
-	cd api && uv run python -m tests.fixtures.validate_corpus && uv run pytest -q tests/unit/test_fixture_corpus.py tests/unit/test_fixture_feeds_pages.py
+	cd api && uv run python -m tests.fixtures.validate_corpus && uv run pytest -q tests/unit/test_fixture_corpus.py tests/unit/test_fixture_feeds_pages.py tests/unit/test_fixture_server.py tests/unit/test_fixture_synthetic_payloads.py
+
+fixture-server: ## Run the fixture HTTP server on 127.0.0.1:8099 (raw listener 8098)
+	cd api && uv run python -m tests.support.fixture_server --port 8099 --raw-port 8098
