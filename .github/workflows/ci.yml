@@ -1,0 +1,222 @@
+# CI pipeline (#29; REQ-20, REQ-25). Job names are contract names (docs/contracts/M0-tooling.md).
+# GitHub-hosted runners, default GITHUB_TOKEN with read-only contents, no repository secrets.
+# Actions are pinned to full commit SHAs; scanner images to digests (scripts/ci-tools.env).
+# migrations, openapi and contract skip with a notice until #28 and #30 land, then run.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per pull request or branch; a new push cancels the superseded run.
+  # Pushes to main get one group per commit so every merged commit keeps its result.
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'latest' }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+  UV_FROZEN: "1"
+
+jobs:
+  lint-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-api
+      - run: make lint-api
+
+  lint-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-web
+      - run: make lint-web
+
+  test-api:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-api
+      - name: Unit tests, 85 percent coverage floor (7.1)
+        run: make test-api
+      - name: 100 percent floor on security-critical modules (7.1)
+        run: |
+          cd api && uv run coverage json -q -o coverage.json
+          python3 -I ../scripts/coverage_critical.py coverage.json
+
+  test-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-web
+      - name: Unit tests, 80 percent coverage floor (7.1, web/vite.config.ts)
+        run: make test-web
+
+  licenses:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ./.github/actions/setup-api
+      - uses: ./.github/actions/setup-web
+      - name: Tests for the license policy
+        run: cd api && uv run pytest ../scripts/tests -p no:cacheprovider -q
+      - name: License allow-list (3.5, ADR-0003)
+        run: make licenses
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: gitleaks (full history of the checked-out commit)
+        run: |
+          source scripts/ci-tools.env
+          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
+            git /repo --redact --no-banner --exit-code 1 --log-opts=HEAD
+
+  images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Build api (runtime stage) and web images
+        run: |
+          docker build --target runtime -t regwatch-api:ci api
+          docker build -t regwatch-web:ci web
+      - id: day
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.day.outputs.date }}
+          restore-keys: trivy-db-
+      - name: Trivy, fail on critical vulnerabilities
+        run: |
+          source scripts/ci-tools.env
+          mkdir -p ~/.cache/trivy
+          scan() {
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v ~/.cache/trivy:/root/.cache/trivy -v "$PWD/.github/trivy:/cfg:ro" \
+              "$TRIVY_IMAGE" image --quiet --severity CRITICAL --exit-code 1 "$@"
+          }
+          status=0
+          echo "::group::regwatch-api:ci" && { scan regwatch-api:ci || status=1; } && echo "::endgroup::"
+          echo "::group::regwatch-web:ci (accepted findings: .github/trivy/web.trivyignore.yaml)"
+          scan --ignorefile /cfg/web.trivyignore.yaml regwatch-web:ci || status=1
+          echo "::endgroup::"
+          exit $status
+
+  migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Check prerequisites (#28 baseline migration)
+        id: pre
+        run: |
+          if [ -f api/alembic.ini ] && compgen -G "api/alembic/versions/0001_*.py" >/dev/null; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            msg="migrations: skipped, api/alembic.ini or api/alembic/versions/0001_*.py is absent (lands in #28). The job runs automatically once they exist."
+            echo "::notice title=migrations skipped::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.pre.outputs.ready == 'true'
+        uses: ./.github/actions/setup-api
+      - if: steps.pre.outputs.ready == 'true'
+        name: Start empty PostgreSQL 16 (compose digest)
+        run: .github/ci/postgres.sh
+      - if: steps.pre.outputs.ready == 'true'
+        name: upgrade head, downgrade base, upgrade head
+        run: |
+          source .github/ci/app-env.sh
+          cd api
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+  openapi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Check prerequisites (#30 generated client)
+        id: pre
+        run: |
+          if [ -f web/src/lib/api/schema.d.ts ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            msg="openapi: skipped, web/src/lib/api/schema.d.ts is absent (lands in #30 with make openapi). The job runs automatically once it exists."
+            echo "::notice title=openapi skipped::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.pre.outputs.ready == 'true'
+        uses: ./.github/actions/setup-api
+      - if: steps.pre.outputs.ready == 'true'
+        uses: ./.github/actions/setup-web
+      - if: steps.pre.outputs.ready == 'true'
+        name: Regenerate and diff
+        run: |
+          source .github/ci/app-env.sh
+          make openapi
+          git status --porcelain -- openapi web/src/lib/api
+          git diff --exit-code -- openapi web/src/lib/api
+          test -z "$(git status --porcelain --untracked-files=all -- openapi web/src/lib/api)"
+
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Check prerequisites (#30 route stubs and Schemathesis)
+        id: pre
+        run: |
+          if [ -f web/src/lib/api/schema.d.ts ] && grep -q '^name = "schemathesis"' api/uv.lock; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            msg="contract: skipped, needs the #30 route stubs (web/src/lib/api/schema.d.ts) and schemathesis in api/uv.lock. The job runs automatically once both exist."
+            echo "::notice title=contract skipped::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.pre.outputs.ready == 'true'
+        uses: ./.github/actions/setup-api
+      - if: steps.pre.outputs.ready == 'true'
+        name: Start PostgreSQL and the api
+        run: |
+          .github/ci/postgres.sh
+          source .github/ci/app-env.sh
+          cd api
+          if [ -f alembic.ini ]; then uv run alembic upgrade head; fi
+          nohup uv run regwatch-api --host 127.0.0.1 --port 8000 > ../api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/api/v1/health >/dev/null && exit 0
+            sleep 1
+          done
+          cat ../api.log
+          exit 1
+      - if: steps.pre.outputs.ready == 'true'
+        name: Schemathesis against the committed OpenAPI (7.1, zero schema violations)
+        run: |
+          cd api
+          uv run schemathesis run ../openapi/regwatch.v1.yaml --url http://127.0.0.1:8000/api/v1
