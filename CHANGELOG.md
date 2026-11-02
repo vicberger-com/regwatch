@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Added
+- M0 scaffold, api and dev stack: `api/` Python 3.12 package (uv, Ruff, mypy, pytest) with the contract sub-packages, FastAPI app factory, `GET /api/v1/health` and `/version`, fail-fast `Settings` for every `env.example` variable, structlog JSON logs with request ids and the five entry points (worker, beat, seed and admin as stubs); root `Makefile`; `deploy/compose.yaml` with the contract services, internal `regwatch` network and Caddy proxy; `scripts/dev-env.sh`; register rows for Uvicorn, pydantic-settings, pytest-asyncio, uv, Ruff, mypy and CPython; BL-53 to BL-56 (#27, #24, REQ-01, REQ-26)
+
 ## [G0] - 2026-11-02
 
 ### Added

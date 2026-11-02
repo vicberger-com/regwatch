@@ -71,7 +71,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Component | Role | License | Status | Reuse mode | Module |
 | --- | --- | --- | --- | --- | --- |
 | FastAPI | API framework | MIT | V `7a0a3f0` | dependency | M0 |
+| Uvicorn | ASGI server for `regwatch-api` (#27) | BSD-3 | V `3eb9a9a` | dependency | M0 |
 | Pydantic | validation, settings | MIT | V `aa540ac` | dependency | M0 |
+| pydantic-settings | `Settings` from environment variables (#27) | MIT | V `94150a0` | dependency | M0 |
 | SQLAlchemy, Alembic | ORM, migrations | MIT | V `2f6968c`, `47da01c` | dependency | M0 |
 | PostgreSQL 16 | database | PostgreSQL | V `7d3e000` | service | M0 |
 | pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
@@ -114,6 +116,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 | V `8174a86`, `ad75594`, `9b6b971` | dependency | M10 |
 | Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
 | pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
+| pytest-asyncio | async tests (#27) | Apache-2.0 | V `e420349` | tooling | tests |
+| uv, Ruff, mypy | Python environments, lint and format, type check (#27) | MIT OR Apache-2.0, MIT, MIT (mypyc runtime files PSF-2.0) | V `3010295`, `ba65abf`, `ad02a35` | tooling | M0 |
+| CPython 3.12 (`python:3.12-slim` image) | runtime in the api image (#27) | PSF-2.0 (image packaging MIT) | V `f6650f9`, `f4c67ec` (untagged HEAD, 2026-11-02) | runtime (base image) | M0 |
 | Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
 | axe-core, @axe-core/playwright | accessibility tests | MPL-2.0 | V `e797173`, `2375f7f` | tooling | tests |
 | k6 | load tests | AGPL-3.0 | V `e088784` | tooling | tests |

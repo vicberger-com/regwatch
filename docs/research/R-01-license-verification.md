@@ -116,6 +116,23 @@ Result codes: **match** means the file agrees with the register. **note** means 
 - **N9 Hypothesis:** MPL-2.0, with some files keeping their original upstream licenses. It is tooling only.
 - **N10 license-checker:** BSD-3-Clause; no push since 2024-01. It is tooling only.
 
+## Addendum: M0 scaffold additions (#27, 2026-11-02)
+
+Same method as above, except that the license file was read from a shallow `git clone --branch <tag>` of the project's own repository (the session's GitHub API access is limited to this repository). Tags match the versions locked in `api/uv.lock`.
+
+| # | Component | Repository | Tag | Commit | File | SPDX | Policy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A1 | Uvicorn | encode/uvicorn | 0.54.0 | 3eb9a9ab9af69005c687728097461c1fd2a95db9 | LICENSE.md | BSD-3-Clause | allowed |
+| A2 | pydantic-settings | pydantic/pydantic-settings | v2.16.2 | 94150a0d24967026724031a08e6949b9849df3c5 | LICENSE | MIT | allowed |
+| A3 | pytest-asyncio | pytest-dev/pytest-asyncio | v1.4.1.post1 | e4203495fecbe370d971eaf90ac5ac7d97e67b9a | LICENSE | Apache-2.0 | allowed (tooling) |
+| A4 | uv | astral-sh/uv | 0.11.32 | 3010295ae7ff572de459987ad70db315a62ecd61 | LICENSE-MIT, LICENSE-APACHE | MIT OR Apache-2.0 | allowed (tooling) |
+| A5 | Ruff | astral-sh/ruff | 0.17.3 | ba65abf8ba7bfbcc059f7fb9712be5ba9cab6abc | LICENSE | MIT | allowed (tooling) |
+| A6 | mypy | python/mypy | v2.4.1 | ad02a35e623d105ab7340f75558716bc09f8242e | LICENSE | MIT; mypyc `lib-rt` files PSF-2.0 | allowed (tooling) |
+| A7 | CPython | python/cpython | v3.12.3 | f6650f9ad73359051f3e558c2431a109bc016664 | LICENSE | PSF-2.0 | not on the allow-list; see BL-53 |
+| A8 | Docker official Python image | docker-library/python | untagged HEAD, 2026-11-02 | f4c67ece208dead594e43628d22e3c6027dd97ab | LICENSE | MIT | allowed |
+
+Transitive Python packages in `api/uv.lock` (Starlette, AnyIO, python-dotenv, typing-extensions and others) are not listed here; the license scan in #29 (pip-licenses with the allow-list) covers them.
+
 ## Exceptions (component evaluation records)
 
 Only the license criteria are in scope for R-01. Activity, tests, documentation, API fit and size are scored by each module's candidate research (3.8 step 1).
