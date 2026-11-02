@@ -76,6 +76,12 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | pydantic-settings | `Settings` from environment variables (#27) | MIT | V `94150a0` | dependency | M0 |
 | SQLAlchemy, Alembic | ORM, migrations | MIT | V `2f6968c`, `47da01c` | dependency | M0 |
 | PostgreSQL 16 | database | PostgreSQL | V `7d3e000` | service | M0 |
+| asyncpg 0.32.0 | PostgreSQL driver for SQLAlchemy and Alembic (#28; psycopg is LGPL-3.0, CP-01 #39) | Apache-2.0 | V `d701e11` | dependency | M0 |
+| greenlet 3.5.6 | SQLAlchemy asyncio bridge (#28) | MIT; Stackless-derived files PSF-2.0 | V `abfe740` | dependency | M0 |
+| Mako 1.4.3, MarkupSafe 3.0.4 | Alembic revision templates (#28) | MIT, BSD-3 | V `6b833ae`, `ece2607` | dependency | M0 |
+| PyYAML 6.0.3 | seed and taxonomy YAML (#28) | MIT | V `49790e7` | dependency | M0, M2 |
+| NIST OSCAL content: CSF 2.0 catalog | `control_framework` seed terms, withdrawn entries filtered (#28, R-03 C5, BL-21) | CC0-1.0 and US public domain | V `f0de6d8` (LICENSE.md) | data (generated seed) | M2 |
+| UN M49 standard country or area codes | `jurisdiction.region_code` seed (#28) | © United Nations; codes used as identifiers only; terms page not reachable from the session (assumed, ASSUMPTIONS.md) | page read 2026-11-02 | data (generated seed) | M2 |
 | pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
 | Celery | task queue | BSD-3 | V `3f4d8d7` | dependency | M3 |
 | Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
@@ -121,6 +127,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
 | pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
 | pytest-asyncio | async tests (#27) | Apache-2.0 | V `e420349` | tooling | tests |
+| Schemathesis | property-based contract tests of the API against its OpenAPI document (#30) | MIT | V `5fac3a5` (v4.33.0) | tooling | tests |
+| PyYAML, types-PyYAML (typeshed) | loading the contract YAML in the OpenAPI semantic diff (#30) | MIT, Apache-2.0 | V `49790e7` (6.0.3), `956ce07` (typeshed untagged HEAD, 2026-11-02) | tooling | tests |
+| openapi-typescript, openapi-fetch, openapi-typescript-helpers | web API types generated from the contract, typed fetch client (#30) | MIT | V `5709d33` (tags openapi-typescript@7.13.0, openapi-fetch@0.17.0; one monorepo) | tooling, dependency | M0 |
 | uv, Ruff, mypy | Python environments, lint and format, type check (#27) | MIT OR Apache-2.0, MIT, MIT (mypyc runtime files PSF-2.0) | V `3010295`, `ba65abf`, `ad02a35` | tooling | M0 |
 | CPython 3.12 (`python:3.12-slim` image) | runtime in the api image (#27) | PSF-2.0 (image packaging MIT) | V `f6650f9`, `f4c67ec` (untagged HEAD, 2026-11-02) | runtime (base image) | M0 |
 | Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
@@ -130,6 +139,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |
 | Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | V `4fe07d8`, `92ae8b8`, `12cbff4` | tooling | security |
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
+| GitHub Actions `actions/checkout`, `actions/setup-node`, `actions/cache`, `astral-sh/setup-uv` | CI steps in `ci.yml`, pinned by commit SHA (#29) | MIT | V `3d3c42e`, `949feb2`, `55cc834`, `68559e9` | tooling (CI) | M0 |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
 | EUR-Lex / Cellar SPARQL and content API | EU legal data source | Commission Decision 2011/833/EU (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |

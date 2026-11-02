@@ -6,7 +6,7 @@ from regwatch.api import main as api_main
 from regwatch.core import entrypoints
 
 
-@pytest.mark.parametrize(("func", "issue"), [(entrypoints.seed, "#28"), (entrypoints.admin, "#31")])
+@pytest.mark.parametrize(("func", "issue"), [(entrypoints.admin, "#31")])
 def test_pending_commands_exit_with_issue(
     func: object, issue: str, capsys: pytest.CaptureFixture[str]
 ) -> None:

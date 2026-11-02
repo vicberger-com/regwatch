@@ -1,0 +1,116 @@
+# Registries: the single vocabulary for permissions, settings, feature flags, tasks and events.
+# Adding an entry is a normal PR; renaming or removing one needs a CP issue.
+
+permissions:
+  items.read:            { module: M5, description: Read items, versions, diffs and search }
+  items.tag:             { module: M4, description: Add or remove tags and jurisdictions on items manually }
+  items.reprocess:       { module: M4, description: Trigger reprocessing of an item }
+  sources.read:          { module: M3, description: View sources, jobs and runs }
+  sources.manage:        { module: M3, description: Create and edit sources and capture jobs }
+  sources.override_robots: { module: M3, description: Set robots_policy=override with a reason }
+  taxonomy.read:         { module: M2, description: View facets, terms, jurisdictions }
+  taxonomy.manage:       { module: M2, description: Edit facets, terms, jurisdictions, import and export }
+  views.manage_shared:   { module: M5, description: Create and edit shared saved views }
+  reports.build:         { module: M7, description: Use the report builder and save layouts }
+  reports.print:         { module: M7, description: Print or render stock reports and own layouts }
+  reports.share:         { module: M7, description: Share a layout with all users }
+  outputs.pdf:           { module: M8, description: Request PDF rendering }
+  outputs.email:         { module: M8, description: Send outputs by email }
+  outputs.print:         { module: M8, description: Send outputs to a registered printer }
+  outputs.csv:           { module: M8, description: Export CSV }
+  outputs.schedule:      { module: M8, description: Create scheduled outputs }
+  outputs.read_all:      { module: M8, description: See every user's output jobs }
+  users.manage:          { module: M1, description: Create, edit, disable users and assign roles }
+  roles.manage:          { module: M1, description: Edit roles and their permissions }
+  settings.manage:       { module: M1, description: Edit runtime settings, branding, legal page, feature flags, printers }
+  audit.read:            { module: M1, description: Read the audit log }
+  system.operate:        { module: M10, description: View operational dashboards and trigger maintenance jobs }
+
+roles:
+  admin:   [ "*" ]
+  editor:  [ items.read, items.tag, items.reprocess, sources.read, sources.manage, taxonomy.read, views.manage_shared, reports.build, reports.print, reports.share, outputs.pdf, outputs.email, outputs.print, outputs.csv, outputs.schedule ]
+  analyst: [ items.read, items.tag, sources.read, taxonomy.read, reports.build, reports.print, outputs.pdf, outputs.email, outputs.csv, outputs.schedule ]
+  viewer:  [ items.read, taxonomy.read, reports.print, outputs.pdf ]
+
+settings:                       # runtime-editable, stored in the `setting` table, cached with invalidation
+  general.site_title:           { type: string, default: "Regulatory Monitor", module: M1 }
+  general.contact_email:        { type: string, default: "", module: M1, note: used in the crawler User-Agent and footers }
+  branding.logo_ref:            { type: string, default: "", module: M1, note: object store key of the uploaded logo }
+  branding.company_name:        { type: string, default: "", module: M1 }
+  branding.company_short_name:  { type: string, default: "", module: M1 }
+  branding.company_address:     { type: string, default: "", module: M1 }
+  branding.primary_color:       { type: string, default: "", module: M1, note: hex; empty means the design-system default }
+  legal.page_markdown:          { type: string, default: "", module: M1, note: rendered at /legal and by the LegalMarkings report component }
+  legal.required_markings:      { type: string, default: "", module: M1, note: short text inserted in report and email footers }
+  map.default_period_days:      { type: integer, default: 30, module: M6 }
+  map.default_encoding:         { type: enum, values: [recency, count, severity], default: recency, module: M6 }
+  map.projection:               { type: enum, values: [equal-earth, mercator], default: equal-earth, module: M6 }
+  capture.user_agent:           { type: string, default: "regwatch/{version} (+{contact_email})", module: M3 }
+  capture.default_rate_per_minute: { type: integer, default: 30, module: M3 }
+  capture.max_body_bytes:       { type: integer, default: 10485760, module: M3 }
+  capture.snapshot_versions_kept: { type: integer, default: 10, module: M3 }
+  processing.change_threshold_pct: { type: number, default: 5, module: M4 }
+  processing.near_duplicate_ratio: { type: integer, default: 92, module: M4 }
+  classification.model_provider: { type: enum, values: [none, ollama, http], default: none, module: M4 }
+  classification.min_confidence: { type: number, default: 0.6, module: M4 }
+  translation.provider:         { type: enum, values: [none, argos, libretranslate, http], default: none, module: M4 }
+  translation.scope:            { type: enum, values: [titles_summaries, full_text], default: titles_summaries, module: M4 }
+  translation.target_language:  { type: string, default: en, module: M4 }
+  translation.data_processing_basis: { type: string, default: "", module: M4, note: must be non-empty before a hosted provider can be selected }
+  search.page_size_max:         { type: integer, default: 200, module: M5 }
+  search.export_row_cap:        { type: integer, default: 50000, module: M5 }
+  search.provider:              { type: enum, values: [none, searxng, http], default: none, module: M3 }
+  outputs.allowed_recipient_domains: { type: list, default: [], module: M8, note: empty list blocks all email }
+  outputs.attachment_max_bytes: { type: integer, default: 20971520, module: M8 }
+  outputs.artifact_retention_days: { type: integer, default: 90, module: M8 }
+  outputs.rate_per_hour_per_user: { type: integer, default: 20, module: M8 }
+  reports.default_page_size:    { type: enum, values: [A4, Letter], default: A4, module: M7 }
+  sessions.idle_timeout_max_minutes: { type: integer, default: 480, module: M1 }
+  sessions.absolute_lifetime_hours: { type: integer, default: 12, module: M1 }
+  auth.lockout_threshold:       { type: integer, default: 10, module: M1 }
+  auth.lockout_minutes:         { type: integer, default: 30, module: M1 }
+  auth.password_min_length:     { type: integer, default: 12, module: M1 }
+  auth.breach_check_enabled:    { type: boolean, default: false, module: M1 }
+  retention.audit_days:         { type: integer, default: 730, module: M10 }
+
+feature_flags:                  # boolean switches in the `feature_flag` table; all default false unless stated
+  classification.model:         { module: M4, description: Allow the model classifier to run }
+  translation.enabled:          { module: M4, description: Run the translation step in the pipeline }
+  search.internet:              { module: M3, description: Enable the search-query connector }
+  outputs.server_print:         { module: M8, description: Enable the IPP print bridge }
+  outputs.email:                { module: M8, description: Enable email delivery, default true }
+  auth.oidc:                    { module: M1, description: Enable OpenID Connect login (M1b) }
+  capture.js_rendering:         { module: M3, description: Allow render_js on capture jobs, default true }
+  reports.builder:              { module: M7, description: Show the report builder tab, default true }
+
+celery_tasks:                   # dotted names are the contract; queues in parentheses
+  capture.schedule_tick:        { queue: capture, module: M3, period: every minute (beat) }
+  capture.run_job:              { queue: capture, module: M3, args: [job_id] }
+  capture.fetch_candidate:      { queue: capture, module: M3, args: [run_id, candidate] }
+  capture.health_check:         { queue: capture, module: M3, period: hourly (beat) }
+  process.extract:              { queue: process, module: M4, args: [raw_document_ref] }
+  process.dedupe:               { queue: process, module: M4 }
+  process.version:              { queue: process, module: M4 }
+  process.translate:            { queue: process, module: M4 }
+  process.classify:             { queue: process, module: M4 }
+  process.geotag:               { queue: process, module: M4 }
+  process.events:               { queue: process, module: M4 }
+  process.reprocess_item:       { queue: process, module: M4, args: [item_id] }
+  search.refresh_activity:      { queue: default, module: M5, note: debounced rollup refresh }
+  outputs.render_pdf:           { queue: outputs, module: M8, args: [output_job_id] }
+  outputs.send_email:           { queue: outputs, module: M8, args: [output_job_id] }
+  outputs.print_ipp:            { queue: outputs, module: M8, args: [output_job_id] }
+  outputs.export_csv:           { queue: outputs, module: M8, args: [output_job_id] }
+  outputs.schedule_tick:        { queue: outputs, module: M8, period: every minute (beat) }
+  outputs.retention_sweep:      { queue: outputs, module: M8, period: daily (beat) }
+  system.audit_retention:       { queue: default, module: M10, period: daily (beat) }
+  system.backup:                { queue: default, module: M10, period: daily (beat), note: calls scripts/backup.sh }
+
+events:                         # published on the queue as JSON {name, occurred_at, payload}
+  item.captured:                { payload: [item_id, source_id, jurisdiction_ids], module: M4 }
+  item.changed:                 { payload: [item_id, jurisdiction_ids, kind, severity, changed_pct], module: M4 }
+  source.unhealthy:             { payload: [source_id, consecutive_failures], module: M3 }
+  report.rendered:              { payload: [output_job_id, layout_id, artifact_ref], module: M8 }
+  output.sent:                  { payload: [output_job_id, kind, destination_summary], module: M8 }
+  taxonomy.changed:             { payload: [facet_keys, taxonomy_version], module: M2 }
+  settings.changed:             { payload: [keys], module: M1 }

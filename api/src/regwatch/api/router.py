@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
@@ -14,10 +14,11 @@ from regwatch.core.settings import Settings, get_settings
 
 router = APIRouter(tags=["system"])
 
+PUBLIC: dict[str, Any] = {"security": []}
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-@router.get("/health", response_model=Health)
+@router.get("/health", response_model=Health, openapi_extra=PUBLIC)
 async def health(settings: SettingsDep) -> Health:
     db, queue = await asyncio.gather(
         services.probe_db(settings.database_url.get_secret_value()),
@@ -34,6 +35,6 @@ async def health(settings: SettingsDep) -> Health:
     )
 
 
-@router.get("/version", response_model=Version)
+@router.get("/version", response_model=Version, openapi_extra=PUBLIC)
 async def version() -> Version:
     return Version(version=services.app_version(), commit=services.BUILD_COMMIT)
