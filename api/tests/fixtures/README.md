@@ -29,7 +29,7 @@ Smoke tests are in `api/tests/unit/test_fixture_*.py` and run with `make test`. 
 
 - `text` is the minimum a test needs: one article or section, or a Federal Register abstract, cut to at most 1,500 characters at a line break. It is never a whole act.
 - `url` is unique per document. Several documents excerpt different articles of the same act; where a site has no per-article address, a fragment names the provision.
-- Licences, sources and retrieval dates are in `corpus/NOTICES.md`. That file also records the licence decisions made in this task and the one exception (five PRC statutory excerpts) for the owner to confirm.
+- Licences, sources and retrieval dates are in `corpus/NOTICES.md`. That file also records the licence decisions made in this task and the one exception (five PRC statutory excerpts), which the owner approved for this private test corpus only (BL-63, ADR-0003 amendment 2).
 - The same EU acts appear in several languages (Cellar language versions of the same article), so the corpus doubles as a small parallel set for translation tests.
 - `source_kind` is how the document would be captured: an EUR-Lex or legislation.gov.uk feed (`rss`), the Federal Register, e-Gov or BOE APIs (`api_feed`), or a page (`web_page`). The R-08 Chinese passages are `manual`.
 

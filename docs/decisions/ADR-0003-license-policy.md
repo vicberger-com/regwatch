@@ -42,7 +42,8 @@
 3. **Outside the exception.** SSPL, BUSL/BSL, the Elastic License, RSAL, Commons Clause and the Sustainable Use License are prohibited even as services. An AGPL or GPL library pulled into project processes as a dependency is prohibited, as with Argos 1.11+ through `minisbd`: the exception applies to applications, not dependencies.
 4. **Runtime downloads are assessed on what they fetch.** A component that downloads code or models at run time is judged on the downloaded artifact (R-08 F2). Models and datasets that a service loads on the project's behalf (for example LibreTranslate's `LT_LOAD_ONLY` packages) are assessed as data under decision 5.
 5. **Data terms (proposed answer to BL-20).**
-   - **Allowed for data, with attribution where the terms require it:** OGL-UK-3.0, Open Government Licence - Canada, PDL1.0, CDLA-Permissive-1.0, Commission Decision 2011/833/EU, US government works and CC0, alongside CC-BY-4.0 already in 3.5.
+   - **Allowed for data, with attribution where the terms require it:** OGL-UK-3.0, Open Government Licence - Canada, PDL1.0, CDLA-Permissive-1.0, Commission Decision 2011/833/EU, US government works and CC0, alongside CC-BY-4.0 already in 3.5. Added by amendment 2 (BL-63): the Taiwan Open Government Data License v1 (`TW-OGDL-1.0`), the BOE reuse conditions under Ley 37/2007 (2024 licencia tipo, `BOE-2024`) and German statutes as amtliche Werke under § 5 UrhG (`UrhG-5`).
+   - **Exception, private test corpus only (amendment 2, BL-63):** five excerpts of the PRC Personal Information Protection Law (key `CN-STATUTE` in `api/tests/fixtures/corpus/`, 43 to 148 characters each), as statutory text excluded from copyright by PRC Copyright Law Art. 5. They may be used only in the repository's test fixtures; they are not a source for capture, seed data or outputs, and the npc.gov.cn and CAC sites stay in class (ii) and (iii) as below.
    - **Captured sources fall into three use classes:**
      - (i) *Open:* capture, store and derive seed terms, with attribution.
      - (ii) *Internal monitoring only:* CC BY-ND, all rights reserved, or terms not found. Capture and display inside the organisation only. No seed derivation, and no text in outputs to outside recipients (8.3 recipient allow-list).
@@ -96,3 +97,10 @@ The owner added two licenses to the 3.5 allow-list after the M0 scaffold (#27) f
 - **SIL OFL-1.1, fonts only** (BL-57): the self-hosted Inter typeface. The license file must ship beside the font files, and the fonts may not be sold on their own.
 
 The license scan in #29 encodes both.
+
+## Amendment 2 (2026-11-02)
+
+The owner accepted two further decisions found by the M0 pull requests:
+
+- **MIT-0, BlueOak-1.0.0 and Python-2.0 join the 3.5 allow-list** (BL-59, from #29). All three are permissive with no copyleft: MIT-0 is MIT without the notice condition, the Blue Oak Model License 1.0.0 adds a patent grant, and Python-2.0 is the CPython license stack whose PSF part is already allowed. Nine web tooling packages had passed the license scan only as reviewed `tooling` exceptions; those exceptions are removed from `scripts/license-exceptions.toml` and `scripts/license_policy.py` allows the three licenses directly.
+- **Data terms for the #12 test corpus** (BL-63): the three open terms and the private-test-corpus exception for five PRC statute excerpts, recorded in decision 5 above.

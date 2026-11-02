@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Changed
+- License allow-list: MIT-0, BlueOak-1.0.0 and Python-2.0 added by owner decision, and the nine tooling exceptions for them removed; data terms TW-OGDL-1.0, BOE-2024 and UrhG-5 added to ADR-0003 decision 5, with the five PRC statute excerpts approved for the private test corpus only; ADR-0003 amendment 2 (#29, #12, BL-59, BL-63, REQ-20, REQ-25)
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
