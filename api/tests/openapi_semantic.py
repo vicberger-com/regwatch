@@ -42,14 +42,6 @@ ACCEPTED: dict[str, str] = {
 }
 
 
-# Contract paths whose stubs arrive in part 2 of #30 (one module group per pull request).
-# compare() reports nothing for them while they are not routed; empty this tuple when they are.
-PENDING_PREFIXES: tuple[str, ...] = (
-    "/taxonomy", "/jurisdictions", "/sources", "/capture-", "/items", "/search", "/map",
-    "/views", "/reports", "/outputs", "/admin/printers",
-)  # fmt: skip
-
-
 def _component(doc: dict[str, Any], ref: str) -> tuple[str, Any]:
     parts = ref.removeprefix("#/").split("/")
     node: Any = doc
@@ -192,7 +184,6 @@ def compare(
     """All semantic differences, one line each; empty when the documents agree."""
     out: list[str] = []
     want, have = operations(contract), operations(live)
-    want -= {(p, m) for p, m in want - have if p.startswith(PENDING_PREFIXES)}
     out += [f"{m.upper()} {p}: not routed" for p, m in sorted(want - have)]
     out += [f"{m.upper()} {p}: not in the contract" for p, m in sorted(have - want)]
     for path, method in sorted(want & have):
