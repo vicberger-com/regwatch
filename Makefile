@@ -17,11 +17,11 @@ dev: env ## Start the development stack with hot reload (http://localhost)
 stop: ## Stop the development stack
 	$(COMPOSE) down
 
-migrate: ## Apply database migrations
-	@echo "make migrate: lands in #28 (baseline migration 0001)"; exit 1
+migrate: env ## Apply database migrations (alembic upgrade head in the api container)
+	$(COMPOSE) run --rm --build api uv run --no-sync alembic upgrade head
 
-seed: ## Load seed data
-	@echo "make seed: lands in #28 (seed loader and registry seeding)"; exit 1
+seed: env ## Load seed data (idempotent; regwatch-seed in the api container)
+	$(COMPOSE) run --rm --build api regwatch-seed
 
 lint: lint-api lint-web ## Ruff, mypy, ESLint and the TypeScript compiler
 
@@ -53,10 +53,10 @@ openapi: ## Export the live OpenAPI document, diff it with the contract, regener
 		pnpm exec openapi-typescript ../openapi/regwatch.v1.yaml -o src/lib/api/schema.d.ts
 
 licenses: ## License inventory and allow-list check
-	@echo "make licenses: lands in #29 (CI pipeline)"; exit 1
+	scripts/license-scan.sh
 
 security: ## Bandit, Semgrep, pip-audit, pnpm audit, gitleaks
-	@echo "make security: lands in #29 (CI pipeline)"; exit 1
+	scripts/security-scan.sh
 
 backup: ## Back up PostgreSQL and the object store
 	@echo "make backup: lands with M10 operations hardening"; exit 1
