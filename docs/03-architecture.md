@@ -127,6 +127,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
 | pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
 | pytest-asyncio | async tests (#27) | Apache-2.0 | V `e420349` | tooling | tests |
+| Schemathesis | property-based contract tests of the API against its OpenAPI document (#30) | MIT | V `5fac3a5` (v4.33.0) | tooling | tests |
+| PyYAML, types-PyYAML (typeshed) | loading the contract YAML in the OpenAPI semantic diff (#30) | MIT, Apache-2.0 | V `49790e7` (6.0.3), `956ce07` (typeshed untagged HEAD, 2026-11-02) | tooling | tests |
+| openapi-typescript, openapi-fetch, openapi-typescript-helpers | web API types generated from the contract, typed fetch client (#30) | MIT | V `5709d33` (tags openapi-typescript@7.13.0, openapi-fetch@0.17.0; one monorepo) | tooling, dependency | M0 |
 | uv, Ruff, mypy | Python environments, lint and format, type check (#27) | MIT OR Apache-2.0, MIT, MIT (mypyc runtime files PSF-2.0) | V `3010295`, `ba65abf`, `ad02a35` | tooling | M0 |
 | CPython 3.12 (`python:3.12-slim` image) | runtime in the api image (#27) | PSF-2.0 (image packaging MIT) | V `f6650f9`, `f4c67ec` (untagged HEAD, 2026-11-02) | runtime (base image) | M0 |
 | Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
