@@ -34,6 +34,9 @@ import license_policy as lp  # noqa: E402
         ("LGPL-2.1-or-later", "review"),
         ("EPL-2.0", "review"),
         ("PSF-2.0", "allowed"),
+        ("MIT-0", "allowed"),
+        ("BlueOak-1.0.0", "allowed"),
+        ("Python-2.0", "allowed"),
         ("OFL-1.1", "font-only"),
         ("BSD License", "unknown"),
         ("UNKNOWN", "unknown"),
@@ -104,9 +107,9 @@ def test_font_package_with_ofl_passes_and_code_package_fails(tmp_path: Path) -> 
 def test_unknown_fails_and_tooling_exception_is_dev_only(tmp_path: Path) -> None:
     exc = (
         '[[exception]]\necosystem = "node"\npackage = "lib"\nversion = "1.0.0"\n'
-        'license = "MIT-0"\nscope = "tooling"\nreason = "r"\nreviewed = "r"\n'
+        'license = "WTFPL"\nscope = "tooling"\nreason = "r"\nreviewed = "r"\n'
     )
-    pkg = {"MIT-0": [_pkg("lib", "MIT-0", tmp_path)]}
+    pkg = {"WTFPL": [_pkg("lib", "WTFPL", tmp_path)]}
     assert _run(tmp_path, pkg, {}).returncode == 1
     assert _run(tmp_path, pkg, {}, exc).returncode == 0
     bundled = _run(tmp_path, pkg, pkg, exc)

@@ -23,36 +23,9 @@ scope = "any"
 reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE.md is the 3-clause text"
 reviewed = "encode/httpx tag 0.28.1 (26d48e0) LICENSE.md, read 2026-11-02 (#29); register row V"
 
-# --- Development tooling under permissive licenses not named in 3.5 ------------------------
-# Pulled in by the web toolchain only (ESLint, Vitest, jsdom, Tailwind, browserslist); none is
-# in `pnpm licenses list --prod`. Owner decision on adding these licenses to 3.5: BL-59.
-
-[[exception]]
-ecosystem = "node"
-package = "@csstools/color-helpers"
-version = "6.1.2"
-license = "MIT-0"
-scope = "tooling"
-reason = "jsdom CSS parsing (tests). MIT No Attribution: MIT without the notice condition"
-reviewed = "csstools/postcss-plugins untagged HEAD 1d146b5, packages/color-helpers/LICENSE.md, 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "@csstools/css-syntax-patches-for-csstree"
-version = "1.1.16"
-license = "MIT-0"
-scope = "tooling"
-reason = "jsdom CSS parsing (tests). MIT No Attribution"
-reviewed = "csstools/postcss-plugins untagged HEAD 1d146b5, packages/css-syntax-patches-for-csstree/LICENSE.md, 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "argparse"
-version = "2.0.1"
-license = "Python-2.0"
-scope = "tooling"
-reason = "js-yaml under ESLint. Port of CPython argparse under the Python license stack, whose PSF part is PSF-2.0 (allowed)"
-reviewed = "nodeca/argparse tag 2.0.1 (e373563) LICENSE, read 2026-11-02 (#29)"
+# --- Development tooling under licenses allowed only for data -------------------------------
+# caniuse-lite is browserslist build data, not shipped. MIT-0, BlueOak-1.0.0 and Python-2.0 joined
+# the 3.5 allow-list by owner decision (BL-59, ADR-0003 amendment 2), so those packages need no entry.
 
 [[exception]]
 ecosystem = "node"
@@ -62,57 +35,3 @@ license = "CC-BY-4.0"
 scope = "tooling"
 reason = "browserslist build data. 3.5 allows CC-BY-4.0 for data; build-time only, not shipped"
 reviewed = "browserslist/caniuse-lite tag 1.0.30001820 (a16a804) LICENSE, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "jackspeak"
-version = "3.4.3"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "glob CLI parsing under the test toolchain. Blue Oak Model License: permissive, with a patent grant"
-reviewed = "isaacs/jackspeak tag v3.4.3 (cf07536) LICENSE.md, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "lru-cache"
-version = "11.5.3"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "Cache under jsdom and the build toolchain. Blue Oak Model License 1.0.0"
-reviewed = "isaacs/node-lru-cache tag v11.5.3 (7e71a1f) LICENSE.md, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "minimatch"
-version = "10.2.6"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "Glob matching under the lint and test toolchain. Blue Oak Model License 1.0.0"
-reviewed = "isaacs/minimatch tag v10.2.6 (ded1bbd) LICENSE.md, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "minipass"
-version = "7.1.3"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "Streams under glob and the test toolchain. Blue Oak Model License 1.0.0"
-reviewed = "isaacs/minipass tag v7.1.3 (ab4b3b0) LICENSE.md, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "package-json-from-dist"
-version = "1.0.1"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "Under glob in the test toolchain. LICENSE.md is Blue Oak 1.0.0 for the project, with a boilerplate line that packages under src/ carry their own files (the package has none)"
-reviewed = "isaacs/package-json-from-dist tag v1.0.1 (5a84db0) LICENSE.md, read 2026-11-02 (#29)"
-
-[[exception]]
-ecosystem = "node"
-package = "path-scurry"
-version = "1.11.1"
-license = "BlueOak-1.0.0"
-scope = "tooling"
-reason = "Path walking under glob in the test toolchain. Blue Oak Model License 1.0.0"
-reviewed = "isaacs/path-scurry tag v1.11.1 (766c9b0) LICENSE.md, read 2026-11-02 (#29)"

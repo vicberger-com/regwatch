@@ -1,6 +1,6 @@
 """License allow-list check run by scripts/license-scan.sh (REQ-20, 8.6 item 1).
 
-Encodes docs/03-architecture.md 3.5 and ADR-0003 with its 2026-11-02 amendment. Standard
+Encodes docs/03-architecture.md 3.5 and ADR-0003 with its 2026-11-02 amendments. Standard
 library only; run with `python3 -I`. Exit status 1 on any prohibited, review-required or
 unknown license that no reviewed entry in scripts/license-exceptions.toml covers.
 """
@@ -30,6 +30,9 @@ ALLOWED = {
     "CC0-1.0",
     "Public-Domain",
     "PSF-2.0",
+    "MIT-0",  # ADR-0003 amendment 2, BL-59
+    "BlueOak-1.0.0",  # ADR-0003 amendment 2, BL-59
+    "Python-2.0",  # ADR-0003 amendment 2, BL-59
     "MPL-2.0",
 }
 FONT_ONLY = {"OFL-1.1"}  # ADR-0003 amendment, BL-57: font files only
