@@ -1,0 +1,29 @@
+# regwatch security payloads: oversized inputs (issue #12, REQ-25; docs/07-testing-quality.md 7.7)
+# Format: header lines start with "#"; after the header, one spec per line: name<TAB>length<TAB>pattern.
+# encoding: spec (the loader builds each payload at test time by repeating the escaped pattern
+# until it is exactly <length> characters; the large values are never stored in the repository)
+# Use: send each one to every free-text field, query parameter, header and upload the code
+# under test accepts; expect a validation error (problem details) or truncation, never a crash,
+# hang, or unbounded memory use. Each length is one past a stated limit: openapi/regwatch.v1.yaml
+# maxLength (q 500, name 120, subject 200, display_name 120, message 5000, text 50000) and the
+# size limits in docs/08-security-compliance.md (request 2 MB, captured body 10 MB, upload 25 MB,
+# read as MiB); the rest are round sizes.
+query_q_501	501	q
+saved_view_name_121	121	n
+email_subject_201	201	S
+display_name_121	121	D
+message_5001	5001	m
+text_50001	50001	t
+email_local_part_65	65	a
+email_domain_label_64	64	d
+url_8193	8193	https://example.invalid/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/
+header_value_16385	16385	H
+request_body_2mb_plus_1	2097153	x
+captured_body_10mb_plus_1	10485761	b
+upload_25mb_plus_1	26214401	u
+single_token_100k	100000	z
+multibyte_emoji_100k	100000	\U0001F512
+combining_marks_100k	100000	e\u0301
+newlines_100k	100000	\n
+nested_json_100k	100000	[
+null_bytes_1k	1024	\u0000

@@ -1,0 +1,21 @@
+# regwatch security payloads: email header injection (issue #12, REQ-25; docs/07-testing-quality.md 7.5, 7.7)
+# Format: header lines start with "#"; after the header, one payload per line. Blank lines are ignored.
+# encoding: escaped (the loader decodes \r, \n, \t, \\ and \uXXXX, so CR and LF reach the code under test)
+# Use: put each payload in report titles used as subjects, recipient names and addresses, and
+# reply-to fields. The message must keep one Subject, the configured recipients only, and no
+# injected headers or body parts; invalid addresses are rejected.
+Weekly digest\r\nBcc: outsider@attacker.invalid
+Weekly digest\nBcc: outsider@attacker.invalid
+Weekly digest\rCc: outsider@attacker.invalid
+Weekly digest\r\nContent-Type: text/html\r\n\r\n<script>alert(1)</script>
+Weekly digest\r\n\r\nInjected body text
+analyst@example.invalid\r\nBcc: outsider@attacker.invalid
+analyst@example.invalid, outsider@attacker.invalid
+analyst@example.invalid%0d%0aBcc:outsider@attacker.invalid
+"Analyst\r\nBcc: outsider@attacker.invalid" <analyst@example.invalid>
+=?UTF-8?B?V2Vla2x5DQpCY2M6IG91dHNpZGVyQGF0dGFja2VyLmludmFsaWQ=?=
+analyst@example.invalid Bcc: outsider@attacker.invalid
+analyst@example.invalid\u0085Bcc: outsider@attacker.invalid
+<outsider@attacker.invalid>analyst@example.invalid
+analyst@[127.0.0.1]
+analyst(comment)@example.invalid

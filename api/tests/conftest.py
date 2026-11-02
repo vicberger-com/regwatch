@@ -6,6 +6,8 @@ import pytest
 
 from regwatch.core.settings import get_settings
 
+pytest_plugins = ["tests.support.pytest_plugin"]
+
 VALID_ENV = {
     "REGWATCH_SECRET_KEY": "a" * 64,
     "REGWATCH_DATABASE_URL": "postgresql+psycopg://regwatch:pw@127.0.0.1:1/regwatch",
