@@ -17,11 +17,11 @@ dev: env ## Start the development stack with hot reload (http://localhost)
 stop: ## Stop the development stack
 	$(COMPOSE) down
 
-migrate: ## Apply database migrations
-	@echo "make migrate: lands in #28 (baseline migration 0001)"; exit 1
+migrate: env ## Apply database migrations (alembic upgrade head in the api container)
+	$(COMPOSE) run --rm --build api uv run --no-sync alembic upgrade head
 
-seed: ## Load seed data
-	@echo "make seed: lands in #28 (seed loader and registry seeding)"; exit 1
+seed: env ## Load seed data (idempotent; regwatch-seed in the api container)
+	$(COMPOSE) run --rm --build api regwatch-seed
 
 lint: lint-api lint-web ## Ruff, mypy, ESLint and the TypeScript compiler
 
@@ -46,14 +46,17 @@ test-integration: env ## Start the stack, wait for health checks, run integratio
 e2e: ## Playwright end-to-end tests
 	@echo "make e2e: lands in Phase 3 (Playwright with axe-core)"; exit 1
 
-openapi: ## Export the OpenAPI document and regenerate the web client
-	@echo "make openapi: lands in #30 (route stubs and generated client)"; exit 1
+openapi: ## Export the live OpenAPI document, diff it with the contract, regenerate the web client
+	cd api && uv sync --frozen --quiet && uv run python -m tests.openapi_semantic \
+		../openapi/regwatch.v1.yaml --write "$${TMPDIR:-/tmp}/regwatch.v1.live.json"
+	cd web && pnpm install --frozen-lockfile --silent && \
+		pnpm exec openapi-typescript ../openapi/regwatch.v1.yaml -o src/lib/api/schema.d.ts
 
 licenses: ## License inventory and allow-list check
-	@echo "make licenses: lands in #29 (CI pipeline)"; exit 1
+	scripts/license-scan.sh
 
 security: ## Bandit, Semgrep, pip-audit, pnpm audit, gitleaks
-	@echo "make security: lands in #29 (CI pipeline)"; exit 1
+	scripts/security-scan.sh
 
 backup: ## Back up PostgreSQL and the object store
 	@echo "make backup: lands with M10 operations hardening"; exit 1

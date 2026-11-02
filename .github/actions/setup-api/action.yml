@@ -1,0 +1,14 @@
+name: Set up api toolchain
+description: Python 3.12 and uv with the uv cache keyed on api/uv.lock (#29)
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        version: "0.11.32" # same uv as api/Dockerfile
+        python-version: "3.12"
+        enable-cache: true
+        cache-dependency-glob: api/uv.lock
+    - name: Install api dependencies
+      shell: bash
+      run: cd api && uv sync --frozen
