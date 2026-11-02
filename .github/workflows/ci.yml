@@ -89,7 +89,7 @@ jobs:
         run: |
           source scripts/ci-tools.env
           docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
-            git /repo --redact --no-banner --exit-code 1 --log-opts=HEAD
+            git /repo --redact --verbose --no-banner --exit-code 1 --log-opts=HEAD
 
   images:
     runs-on: ubuntu-24.04

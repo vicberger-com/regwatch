@@ -20,9 +20,9 @@ step() {
 
 gitleaks_scan() {
   if command -v gitleaks >/dev/null 2>&1; then
-    gitleaks git "$root" --redact --no-banner
+    gitleaks git "$root" --redact --verbose --no-banner
   else
-    docker run --rm -v "$root:/repo:ro" "$GITLEAKS_IMAGE" git /repo --redact --no-banner
+    docker run --rm -v "$root:/repo:ro" "$GITLEAKS_IMAGE" git /repo --redact --verbose --no-banner
   fi
 }
 
