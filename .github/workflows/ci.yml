@@ -8,7 +8,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, "test/M0-ci-demo-*"] # THROWAWAY demonstration trigger, not for main
 
 permissions:
   contents: read
