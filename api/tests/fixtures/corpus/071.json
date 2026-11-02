@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32022L2557",
+  "title": "RICHTLINIE (EU) 2022/2557 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 14. Dezember 2022 über die Resilienz kritischer Einrichtungen und zur Aufhebung der Richtlinie 2008/114/EG des Rates (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Artikel 1\nGegenstand und Anwendungsbereich\n(1) Die vorliegende Richtlinie\na)\nlegt Verpflichtungen gegenüber Mitgliedstaaten fest zur Gewährleistung der ungehinderten Erbringung von Diensten im Binnenmarkt, die für die Aufrechterhaltung wichtiger gesellschaftlicher Funktionen oder wirtschaftlicher Tätigkeiten unerlässlich sind, spezifische Maßnahmen im Sinne von Artikel 114 AEUV zu ergreifen, und insbesondere Verpflichtungen kritische Einrichtungen zu ermitteln und diese kritischen Einrichtungen dabei zu unterstützen, die ihnen auferlegten Verpflichtungen zu erfüllen;\nb)\nlegt Verpflichtungen für kritische Einrichtungen fest, die darauf abzielen, ihre Resilienz und ihre Fähigkeit zur Erbringung von Diensten gemäß Buchstabe a im Binnenmarkt zu verbessern;\nc)\nlegt Vorschriften fest im Hinblick auf\ni)\ndie Beaufsichtigung kritischer Einrichtungen\nii)\ndie Durchsetzungsmaßnahmen;\niii)\ndie Ermittlung kritischer Einrichtungen, die für Europa von besonderer Bedeutung sind, und die Beratungsmissionen zur Bewertung der Maßnahmen, die diese kritischen Einrichtungen ergriffen haben, um deren Verpflichtungen gemäß Kapitel III nachzukommen;\nd)\nlegt gemeinsame Verfahren für die Zusammenarbeit und die Berichterstattung über die Anwendung dieser Richtlinie fest;\ne)\nlegt Maßnahmen fest, mit denen ein hohes Maß an Resilienz kritischer Einrichtungen erreicht werden soll, um die Erbringung wesentlicher Dienste in der Union sicherzustellen und das Funktionieren des Binnenmarkts zu verbessern.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "energy",
+        "transport",
+        "health"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

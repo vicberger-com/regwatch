@@ -1,0 +1,22 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/05/29/2026-10779/nist-artificial-intelligence-consortium",
+  "title": "NIST Artificial Intelligence Consortium",
+  "language": "en",
+  "published_at": "2026-05-29T00:00:00Z",
+  "text": "The National Institute of Standards and Technology (NIST), an agency of the United States Department of Commerce, previously announced the formation of the Artificial Intelligence Safety Institute Consortium (\"AISIC\") through a publication dated November 2, 2023 (88 FR 75276). AISIC brought together more than 280 organizations to develop science-based and empirically backed guidelines and standards for artificial intelligence (AI) measurement, laying a foundation for global AI metrology. Through this succeeding notice, NIST is announcing the retitling of AISIC as the NIST Artificial Intelligence Consortium (\"Consortium\"), revising the scope of the Consortium's research, and reissuing its invitation to organizations to submit letters of interest in order to collaborate with NIST, non-profit organizations, industry leaders, universities, and other agencies of the Federal Government in addressing the challenges associated with the development and deployment of AI-based innovations. In support of NIST's directives under the National Artificial Intelligence Initiative Act of 2020 (Pub. L. 116-283), in accordance with Executive Order 14179 issued January 23, 2025 (Removing Barriers to American Leadership in Artificial Intelligence), and as mandated by America's AI Action Plan, issued July 2025, NIST will utilize the Consortium to empower the collaborative establishment of a new measurement science that will enable the identification of proven, scalable, and interoperable",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "ai-governance"
+      ],
+      "technology": [
+        "ai-machine-learning"
+      ]
+    },
+    "severity": "info"
+  }
+}

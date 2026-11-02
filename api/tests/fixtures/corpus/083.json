@@ -1,0 +1,26 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/fra/lois/P-8.6/article-3.html",
+  "title": "Loi sur la protection des renseignements personnels et les documents électroniques",
+  "language": "fr",
+  "published_at": "2025-03-04T00:00:00Z",
+  "text": "Objet\n3 La présente partie a pour objet de fixer, dans une ère où la technologie facilite de plus en plus la circulation et l’échange de renseignements, des règles régissant la collecte, l’utilisation et la communication de renseignements personnels d’une manière qui tient compte du droit des individus à la vie privée à l’égard des renseignements personnels qui les concernent et du besoin des organisations de recueillir, d’utiliser ou de communiquer des renseignements personnels à des fins qu’une personne raisonnable estimerait acceptables dans les circonstances.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "data-protection",
+        "privacy"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

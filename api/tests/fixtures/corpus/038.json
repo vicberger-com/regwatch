@@ -1,0 +1,31 @@
+{
+  "url": "https://www.legislation.gov.uk/uksi/2023/1007/schedule/1",
+  "title": "The Product Security and Telecommunications Infrastructure (Security Requirements for Relevant Connectable Products) Regulations 2023",
+  "language": "en",
+  "published_at": "2023-09-14T00:00:00Z",
+  "text": "Schedules\nSecurity requirements for manufacturers\nPasswords\n1 1 The following sub-paragraphs apply to—\na hardware of the product when that product is not in the factory default state;\nb software which is pre-installed on the product at the point at which the product is supplied to a customer when the product is not in the factory default state;\nc software which is not pre-installed on the product at the point at which the product is supplied to a customer and which must be installed on the product for all manufacturer’s intended purposes of the product that use—\ni hardware;\nii software that is pre-installed at the point at which the product is supplied to a customer; or\niii software that is installable.\n2 Passwords must be—\na unique per product; or\nb defined by the user of the product.\n3 Passwords which are unique per product must not be—\na based on incremental counters;\nb based on or derived from publicly available information;\nc based on or derived from unique product identifiers, such as serial numbers, unless this is done using an encryption method, or keyed hashing algorithm, that is accepted as part of good industry practice;\nd otherwise guessable in a manner unacceptable as part of good industry practice.\n4 In this paragraph, passwords do not include—\na cryptographic keys;\nb personal identification numbers used for pairing in communication protocols which do not form part of the internet protocol suite; or\nc application programming interface keys.\n5 In this paragraph—",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "encryption"
+      ],
+      "technology": [
+        "iot",
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "pr-aa"
+      ]
+    },
+    "severity": "notable"
+  }
+}

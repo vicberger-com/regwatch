@@ -1,0 +1,23 @@
+{
+  "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=I0050021&flno=21",
+  "title": "個人資料保護法",
+  "language": "zh",
+  "published_at": "2025-11-11T00:00:00Z",
+  "text": "第 21 條\n非公務機關為國際傳輸個人資料，而有下列情形之一者，主管機關得限制之：\n一、涉及國家重大利益。\n二、國際條約或協定有特別規定。\n三、接受國對於個人資料之保護未有完善之法規，致有損當事人權益之虞。\n四、以迂迴方法向第三國（地區）傳輸個人資料規避本法。",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "TW"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

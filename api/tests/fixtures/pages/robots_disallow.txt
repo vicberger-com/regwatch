@@ -1,0 +1,4 @@
+# regwatch test fixture (issue #12): forbids all automated collection (like flk.npc.gov.cn,
+# R-03 C15). A respectful client fetches nothing else from this host.
+User-agent: *
+Disallow: /

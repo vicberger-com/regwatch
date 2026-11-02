@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/01/08/2026-00206/request-for-information-regarding-security-considerations-for-artificial-intelligence-agents",
+  "title": "Request for Information Regarding Security Considerations for Artificial Intelligence Agents",
+  "language": "en",
+  "published_at": "2026-01-08T00:00:00Z",
+  "text": "The Center for AI Standards and Innovation (CAISI), housed within the National Institute of Standards and Technology (NIST) at the Department of Commerce, is seeking information and insights from stakeholders on practices and methodologies for measuring and improving the secure development and deployment of artificial intelligence (AI) agent systems. AI agent systems are capable of taking autonomous actions that impact real-world systems or environments, and may be susceptible to hijacking, backdoor attacks, and other exploits. If left unchecked, these security risks may impact public safety, undermine consumer confidence, and curb adoption of the latest AI innovations. We encourage respondents to provide concrete examples, best practices, case studies, and actionable recommendations based on their experience developing and deploying AI agent systems and managing and anticipating their attendant risks. Responses may inform CAISI's work evaluating the security risks associated with various AI capabilities, assessing security vulnerabilities of AI systems, developing evaluation and assessment measurements and methods, generating technical guidelines and best practices to measure and improve the security of AI systems, and other activities related to the security of AI agent systems.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "ai-governance",
+        "cybersecurity"
+      ],
+      "technology": [
+        "ai-machine-learning"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "info"
+  }
+}

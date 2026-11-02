@@ -1,0 +1,9 @@
+{
+  "_comment": "regwatch test fixture (issue #12): GET /sequence/{name} serves the next file of the named sequence on each request (the last file repeats). POST /_control/reset rewinds every sequence. Expected change classes per step: unchanged, changed (about 5 percent), status_changed.",
+  "sequences": {
+    "change_detection": ["page_v1.html", "page_v1.html", "page_v2.html", "page_v3.html"]
+  },
+  "expected": {
+    "change_detection": ["new_item", "unchanged", "content_changed", "status_changed"]
+  }
+}

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- regwatch test fixture (issue #12): valid RSS 2.0. Item text is from corpus documents 001 to 010 (US government works); see corpus/NOTICES.md. -->
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Federal Register: cybersecurity documents (fixture)</title>
+    <link>https://www.federalregister.gov/</link>
+    <atom:link href="http://127.0.0.1/feeds/valid_rss.xml" rel="self" type="application/rss+xml"/>
+    <description>Ten Federal Register documents about cybersecurity, copied from the regwatch test corpus.</description>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 02 Nov 2026 09:00:00 GMT</lastBuildDate>
+    <ttl>60</ttl>
+    <item>
+      <title>Defense Federal Acquisition Regulation Supplement: Assessing Contractor Implementation of Cybersecurity Requirements (DFARS Case 2019-D041)</title>
+      <link>https://www.federalregister.gov/documents/2025/09/10/2025-17359/defense-federal-acquisition-regulation-supplement-assessing-contractor-implementation-of</link>
+      <guid isPermaLink="false">regwatch-fixture-001</guid>
+      <pubDate>Wed, 10 Sep 2025 09:00:00 GMT</pubDate>
+      <description>DoD is issuing a final rule amending the Defense Federal Acquisition Regulation Supplement (DFARS) to incorporate contractual requirements related to the final Cybersecurity Maturity Model Certification program rule, titled Cybersecurity Maturity Model Certification Program. …</description>
+      <category>cybersecurity</category>
+      <category>supply_chain_security</category>
+    </item>
+    <item>
+      <title>Department of Defense (DoD) Defense Industrial Base (DIB) Cybersecurity (CS) Activities</title>
+      <link>https://www.federalregister.gov/documents/2024/03/12/2024-04752/department-of-defense-dod-defense-industrial-base-dib-cybersecurity-cs-activities</link>
+      <guid isPermaLink="false">regwatch-fixture-002</guid>
+      <pubDate>Tue, 12 Mar 2024 09:00:00 GMT</pubDate>
+      <description>The DoD is finalizing revisions to the eligibility criteria for the voluntary Defense Industrial Base (DIB) Cybersecurity (CS) Program. These revisions will allow all defense contractors who own or operate an unclassified information system that processes, stores, or transmits …</description>
+      <category>cybersecurity</category>
+      <category>incident_reporting</category>
+    </item>
+    <item>
+      <title>Cybersecurity in the Marine Transportation System</title>
+      <link>https://www.federalregister.gov/documents/2025/01/17/2025-00708/cybersecurity-in-the-marine-transportation-system</link>
+      <guid isPermaLink="false">regwatch-fixture-003</guid>
+      <pubDate>Fri, 17 Jan 2025 09:00:00 GMT</pubDate>
+      <description>The Coast Guard is updating its maritime security regulations by establishing minimum cybersecurity requirements for U.S.-flagged vessels, Outer Continental Shelf facilities, and facilities subject to the Maritime Transportation Security Act of 2002 regulations. This final rule …</description>
+      <category>cybersecurity</category>
+      <category>critical_infrastructure</category>
+      <category>incident_reporting</category>
+    </item>
+    <item>
+      <title>Modernization of the Nation's Alerting Systems; Protecting the Nation's Communications Systems From Cybersecurity Threats</title>
+      <link>https://www.federalregister.gov/documents/2026/07/31/2026-15601/modernization-of-the-nations-alerting-systems-protecting-the-nations-communications-systems-from</link>
+      <guid isPermaLink="false">regwatch-fixture-004</guid>
+      <pubDate>Fri, 31 Jul 2026 09:00:00 GMT</pubDate>
+      <description>In the Report and Order, the Federal Communications Commission (the FCC or the Commission) seeks to preserve the public's trust in the Emergency Alert System (EAS) by requiring targeted cybersecurity improvements that will help protect against hijacking by cybercriminals and our …</description>
+      <category>telecoms_security</category>
+      <category>cybersecurity</category>
+    </item>
+    <item>
+      <title>Cyber Incident Notification Requirements for Federally Insured Credit Unions</title>
+      <link>https://www.federalregister.gov/documents/2023/03/01/2023-03682/cyber-incident-notification-requirements-for-federally-insured-credit-unions</link>
+      <guid isPermaLink="false">regwatch-fixture-005</guid>
+      <pubDate>Wed, 01 Mar 2023 09:00:00 GMT</pubDate>
+      <description>The National Credit Union Administration (NCUA or agency) is amending Part 748 of its regulations to require a federally insured credit union (FICU) that experiences a reportable cyber incident to report the incident to the NCUA as soon as possible and no later than 72 hours …</description>
+      <category>incident_reporting</category>
+      <category>cybersecurity</category>
+    </item>
+    <item>
+      <title>Cyber Incident Reporting for Critical Infrastructure Act (CIRCIA) Rulemaking; Town Hall Meetings</title>
+      <link>https://www.federalregister.gov/documents/2026/02/13/2026-02948/cyber-incident-reporting-for-critical-infrastructure-act-circia-rulemaking-town-hall-meetings</link>
+      <guid isPermaLink="false">regwatch-fixture-006</guid>
+      <pubDate>Fri, 13 Feb 2026 09:00:00 GMT</pubDate>
+      <description>This notice announces town hall meetings to allow external stakeholders a limited additional opportunity to provide input on refining the scope and burden of the CIRCIA Notice of Proposed Rulemaking (NPRM) issued in the Federal Register on April 4, 2024. The proposed CIRCIA …</description>
+      <category>incident_reporting</category>
+      <category>critical_infrastructure</category>
+    </item>
+    <item>
+      <title>Cyber Incident Reporting for Critical Infrastructure Act (CIRCIA) Reporting Requirements</title>
+      <link>https://www.federalregister.gov/documents/2024/04/04/2024-06526/cyber-incident-reporting-for-critical-infrastructure-act-circia-reporting-requirements</link>
+      <guid isPermaLink="false">regwatch-fixture-007</guid>
+      <pubDate>Thu, 04 Apr 2024 09:00:00 GMT</pubDate>
+      <description>The Cyber Incident Reporting for Critical Infrastructure Act of 2022 (CIRCIA), as amended, requires the Cybersecurity and Infrastructure Security Agency (CISA) to promulgate regulations implementing the statute's covered cyber incident and ransom payment reporting requirements …</description>
+      <category>incident_reporting</category>
+      <category>critical_infrastructure</category>
+    </item>
+    <item>
+      <title>Federal Acquisition Regulation: Cyber Threat and Incident Reporting and Information Sharing</title>
+      <link>https://www.federalregister.gov/documents/2023/10/03/2023-21328/federal-acquisition-regulation-cyber-threat-and-incident-reporting-and-information-sharing</link>
+      <guid isPermaLink="false">regwatch-fixture-008</guid>
+      <pubDate>Tue, 03 Oct 2023 09:00:00 GMT</pubDate>
+      <description>DoD, GSA, and NASA are proposing to amend the Federal Acquisition Regulation (FAR) to partially implement an Executive order on cyber threats and incident reporting and information sharing for Federal contractors and to implement related cybersecurity policies.</description>
+      <category>incident_reporting</category>
+      <category>cybersecurity</category>
+    </item>
+    <item>
+      <title>Schools and Libraries Cybersecurity Pilot Program</title>
+      <link>https://www.federalregister.gov/documents/2024/09/20/2024-21466/schools-and-libraries-cybersecurity-pilot-program</link>
+      <guid isPermaLink="false">regwatch-fixture-009</guid>
+      <pubDate>Fri, 20 Sep 2024 09:00:00 GMT</pubDate>
+      <description>In this document, the Federal Communications Commission (Commission) announces that the Office of Management and Budget (OMB) has approved, for a period of three years, an information collection associated with the rules for the Schools and Libraries Cybersecurity Pilot Program …</description>
+      <category>cybersecurity</category>
+    </item>
+    <item>
+      <title>Cybersecurity Labeling for Internet of Things</title>
+      <link>https://www.federalregister.gov/documents/2024/07/30/2024-14148/cybersecurity-labeling-for-internet-of-things</link>
+      <guid isPermaLink="false">regwatch-fixture-010</guid>
+      <pubDate>Tue, 30 Jul 2024 09:00:00 GMT</pubDate>
+      <description>In this document, the Federal Communications Commission (Commission or FCC) establishes a voluntary cybersecurity labeling program for wireless consumer Internet of Things, or IoT, products. The program will provide consumers with an easy-to-understand and quickly recognizable …</description>
+      <category>product_security</category>
+      <category>consumer_protection</category>
+    </item>
+  </channel>
+</rss>

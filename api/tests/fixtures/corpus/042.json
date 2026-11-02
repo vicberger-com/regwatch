@@ -1,0 +1,29 @@
+{
+  "url": "https://www.legislation.gov.uk/uksi/2003/2426/regulation/5",
+  "title": "The Privacy and Electronic Communications (EC Directive) Regulations 2003",
+  "language": "en",
+  "published_at": "2003-09-18T00:00:00Z",
+  "text": "Security of public electronic communications services\n5 1 Subject to paragraph (2), a provider of a public electronic communications service (“the service provider”) shall take appropriate technical and organisational measures to safeguard the security of that service.\n2 If necessary, the measures required by paragraph (1) may be taken by the service provider in conjunction with the provider of the electronic communications network by means of which the service is provided, and that network provider shall comply with any reasonable requests made by the service provider for these purposes.\n3 Where, notwithstanding the taking of measures as required by paragraph (1), there remains a significant risk to the security of the public electronic communications service, the service provider shall inform the subscribers concerned of—\na the nature of that risk;\nb any appropriate measures that the subscriber may take to safeguard against that risk; and\nc the likely costs to the subscriber involved in the taking of such measures.\n4 For the purposes of paragraph (1), a measure shall only be taken to be appropriate if, having regard to—\na the state of technological developments, and\nb the cost of implementing it,\nit is proportionate to the risks against which it would safeguard.\n5 Information provided for the purposes of paragraph (3) shall be provided to the subscriber free of any charge other than the cost to the subscriber of receiving or collecting the information.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

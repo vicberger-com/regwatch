@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32002L0058",
+  "title": "Richtlinie 2002/58/EG des Europäischen Parlaments und des Rates vom 12. Juli 2002 über die Verarbeitung personenbezogener Daten und den Schutz der Privatsphäre in der elektronischen Kommunikation (Datenschutzrichtlinie für elektronische Kommunikation)",
+  "language": "de",
+  "published_at": "2002-07-31T00:00:00Z",
+  "text": "Artikel 4\nBetriebssicherheit\n(1) Der Betreiber eines öffentlich zugänglichen elektronischen Kommunikationsdienstes muss geeignete technische und organisatorische Maßnahmen ergreifen, um die Sicherheit seiner Dienste zu gewährleisten; die Netzsicherheit ist hierbei erforderlichenfalls zusammen mit dem Betreiber des öffentlichen Kommunikationsnetzes zu gewährleisten. Diese Maßnahmen müssen unter Berücksichtigung des Standes der Technik und der Kosten ihrer Durchführung ein Sicherheitsniveau gewährleisten, das angesichts des bestehenden Risikos angemessen ist.\n(2) Besteht ein besonderes Risiko der Verletzung der Netzsicherheit, muss der Betreiber eines öffentlich zugänglichen elektronischen Kommunikationsdienstes die Teilnehmer über dieses Risiko und - wenn das Risiko außerhalb des Anwendungsbereichs der vom Diensteanbieter zu treffenden Maßnahmen liegt - über mögliche Abhilfen, einschließlich der voraussichtlich entstehenden Kosten, unterrichten.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

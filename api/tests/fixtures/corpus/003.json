@@ -1,0 +1,33 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/01/17/2025-00708/cybersecurity-in-the-marine-transportation-system",
+  "title": "Cybersecurity in the Marine Transportation System",
+  "language": "en",
+  "published_at": "2025-01-17T00:00:00Z",
+  "text": "The Coast Guard is updating its maritime security regulations by establishing minimum cybersecurity requirements for U.S.-flagged vessels, Outer Continental Shelf facilities, and facilities subject to the Maritime Transportation Security Act of 2002 regulations. This final rule addresses current and emerging cybersecurity threats in the marine transportation system by adding minimum cybersecurity requirements to help detect risks and respond to and recover from cybersecurity incidents. These include requirements to develop and maintain a Cybersecurity Plan, designate a Cybersecurity Officer, and take various measures to maintain cybersecurity within the marine transportation system. The Coast Guard is also seeking comments on a potential delay for the implementation periods for U.S.-flagged vessels.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "industry": [
+        "transport"
+      ],
+      "technology": [
+        "operational-technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

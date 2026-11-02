@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/10/15/2024-22905/cybersecurity-maturity-model-certification-cmmc-program",
+  "title": "Cybersecurity Maturity Model Certification (CMMC) Program",
+  "language": "en",
+  "published_at": "2024-10-15T00:00:00Z",
+  "text": "With this final rule, DoD establishes the Cybersecurity Maturity Model Certification (CMMC) Program in order to verify contractors have implemented required security measures necessary to safeguard Federal Contract Information (FCI) and Controlled Unclassified Information (CUI). The mechanisms discussed in this rule will allow the Department to confirm a defense contractor or subcontractor has implemented the security requirements for a specified CMMC level and is maintaining that status (meaning level and assessment type) across the contract period of performance. This rule will be updated as needed, using the appropriate rulemaking process, to address evolving cybersecurity standards, requirements, threats, and other relevant changes.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "supply-chain-security"
+      ],
+      "industry": [
+        "defence"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}

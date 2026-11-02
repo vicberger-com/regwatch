@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/02/13/2026-02948/cyber-incident-reporting-for-critical-infrastructure-act-circia-rulemaking-town-hall-meetings",
+  "title": "Cyber Incident Reporting for Critical Infrastructure Act (CIRCIA) Rulemaking; Town Hall Meetings",
+  "language": "en",
+  "published_at": "2026-02-13T00:00:00Z",
+  "text": "This notice announces town hall meetings to allow external stakeholders a limited additional opportunity to provide input on refining the scope and burden of the CIRCIA Notice of Proposed Rulemaking (NPRM) issued in the Federal Register on April 4, 2024. The proposed CIRCIA rulemaking seeks to implement the Cyber Incident Reporting for Critical Infrastructure Act of 2022, as amended, by implementing covered cyber incident and ransom payment reporting requirements for covered entities.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "info"
+  }
+}

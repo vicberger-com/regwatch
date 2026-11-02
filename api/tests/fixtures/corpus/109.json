@@ -1,0 +1,34 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32018L1972",
+  "title": "DIRECTIVA (UE) 2018/1972 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 11 de diciembre de 2018 por la que se establece el Código Europeo de las Comunicaciones Electrónicas (versión refundida) (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2018-12-17T00:00:00Z",
+  "text": "Artículo 40\nSeguridad de las redes y servicios\n1. Los Estados miembros velarán por que los proveedores de redes públicas de comunicaciones electrónicas o de servicios de comunicaciones electrónicas disponibles al público adopten las medidas técnicas y organizativas adecuadas y proporcionadas para gestionar adecuadamente los riesgos existentes para la seguridad de sus redes y servicios. Considerando el estado de la técnica, dichas medidas garantizarán un nivel de seguridad adecuado al riesgo presente. En particular, se adoptarán medidas, también, cuando proceda, el cifrado, para evitar y reducir al mínimo el impacto de los incidentes de seguridad en los usuarios y en otras redes y servicios.\nLa Agencia de Seguridad de las Redes y de la Información de la Unión Europea (ENISA), de conformidad con lo dispuesto en el Reglamento (UE) n. o 526/2013 del Parlamento Europeo y del Consejo ( 45 ) , facilitará la coordinación de los Estados miembros para evitar requisitos nacionales divergentes que puedan crear riesgos para la seguridad y barreras al mercado interior.\n2. Los Estados miembros velarán por que los proveedores de redes públicas de comunicaciones electrónicas o de servicios de comunicaciones electrónicas disponibles para el público notifiquen sin demora injustificada a la autoridad competente los incidentes en materia de seguridad que hayan tenido consecuencias significativas en la explotación de las redes o los servicios.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "incident-reporting",
+        "encryption"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "directive"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

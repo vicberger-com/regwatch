@@ -1,0 +1,33 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/07/02/2025-12309/critical-infrastructure-protection-reliability-standard-cip-015-1-cyber-security-internal-network",
+  "title": "Critical Infrastructure Protection Reliability Standard CIP-015-1-Cyber Security-Internal Network Security Monitoring",
+  "language": "en",
+  "published_at": "2025-07-02T00:00:00Z",
+  "text": "The Federal Energy Regulatory Commission (Commission) approves proposed Reliability Standard CIP-015-1 (Cyber Security--Internal Network Security Monitoring), which the North American Electric Reliability Corporation (NERC), submitted in response to a Commission directive. In addition, the Commission directs NERC to develop certain modifications to proposed Reliability Standard CIP-015-1 to extend internal network security monitoring to include electronic access control or monitoring systems and physical access control systems outside of the electronic security perimeter. The Commission also provides greater clarity about the term CIP-networked environment as it is used in proposed Reliability Standard CIP-015-1.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "critical-infrastructure",
+        "cybersecurity"
+      ],
+      "industry": [
+        "energy"
+      ],
+      "technology": [
+        "networks",
+        "operational-technology"
+      ],
+      "regulation_type": [
+        "standard"
+      ],
+      "control_framework": [
+        "de-cm"
+      ]
+    },
+    "severity": "notable"
+  }
+}

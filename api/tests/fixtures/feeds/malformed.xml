@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- regwatch test fixture (issue #12): malformed RSS. Defects, in order: an undeclared
+     entity (&nbsp;), a bare ampersand, a mismatched end tag, an unclosed item, an attribute
+     without quotes, and a document that stops mid-element. A tolerant parser (feedparser)
+     must flag it (bozo) and may recover the first two items; a strict parser must reject it. -->
+<rss version="2.0">
+  <channel>
+    <title>Malformed feed&nbsp;fixture</title>
+    <link>https://example.invalid/</link>
+    <description>Contains deliberate XML errors.</description>
+    <item>
+      <title>Item one: incident reporting & notification rules</title>
+      <link>https://example.invalid/items/1</link>
+      <guid isPermaLink="false">malformed-1</guid>
+      <pubDate>Mon, 02 Nov 2026 09:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Item two: mismatched end tag</titel>
+      <link>https://example.invalid/items/2</link>
+      <guid isPermaLink="false">malformed-2</guid>
+    </item>
+    <item>
+      <title>Item three: never closed</title>
+      <link>https://example.invalid/items/3</link>
+      <category domain=unquoted>cybersecurity</category>
+    <item>
+      <title>Item four: truncated

@@ -1,0 +1,30 @@
+{
+  "url": "https://www.federalregister.gov/documents/2023/06/16/2023-12925/securing-the-information-and-communications-technology-and-services-supply-chain-connected-software",
+  "title": "Securing the Information and Communications Technology and Services Supply Chain; Connected Software Applications",
+  "language": "en",
+  "published_at": "2023-06-16T00:00:00Z",
+  "text": "On November 26, 2021, the Department of Commerce (Department) published a Notice of Proposed Rulemaking (NPRM) proposing to amend Department regulations, \"Securing the Information and Communications Technology Supply Chain,\" to implement provisions of Executive Order 14034, \"Protecting Americans' Sensitive Data from Foreign Adversaries\" (E.O. 14034). This final rule responds to, and adopts changes based on, the comments received to the NPRM. Consistent with the factors enumerated in E.O. 14034, the final rule amends the Securing the Information and Communications Technology Supply Chain regulations to provide additional criteria that the Secretary may consider when determining whether ICTS transactions involving connected software applications present undue or unacceptable risks (as those terms are defined in the regulations). The final rule also adds definitions for \"end-point computing devices\" and \"via the internet\" for the purposes of this rule to clarify the definition of connected software applications provided in E.O. 14034.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "data-protection"
+      ],
+      "technology": [
+        "software-supply-chain",
+        "mobile"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

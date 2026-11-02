@@ -1,0 +1,32 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32024R2690",
+  "title": "REGULAMENTO DE EXECUÇÃO (UE) 2024/2690 DA COMISSÃO de 17 de outubro de 2024 que estabelece regras de execução da Diretiva (UE) 2022/2555 relativamente aos requisitos técnicos e metodológicos das medidas de gestão dos riscos de cibersegurança e especifica mais pormenorizadamente os casos em que se considera que um incidente é significativo no que respeita aos prestadores de serviços de DNS, aos registos de nomes de TLD, aos prestadores de serviços de computação em nuvem, aos prestadores de serviços de centro de dados, aos fornecedores de redes de distribuição de conteúdos, aos prestadores de serviços geridos, aos prestadores de serviços de segurança geridos, aos prestadores de serviços de mercados em linha, de motores de pesquisa em linha e de plataformas de serviços de redes sociais e aos prestadores de serviços de confiança (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2024-10-18T00:00:00Z",
+  "text": "Artigo 3. o\nIncidentes significativos\n1. No que diz respeito às entidades pertinentes, um incidente é considerado significativo para efeitos do artigo 23. o , n. o 3, da Diretiva (UE) 2022/2555 se estiverem preenchidos um ou mais dos seguintes critérios:\na)\nO incidente causou ou é suscetível de causar à entidade pertinente perdas financeiras diretas superiores a 500 000 EUR ou a 5 % do seu volume de negócios anual total ao longo do exercício financeiro anterior, consoante o que for mais baixo;\nb)\nO incidente causou ou é suscetível de causar a fuga, a partir da entidade pertinente, de segredos comerciais na aceção do artigo 2. o , ponto 1, da Diretiva (UE) 2016/943;\nc)\nO incidente causou ou é suscetível de causar a morte de uma pessoa singular;\nd)\nO incidente causou ou é suscetível de causar danos consideráveis à saúde de uma pessoa singular;\ne)\nOcorreu um acesso bem-sucedido, presumivelmente malicioso e não autorizado aos sistemas de rede e informação, e que é suscetível de causar graves perturbações operacionais;\nf)\nO incidente cumpre os critérios estabelecidos no artigo 4. o ;\ng)\nO incidente cumpre um ou mais dos critérios estabelecidos nos artigos 5. o a 14.°.\n2. Não são consideradas incidentes significativos as interrupções de serviço programadas e as consequências previstas de operações de manutenção programadas realizadas pelas entidades pertinentes ou em seu nome.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

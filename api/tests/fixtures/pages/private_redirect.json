@@ -1,0 +1,20 @@
+{
+  "_comment": "regwatch test fixture (issue #12): /redirect/private/{name} answers 302 with Location set to the target. {port} is replaced with the fixture server's own port. Every target must be refused by SafeFetcher (docs/08-security-compliance.md, SSRF).",
+  "targets": {
+    "loopback": "http://127.0.0.1:{port}/pages/page_v1.html",
+    "localhost": "http://localhost:{port}/pages/page_v1.html",
+    "metadata": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "metadata_ipv6": "http://[fd00:ec2::254]/latest/meta-data/",
+    "ipv6_loopback": "http://[::1]:{port}/pages/page_v1.html",
+    "ipv4_mapped_ipv6": "http://[::ffff:127.0.0.1]:{port}/pages/page_v1.html",
+    "unspecified": "http://0.0.0.0:{port}/pages/page_v1.html",
+    "decimal_ip": "http://2130706433:{port}/pages/page_v1.html",
+    "hex_ip": "http://0x7f000001:{port}/pages/page_v1.html",
+    "private_10": "http://10.0.0.1/",
+    "private_192": "http://192.168.1.1/",
+    "private_172": "http://172.16.0.1/",
+    "link_local": "http://169.254.1.1/",
+    "file_scheme": "file:///etc/passwd",
+    "gopher_scheme": "gopher://127.0.0.1:6379/_INFO"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32023R1781",
+  "title": "REGLAMENTO (UE) 2023/1781 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 13 de septiembre de 2023 por el que se establece un marco de medidas para reforzar el ecosistema europeo de semiconductores y por el que se modifica el Reglamento (UE) 2021/694 (Reglamento de chips) (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2023-09-18T00:00:00Z",
+  "text": "Artículo 1\nObjeto y objetivos generales\n1. El presente Reglamento establece un marco para reforzar el ecosistema de semiconductores a escala de la Unión, en particular mediante las siguientes medidas:\na)\ncrear la iniciativa Chips para Europa (en lo sucesivo, «iniciativa»);\nb)\nestablecer los criterios para reconocer y brindar apoyo a las instalaciones de producción integrada que sean instalaciones pioneras y que fomenten la seguridad del suministro y la resiliencia del ecosistema de semiconductores de la Unión;\nc)\nestablecer un mecanismo de coordinación entre los Estados miembros y la Comisión para realizar un inventario del sector de los semiconductores de la Unión y efectuar su seguimiento, así como para la prevención de crisis y la respuesta a situaciones de escasez de semiconductores y, cuando proceda, para consultar a las partes interesadas del sector de los semiconductores.\n2. El primer objetivo general del presente Reglamento es garantizar las condiciones necesarias para la competitividad y la capacidad de innovación de la Unión, así como la adaptación de la industria a los cambios estructurales.\n3. El segundo objetivo general, que es independiente del primer objetivo general establecido en el apartado 2 y lo complementa, es mejorar el funcionamiento del mercado interior estableciendo un marco jurídico uniforme de la Unión para aumentar la resiliencia y la seguridad del suministro de la Unión en el ámbito de las tecnologías de semiconductores.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}

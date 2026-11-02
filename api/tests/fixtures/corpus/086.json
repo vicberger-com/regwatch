@@ -1,0 +1,22 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/fra/lois/C-46/article-342.1.html",
+  "title": "Code criminel",
+  "language": "fr",
+  "published_at": "2026-07-18T00:00:00Z",
+  "text": "Utilisation non autorisée d’ordinateur\n342.1 (1) Est coupable d’un acte criminel et passible d’un emprisonnement maximal de dix ans ou d’une infraction punissable sur déclaration de culpabilité par procédure sommaire, quiconque, frauduleusement et sans apparence de droit :\na) directement ou indirectement, obtient des services d’ordinateur;\nb) au moyen d’un dispositif électromagnétique, acoustique, mécanique ou autre, directement ou indirectement, intercepte ou fait intercepter toute fonction d’un ordinateur;\nc) directement ou indirectement, utilise ou fait utiliser un ordinateur dans l’intention de commettre une infraction prévue aux alinéas a) ou b) ou à l’article 430 concernant des données informatiques ou un ordinateur;\nd) a en sa possession ou utilise un mot de passe d’ordinateur qui permettrait la perpétration des infractions prévues aux alinéas a), b) ou c), ou en fait le trafic ou permet à une autre personne de l’utiliser.\nDéfinitions\n(2) Les définitions qui suivent s’appliquent au présent article.\ndispositif électromagnétique, acoustique, mécanique ou autre Tout dispositif ou appareil utilisé ou pouvant être utilisé pour intercepter une fonction d’un ordinateur, à l’exclusion d’un appareil de correction auditive utilisé pour améliorer, sans dépasser la normale, l’audition de l’utilisateur lorsqu’elle est inférieure à la normale. (electro-magnetic, acoustic, mechanical or other device)\ndonnées[Abrogée, 2014, ch. 31, art. 16]",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

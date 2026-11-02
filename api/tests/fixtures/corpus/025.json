@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/01/08/2024-31486/preventing-access-to-us-sensitive-personal-data-and-government-related-data-by-countries-of-concern",
+  "title": "Preventing Access to U.S. Sensitive Personal Data and Government-Related Data by Countries of Concern or Covered Persons",
+  "language": "en",
+  "published_at": "2025-01-08T00:00:00Z",
+  "text": "The Department of Justice is issuing a final rule to implement Executive Order 14117 of February 28, 2024 (Preventing Access to Americans' Bulk Sensitive Personal Data and United States Government- Related Data by Countries of Concern), by prohibiting and restricting certain data transactions with certain countries or persons.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "data-protection"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "major"
+  }
+}

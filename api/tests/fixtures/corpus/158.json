@@ -1,0 +1,32 @@
+{
+  "url": "https://laws.e-gov.go.jp/law/359AC0000000086#Mp-At_28",
+  "title": "電気通信事業法",
+  "language": "ja",
+  "published_at": "1984-12-25T00:00:00Z",
+  "text": "（業務の停止等の報告）\n第二十八条　電気通信事業者は、次に掲げる場合には、その旨をその理由又は原因とともに、遅滞なく、総務大臣に報告しなければならない。\n一　第八条第二項の規定により電気通信業務の一部を停止したとき。\n二　電気通信業務に関し次に掲げる事故が生じたとき。\n２　電気通信事業者は、前項第二号イからハまでに掲げる事故が生ずるおそれがあると認められる事態として総務省令で定めるものが生じたと認めたときは、その旨をその理由又は原因とともに、遅滞なく、総務大臣に報告しなければならない。",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "JP"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "incident-reporting"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

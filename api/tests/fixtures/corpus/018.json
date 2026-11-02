@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/08/12/2026-16371/request-for-information-rfi-on-modernizing-the-national-vulnerability-database-in-the-age-of",
+  "title": "Request for Information (RFI) on Modernizing the National Vulnerability Database in the Age of Artificial Intelligence",
+  "language": "en",
+  "published_at": "2026-08-12T00:00:00Z",
+  "text": "The National Institute of Standards and Technology (NIST) established and operates the National Vulnerability Database (NVD), which provides the U.S. government repository of standards-based vulnerability management data. NIST seeks stakeholder input on opportunities, challenges, and priorities for modernizing the NVD in an evolving cybersecurity landscape increasingly shaped by artificial intelligence (AI) and machine-consumable security data. NIST's goal is to improve the NVD's scalability, automation, interoperability, transparency, and utility.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "technology": [
+        "software-supply-chain",
+        "ai-machine-learning"
+      ],
+      "regulation_type": [
+        "consultation"
+      ],
+      "control_framework": [
+        "id-ra"
+      ]
+    },
+    "severity": "info"
+  }
+}

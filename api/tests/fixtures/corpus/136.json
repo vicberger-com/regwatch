@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32002L0058",
+  "title": "Directiva 2002/58/CE do Parlamento Europeu e do Conselho, de 12 de Julho de 2002, relativa ao tratamento de dados pessoais e à protecção da privacidade no sector das comunicações electrónicas (Directiva relativa à privacidade e às comunicações electrónicas)",
+  "language": "pt",
+  "published_at": "2002-07-31T00:00:00Z",
+  "text": "Artigo 4.o\nSegurança\n1. O prestador de um serviço de comunicações electrónicas publicamente disponível adoptará as medidas técnicas e organizativas adequadas para garantir a segurança dos seus serviços, se necessário conjuntamente com o fornecedor da rede pública de comunicações no que respeita à segurança da rede. Tendo em conta o estado da técnica e os custos da sua aplicação, essas medidas asseguram um nível de segurança adequado aos riscos existentes.\n2. Em caso de risco especial de violação da segurança da rede, o prestador de um serviço de comunicações electrónicas publicamente disponível informará os assinantes desse risco e, sempre que o risco se situe fora do âmbito das medidas a tomar pelo prestador do serviço, das soluções possíveis, incluindo uma indicação dos custos prováveis daí decorrentes.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

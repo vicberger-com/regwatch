@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32023R2854",
+  "title": "RÈGLEMENT (UE) 2023/2854 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 13 décembre 2023 concernant des règles harmonisées portant sur l'équité de l’accès aux données et de l’utilisation des données et modifiant le règlement (UE) 2017/2394 et la directive (UE) 2020/1828 (règlement sur les données) (Texte présentant de l'intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2023-12-22T00:00:00Z",
+  "text": "Article 32\nAccès et transfert internationaux par les autorités publiques\n1. Les fournisseurs de services de traitement de données prennent toutes les mesures techniques, organisationnelles et juridiques adéquates, y compris des contrats, afin d'empêcher l'accès international des autorités publiques et l'accès des autorités publiques des pays tiers aux données à caractère non personnel détenues dans l'Union et le transfert de ces données lorsque ce transfert ou cet accès risque d'être en conflit avec le droit de l'Union ou le droit national de l'État membre concerné, sans préjudice du paragraphe 2 ou 3.\n2. Toute décision ou tout jugement d'une juridiction d'un pays tiers et toute décision d'une autorité administrative d'un pays tiers exigeant d'un fournisseur de services de traitement de données qu'il transfère des données à caractère non personnel relevant du champ d'application du présent règlement et détenues dans l'Union ou qu'il donne accès à ces données ne sont reconnus ou rendus exécutoires de quelque manière que ce soit que s’ils sont fondés sur un accord international, tel qu'un traité d'entraide judiciaire, en vigueur entre le pays tiers demandeur et l'Union, ou tout accord de ce type entre le pays tiers demandeur et un État membre.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "technology"
+      ]
+    },
+    "severity": "major"
+  }
+}

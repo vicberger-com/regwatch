@@ -1,0 +1,25 @@
+{
+  "url": "https://laws.e-gov.go.jp/law/411AC0000000128#Mp-At_1",
+  "title": "不正アクセス行為の禁止等に関する法律",
+  "language": "ja",
+  "published_at": "1999-08-13T00:00:00Z",
+  "text": "（目的）\n第一条　この法律は、不正アクセス行為を禁止するとともに、これについての罰則及びその再発防止のための都道府県公安委員会による援助措置等を定めることにより、電気通信回線を通じて行われる電子計算機に係る犯罪の防止及びアクセス制御機能により実現される電気通信に関する秩序の維持を図り、もって高度情報通信社会の健全な発展に寄与することを目的とする。",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "JP"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

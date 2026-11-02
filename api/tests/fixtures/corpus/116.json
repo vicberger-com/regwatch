@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32019R0452",
+  "title": "REGLAMENTO (UE) 2019/452 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 19 de marzo de 2019 para el control de las inversiones extranjeras directas en la Unión",
+  "language": "es",
+  "published_at": "2019-03-21T00:00:00Z",
+  "text": "Artículo 4\nFactores que pueden tener en cuenta los Estados miembros o la Comisión\n1. Para determinar si una inversión extranjera directa puede afectar a la seguridad o al orden público, los Estados miembros y la Comisión podrán tener en cuenta sus efectos potenciales, entre otros en:\na)\ninfraestructuras críticas, ya sean físicas o virtuales, (incluidas las infraestructuras de energía, transporte, agua, sanidad, comunicaciones, medios de comunicación, tratamiento o almacenamiento de datos, aeroespacial, de defensa, electoral o financiera, y las instalaciones sensibles), así como terrenos y bienes inmuebles que sean claves para el uso de dichas infraestructuras;\nb)\ntecnologías críticas y productos de doble uso tal como se definen en el artículo 2, apartado 1, del Reglamento (CE) n. o 428/2009 del Consejo ( 15 ) , incluidas la inteligencia artificial, la robótica, los semiconductores, la ciberseguridad, las tecnologías aeroespacial, de defensa, de almacenamiento de energía, cuántica y nuclear, así como las nanotecnologías y biotecnologías;\nc)\nel suministro de insumos fundamentales, en particular energía o materias primas, así como la seguridad alimentaria;\nd)\nel acceso a información sensible, en particular datos personales, o la capacidad de control de dicha información, o\ne)\nla libertad y el pluralismo de los medios de comunicación.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32014R0910",
+  "title": "RÈGLEMENT (UE) N o 910/2014 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 23 juillet 2014 sur l’identification électronique et les services de confiance pour les transactions électroniques au sein du marché intérieur et abrogeant la directive 1999/93/CE",
+  "language": "fr",
+  "published_at": "2014-08-28T00:00:00Z",
+  "text": "Article 19\nExigences de sécurité applicables aux prestataires de services de confiance\n1. Les prestataires de services de confiance qualifiés et non qualifiés prennent les mesures techniques et organisationnelles adéquates pour gérer les risques liés à la sécurité des services de confiance qu’ils fournissent. Compte tenu des évolutions technologiques les plus récentes, ces mesures garantissent que le niveau de sécurité est proportionné au degré de risque. Des mesures sont notamment prises en vue de prévenir et de limiter les conséquences d’incidents liés à la sécurité et d’informer les parties concernées des effets préjudiciables de tels incidents.\n2. Les prestataires de services de confiance qualifiés et non qualifiés notifient, dans les meilleurs délais et en tout état de cause dans un délai de vingt-quatre heures après en avoir eu connaissance, à l’organe de contrôle et, le cas échéant, à d’autres organismes concernés, tels que l’organisme national compétent en matière de sécurité de l’information ou l’autorité chargée de la protection des données, toute atteinte à la sécurité ou toute perte d’intégrité ayant une incidence importante sur le service de confiance fourni ou sur les données à caractère personnel qui y sont conservées.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity",
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

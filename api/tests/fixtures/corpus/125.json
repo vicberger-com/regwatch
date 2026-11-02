@@ -1,0 +1,26 @@
+{
+  "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2022-10757",
+  "title": "Ley 11/2022, de 28 de junio, General de Telecomunicaciones.",
+  "language": "es",
+  "published_at": "2022-06-28T00:00:00Z",
+  "text": "Artículo 60. Protección de los datos de carácter personal.\n1. Los operadores que suministren redes públicas de comunicaciones electrónicas o que presten servicios de comunicaciones electrónicas disponibles al público, incluidas las redes públicas de comunicaciones que den soporte a dispositivos de identificación y recopilación de datos, deberán adoptar las medidas técnicas y de gestión adecuadas para preservar la seguridad en el suministro de su red o en la prestación de sus servicios, con el fin de garantizar la protección de los datos de carácter personal. Dichas medidas incluirán, como mínimo:\na) la garantía de que sólo el personal autorizado tenga acceso a los datos personales para fines autorizados por la ley;\nb) la protección de los datos personales almacenados o transmitidos de la destrucción accidental o ilícita, la pérdida o alteración accidentales o el almacenamiento, tratamiento, acceso o revelación no autorizados o ilícitos;\nc) la garantía de la aplicación efectiva de una política de seguridad con respecto al tratamiento de datos personales.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "ES"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "data-protection"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

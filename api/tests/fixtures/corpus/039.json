@@ -1,0 +1,29 @@
+{
+  "url": "https://www.legislation.gov.uk/ukpga/2021/31/section/1",
+  "title": "Telecommunications (Security) Act 2021",
+  "language": "en",
+  "published_at": "2021-11-17T00:00:00Z",
+  "text": "Duties of providers of public electronic communications networks and services\nDuty to take security measures\n1 1 The Communications Act 2003 is amended as follows.\n2 For sections 105A to 105D substitute—\nDuty to take security measures\n105A 1 The provider of a public electronic communications network or a public electronic communications service must take such measures as are appropriate and proportionate for the purposes of—\na identifying the risks of security compromises occurring;\nb reducing the risks of security compromises occurring; and\nc preparing for the occurrence of security compromises.\n2 In this Chapter “security compromise”, in relation to a public electronic communications network or a public electronic communications service, means—\na anything that compromises the availability, performance or functionality of the network or service;\nb any unauthorised access to, interference with or exploitation of the network or service or anything that enables such access, interference or exploitation;\nc anything that compromises the confidentiality of signals conveyed by means of the network or service;\nd anything that causes signals conveyed by means of the network or service to be—\ni lost;\nii unintentionally altered; or\niii altered otherwise than by or with the permission of the provider of the network or service;\ne anything that occurs in connection with the network or service and compromises the confidentiality of any data stored by electronic means;",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "supply-chain-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

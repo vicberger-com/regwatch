@@ -1,0 +1,26 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32018R1807",
+  "title": "REGULAMENTO (UE) 2018/1807 DO PARLAMENTO EUROPEU E DO CONSELHO de 14 de novembro de 2018 relativo a um regime para o livre fluxo de dados não pessoais na União Europeia (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2018-11-28T00:00:00Z",
+  "text": "Artigo 4. o\nLivre circulação de dados na União\n1. Os requisitos de localização de dados são proibidos, salvo quando justificados por motivos de segurança pública e no respeito do princípio da proporcionalidade.\nO primeiro parágrafo do presente número é aplicável sem prejuízo do n. o 3 e dos requisitos de localização de dados estabelecidos com base no direito em vigor da União.\n2. Os Estados-Membros comunicam imediatamente à Comissão os projetos de atos que introduzam um novo requisito de localização de dados ou que modifiquem um requisito existente de localização de dados, pelos procedimentos previstos nos artigos 5. o , 6. o e 7. o da Diretiva (UE) 2015/1535.\n3. Até 30 de maio de 2021, os Estados-Membros asseguram a revogação de todos os requisitos vigentes de localização de dados, estabelecidos em disposições legislativas, regulamentares ou administrativas de caráter geral, que não cumpram o n. o 1 do presente artigo.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32023R2854",
+  "title": "REGULAMENTO (UE) 2023/2854 DO PARLAMENTO EUROPEU E DO CONSELHO de 13 de dezembro de 2023 relativo a regras harmonizadas sobre o acesso equitativo aos dados e a sua utilização e que altera o Regulamento (UE) 2017/2394 e a Diretiva (UE) 2020/1828 (Regulamento dos Dados) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2023-12-22T00:00:00Z",
+  "text": "Artigo 32.\nAcesso e transferência governamentais internacionais\n1. Sem prejuízo do disposto nos n. o s 2 ou 3, os prestadores de serviços de tratamento de dados devem tomar todas as medidas técnicas, organizativas e legais adequadas, incluindo contratos, a fim de impedir que entidades governamentais internacionais ou de países terceiros acedam a dados não pessoais detidos na União ou os transfiram, caso esse acesso ou essa transferência seja suscetível de criar um conflito com o direito da União ou o direito nacional do Estado-Membro pertinente.\n2. As decisões judiciais ou sentenças de um órgão jurisdicional de um país terceiro e as decisões de uma autoridade administrativa de um país terceiro que exijam que um prestador de serviços de tratamento de dados transfira ou dê acesso a dados não pessoais abrangidos pelo âmbito de aplicação do presente regulamento e detidos na União só podem ser reconhecidas ou executadas, seja de que forma for, se tiverem por base um acordo internacional, como um acordo de auxílio judiciário mútuo, em vigor entre o país terceiro requerente e a União ou entre o país terceiro requerente e um Estado-Membro.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "technology"
+      ]
+    },
+    "severity": "major"
+  }
+}

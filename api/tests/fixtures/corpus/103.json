@@ -1,0 +1,23 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32023D1795",
+  "title": "DÉCISION D’EXÉCUTION (UE) 2023/1795 DE LA COMMISSION du 10 juillet 2023 constatant, conformément au règlement (UE) 2016/679 du Parlement européen et du Conseil, le niveau de protection adéquat des données à caractère personnel assuré par le cadre de protection des données UE - États-Unis [notifiée sous le numéro C(2023) 4745] (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2023-09-20T00:00:00Z",
+  "text": "Article premier\nAux fins de l’article 45 du règlement (UE) 2016/679, les États-Unis assurent un niveau adéquat de protection des données à caractère personnel transférées depuis l’Union vers des organisations établies aux États-Unis qui figurent sur la «liste du cadre de protection des données», tenue à jour et publiée par le ministère du commerce, conformément à la section I.3 de l’annexe I.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "decision"
+      ]
+    },
+    "severity": "notable"
+  }
+}

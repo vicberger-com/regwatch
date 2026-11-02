@@ -1,0 +1,23 @@
+{
+  "url": "http://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html#art4",
+  "title": "中华人民共和国个人信息保护法",
+  "language": "zh",
+  "published_at": "2021-08-20T00:00:00Z",
+  "text": "个人信息是以电子或者其他方式记录的与已识别或者可识别的自然人有关的各种信息，不包括匿名化处理后的信息。",
+  "source_kind": "manual",
+  "expected": {
+    "jurisdictions": [
+      "CN"
+    ],
+    "terms": {
+      "topic": [
+        "data-protection",
+        "privacy"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "info"
+  }
+}

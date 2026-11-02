@@ -1,0 +1,22 @@
+{
+  "url": "https://www.legislation.gov.uk/ukpga/1990/18/section/1",
+  "title": "Computer Misuse Act 1990",
+  "language": "en",
+  "published_at": "1990-06-29T00:00:00Z",
+  "text": "Computer misuse offences\nUnauthorised access to computer material\n1 1 A person is guilty of an offence if—\na he causes a computer to perform any function with intent to secure access to any program or data held in any computer;\nb the access he intends to secure is unauthorised; and\nc he knows at the time when he causes the computer to perform the function that that is the case.\n2 The intent a person has to have to commit an offence under this section need not be directed at—\na any particular program or data;\nb a program or data of any particular kind; or\nc a program or data held in any particular computer.\n3 A person guilty of an offence under this section shall be liable on summary conviction to imprisonment for a term not exceeding six months or to a fine not exceeding level 5 on the standard scale or to both.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

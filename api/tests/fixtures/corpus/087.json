@@ -1,0 +1,26 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/fra/lois/P-21/article-2.html",
+  "title": "Loi sur la protection des renseignements personnels",
+  "language": "fr",
+  "published_at": "2025-06-02T00:00:00Z",
+  "text": "Objet\n2 La présente loi a pour objet de compléter la législation canadienne en matière de protection des renseignements personnels relevant des institutions fédérales et de droit d’accès des individus aux renseignements personnels qui les concernent.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "data-protection"
+      ],
+      "industry": [
+        "public-sector"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

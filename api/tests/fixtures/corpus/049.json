@@ -1,0 +1,26 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/eng/acts/P-21/section-2.html",
+  "title": "Privacy Act",
+  "language": "en",
+  "published_at": "2025-06-02T00:00:00Z",
+  "text": "Purpose\n2 The purpose of this Act is to extend the present laws of Canada that protect the privacy of individuals with respect to personal information about themselves held by a government institution and that provide individuals with a right of access to that information.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "privacy",
+        "data-protection"
+      ],
+      "industry": [
+        "public-sector"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

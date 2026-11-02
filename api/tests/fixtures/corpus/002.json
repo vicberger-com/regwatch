@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/03/12/2024-04752/department-of-defense-dod-defense-industrial-base-dib-cybersecurity-cs-activities",
+  "title": "Department of Defense (DoD) Defense Industrial Base (DIB) Cybersecurity (CS) Activities",
+  "language": "en",
+  "published_at": "2024-03-12T00:00:00Z",
+  "text": "The DoD is finalizing revisions to the eligibility criteria for the voluntary Defense Industrial Base (DIB) Cybersecurity (CS) Program. These revisions will allow all defense contractors who own or operate an unclassified information system that processes, stores, or transmits covered defense information to benefit from bilateral information sharing. DoD is also finalizing changes to definitions and some technical corrections for readability.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "industry": [
+        "defence"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

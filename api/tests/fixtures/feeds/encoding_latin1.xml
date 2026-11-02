@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- regwatch test fixture (issue #12): RSS 2.0 encoded as ISO-8859-1 (bytes, not UTF-8). Text from corpus documents 061, 086, 111, 131, 121; typographic quotes and dashes outside Latin-1 replaced. -->
+<rss version="2.0">
+  <channel>
+    <title>Europäische Rechtsakte - Sécurité - Protección de datos (fixture)</title>
+    <link>https://eur-lex.europa.eu/</link>
+    <description>Grüße, ça va, señor, coração: Latin-1 characters in the channel description.</description>
+    <language>de</language>
+    <item>
+      <title>VERORDNUNG (EU) 2016/679 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 27. April 2016 zum Schutz natürlicher Personen bei der Verarbeitung personenbezogener Daten, zum freien Datenverkehr und zur Aufhebung der Richtlinie 95/46/EG (Datenschutz-Grundverordnung) (Text von Bedeutung für den EWR)</title>
+      <link>https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32016R0679</link>
+      <guid isPermaLink="false">regwatch-fixture-061</guid>
+      <pubDate>Wed, 04 May 2016 08:00:00 GMT</pubDate>
+      <description>Artikel 33 Meldung von Verletzungen des Schutzes personenbezogener Daten an die Aufsichtsbehörde (1) Im Falle einer Verletzung des Schutzes personenbezogener Daten meldet der Verantwortliche unverzüglich und möglichst binnen 72 Stunden, nachdem ihm die Verletzung bekannt wurde, ...</description>
+    </item>
+    <item>
+      <title>Code criminel</title>
+      <link>https://laws-lois.justice.gc.ca/fra/lois/C-46/article-342.1.html</link>
+      <guid isPermaLink="false">regwatch-fixture-086</guid>
+      <pubDate>Sat, 18 Jul 2026 08:00:00 GMT</pubDate>
+      <description>Utilisation non autorisée d'ordinateur 342.1 (1) Est coupable d'un acte criminel et passible d'un emprisonnement maximal de dix ans ou d'une infraction punissable sur déclaration de culpabilité par procédure sommaire, quiconque, frauduleusement et sans apparence de droit : a) ...</description>
+    </item>
+    <item>
+      <title>REGLAMENTO (UE) 2018/1807 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 14 de noviembre de 2018 relativo a un marco para la libre circulación de datos no personales en la Unión Europea (Texto pertinente a efectos del EEE)</title>
+      <link>https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32018R1807</link>
+      <guid isPermaLink="false">regwatch-fixture-111</guid>
+      <pubDate>Wed, 28 Nov 2018 08:00:00 GMT</pubDate>
+      <description>Artículo 4 Libre circulación de datos en la Unión 1. Los requisitos para la localización de datos estarán prohibidos, salvo que estén justificados por razones de seguridad pública de conformidad con el principio de proporcionalidad. El párrafo primero del presente apartado no ...</description>
+    </item>
+    <item>
+      <title>REGULAMENTO (UE) 2024/2847 DO PARLAMENTO EUROPEU E DO CONSELHO de 23 de outubro de 2024 relativo aos requisitos horizontais de cibersegurança dos produtos com elementos digitais e que altera os Regulamentos (UE) n. o 168/2013 e (UE) 2019/1020 e a Diretiva (UE) 2020/1828 (Regulamento de Ciber-Resiliência) (Texto relevante para efeitos do EEE)</title>
+      <link>https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32024R2847</link>
+      <guid isPermaLink="false">regwatch-fixture-131</guid>
+      <pubDate>Wed, 20 Nov 2024 08:00:00 GMT</pubDate>
+      <description>Artigo 14. o Obrigações dos fabricantes em matéria de comunicação de informações 1. Os fabricantes devem notificar qualquer vulnerabilidade ativamente explorada existente no produto com elementos digitais de que tomem conhecimento simultaneamente à CSIRT designada como ...</description>
+    </item>
+    <item>
+      <title>Real Decreto-ley 12/2018, de 7 de septiembre, de seguridad de las redes y sistemas de información.</title>
+      <link>https://www.boe.es/buscar/act.php?id=BOE-A-2018-12257</link>
+      <guid isPermaLink="false">regwatch-fixture-121</guid>
+      <pubDate>Fri, 07 Sep 2018 08:00:00 GMT</pubDate>
+      <description>Artículo 19. Obligación de notificar. 1. Los operadores de servicios esenciales notificarán a la autoridad competente, a través del CSIRT de referencia, los incidentes que puedan tener efectos perturbadores significativos en dichos servicios. Las notificaciones podrán referirse ...</description>
+    </item>
+  </channel>
+</rss>

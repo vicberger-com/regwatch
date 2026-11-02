@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32024L2853",
+  "title": "DIRECTIVA (UE) 2024/2853 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 23 de octubre de 2024 sobre responsabilidad por los daños causados por productos defectuosos y por la que se deroga la Directiva 85/374/CEE del Consejo (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2024-11-18T00:00:00Z",
+  "text": "Artículo 1\nObjeto y objetivo\nLa presente Directiva establece normas comunes sobre la responsabilidad de los operadores económicos por los daños sufridos por personas físicas causados por productos defectuosos y sobre la indemnización por esos daños.\nEl objetivo de la presente Directiva es contribuir al correcto funcionamiento del mercado interior, garantizando al mismo tiempo un elevado nivel de protección de los consumidores y otras personas físicas.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "consumer-protection",
+        "product-security"
+      ],
+      "technology": [
+        "software-supply-chain",
+        "ai-machine-learning"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

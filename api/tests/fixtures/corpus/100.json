@@ -1,0 +1,25 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32013L0040",
+  "title": "DIRECTIVE 2013/40/UE DU PARLEMENT EUROPÉEN ET DU CONSEIL du 12 août 2013 relative aux attaques contre les systèmes d’information et remplaçant la décision-cadre 2005/222/JAI du Conseil",
+  "language": "fr",
+  "published_at": "2013-08-14T00:00:00Z",
+  "text": "Article 3\nAccès illégal à des systèmes d’information\nLes États membres prennent les mesures nécessaires pour ériger en infraction pénale punissable l’accès sans droit, lorsqu’il est intentionnel, à tout ou partie d’un système d’information, lorsque l’acte est commis en violation d’une mesure de sécurité, au moins lorsqu’il ne s’agit pas de cas mineurs.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "regulation_type": [
+        "directive"
+      ],
+      "industry": [
+        "all"
+      ]
+    },
+    "severity": "major"
+  }
+}

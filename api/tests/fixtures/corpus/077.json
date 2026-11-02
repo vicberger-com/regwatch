@@ -1,0 +1,32 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32024R2690",
+  "title": "DURCHFÜHRUNGSVERORDNUNG (EU) 2024/2690 DER KOMMISSION vom 17. Oktober 2024 mit Durchführungsbestimmungen zur Richtlinie (EU) 2022/2555 im Hinblick auf die technischen und methodischen Anforderungen der Risikomanagementmaßnahmen im Bereich der Cybersicherheit und die Präzisierung der Fälle, in denen ein Sicherheitsvorfall in Bezug auf DNS-Diensteanbieter, TLD-Namenregister, Anbieter von Cloud-Computing-Diensten, Anbieter von Rechenzentrumsdiensten, Betreiber von Inhaltszustellnetzen, Anbieter verwalteter Dienste, Anbieter verwalteter Sicherheitsdienste, Anbieter von Online-Marktplätzen, Online-Suchmaschinen und Plattformen für Dienste sozialer Netzwerke und Vertrauensdiensteanbieter als erheblich gilt (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2024-10-18T00:00:00Z",
+  "text": "Artikel 3\nErhebliche Sicherheitsvorfälle\n(1) Ein Sicherheitsvorfall gilt in Bezug auf die betreffenden Einrichtungen als erheblich im Sinne von Artikel 23 Absatz 3 der Richtlinie (EU) 2022/2555, wenn eines oder mehrere der folgenden Kriterien erfüllt sind:\na)\nder Vorfall hat der betreffenden Einrichtung einen direkten finanziellen Verlust in Höhe von mehr als 500 000 EUR oder 5 % ihres jährlichen Gesamtumsatzes im vorangegangenen Geschäftsjahr — je nachdem, welcher Wert niedriger ist — verursacht oder kann einen solchen Verlust verursachen;\nb)\nder Vorfall hat den Abfluss von Geschäftsgeheimnissen der betreffenden Einrichtung im Sinne von Artikel 2 Nummer 1 der Richtlinie (EU) 2016/943 verursacht oder kann einen solchen Abfluss verursachen;\nc)\nder Vorfall hat den Tod einer natürlichen Person verursacht oder kann einen solchen Tod verursachen;\nd)\nder Vorfall hat eine schwere Schädigung der Gesundheit einer natürlichen Person verursacht oder kann eine solche Schädigung verursachen;\ne)\nes hat einen erfolgreichen, mutmaßlich böswilligen und unbefugten Zugriff auf Netz- und Informationssysteme gegeben, der geeignet ist, schwerwiegende Betriebsstörungen zu verursachen;\nf)\nder Vorfall erfüllt die in Artikel 4 aufgeführten Kriterien;\ng)\nder Vorfall erfüllt eines oder mehrere der in den Artikeln 5 bis 14 aufgeführten Kriterien.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

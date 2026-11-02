@@ -1,0 +1,26 @@
+{
+  "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2020-14046",
+  "title": "Ley 6/2020, de 11 de noviembre, reguladora de determinados aspectos de los servicios electrónicos de confianza.",
+  "language": "es",
+  "published_at": "2020-11-11T00:00:00Z",
+  "text": "Artículo 1. Objeto de la Ley.\nLa presente Ley tiene por objeto regular determinados aspectos de los servicios electrónicos de confianza, como complemento del Reglamento (UE) n.º 910/2014 del Parlamento Europeo y del Consejo, de 23 de julio de 2014, relativo a la identificación electrónica y los servicios de confianza para las transacciones electrónicas en el mercado interior y por el que se deroga la Directiva 1999/93/CE.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "ES"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

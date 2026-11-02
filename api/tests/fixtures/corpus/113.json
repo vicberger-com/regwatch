@@ -1,0 +1,32 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32024R2690",
+  "title": "REGLAMENTO DE EJECUCIÓN (UE) 2024/2690 DE LA COMISIÓN de 17 de octubre de 2024 por el que se establecen las disposiciones de aplicación de la Directiva (UE) 2022/2555 en lo que respecta a los requisitos técnicos y metodológicos de las medidas para la gestión de riesgos de ciberseguridad y en el que se detallan los casos en que un incidente se considera significativo con respecto a los proveedores de servicios de DNS, los registros de nombres de dominio de primer nivel, los proveedores de servicios de computación en nube, los proveedores de servicios de centro de datos, los proveedores de redes de distribución de contenidos, los proveedores de servicios gestionados, los proveedores de servicios de seguridad gestionados, los proveedores de mercados en línea, motores de búsqueda en línea y plataformas de servicios de redes sociales, y los proveedores de servicios de confianza (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2024-10-18T00:00:00Z",
+  "text": "Artículo 3\nIncidentes significativos\n1. Un incidente se considerará significativo a efectos del artículo 23, apartado 3, de la Directiva (UE) 2022/2555 con respecto a las entidades pertinentes cuando se cumplan uno o varios de los siguientes criterios:\na)\nque el incidente haya causado o pueda causar a la entidad pertinente pérdidas financieras directas superiores a 500 000 EUR o al 5 % de su volumen de negocios total anual en el ejercicio financiero anterior, si esta cifra es inferior;\nb)\nque el incidente haya causado o pueda causar la exfiltración de secretos comerciales a tenor del artículo 2, apartado 1, de la Directiva (UE) 2016/943, de la entidad pertinente;\nc)\nque el incidente haya causado o pueda causar la muerte de una persona física;\nd)\nque el incidente haya causado o pueda causar daños considerables a la salud de una persona física;\ne)\nque se haya producido efectivamente el acceso presuntamente malicioso y no autorizado a los sistemas de redes y de información, lo que puede causar graves perturbaciones operativas;\nf)\nque el incidente cumpla los criterios establecidos en el artículo 4;\ng)\nque el incidente cumpla uno o varios de los criterios establecidos en los artículos 5 a 14.\n2. Las interrupciones programadas del servicio y las consecuencias previstas de las operaciones de mantenimiento programadas llevadas a cabo por las entidades pertinentes o en su nombre no se considerarán incidentes significativos.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

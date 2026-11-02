@@ -1,0 +1,25 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/06/01/2026-10893/agency-information-collection-activities-state-and-local-cybersecurity-grant-program-slcgp",
+  "title": "Agency Information Collection Activities: State and Local Cybersecurity Grant Program (SLCGP) Evaluation",
+  "language": "en",
+  "published_at": "2026-06-01T00:00:00Z",
+  "text": "The Stakeholder Engagement Division (SED) Grant Analytics Branch within the Cybersecurity and Infrastructure Security Agency (CISA) submits the following Information Collection Request (ICR) to the Office of Management and Budget (OMB) for review and clearance in accordance with the Paperwork Reduction Act of 1995.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "industry": [
+        "public-sector"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "info"
+  }
+}

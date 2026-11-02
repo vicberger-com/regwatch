@@ -1,0 +1,31 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32024R2847",
+  "title": "REGULAMENTO (UE) 2024/2847 DO PARLAMENTO EUROPEU E DO CONSELHO de 23 de outubro de 2024 relativo aos requisitos horizontais de cibersegurança dos produtos com elementos digitais e que altera os Regulamentos (UE) n. o 168/2013 e (UE) 2019/1020 e a Diretiva (UE) 2020/1828 (Regulamento de Ciber-Resiliência) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2024-11-20T00:00:00Z",
+  "text": "Artigo 14. o\nObrigações dos fabricantes em matéria de comunicação de informações\n1. Os fabricantes devem notificar qualquer vulnerabilidade ativamente explorada existente no produto com elementos digitais de que tomem conhecimento simultaneamente à CSIRT designada como coordenadora, nos termos do n. o 7 do presente artigo, e à ENISA. Os fabricantes devem notificar essa vulnerabilidade ativamente explorada através da plataforma única de comunicação de informações criada nos termos do artigo 16. o .\n2. Para efeitos da notificação referida no n. o 1, o fabricante deve apresentar:\na)\nUma notificação de alerta precoce de uma vulnerabilidade ativamente explorada, sem demora injustificada e, em todo o caso, no prazo de 24 horas após o fabricante ter tomado conhecimento da mesma, indicando, se for caso disso, os Estados-Membros em cujo território o fabricante tem conhecimento de que o seu produto com elementos digitais foi disponibilizado;\nb)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "iot",
+        "software-supply-chain"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

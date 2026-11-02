@@ -1,0 +1,25 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32025R0327",
+  "title": "REGLAMENTO (UE) 2025/327 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 11 de febrero de 2025 relativo al Espacio Europeo de Datos de Salud, y por el que se modifican la Directiva 2011/24/UE y el Reglamento (UE) 2024/2847 (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2025-03-05T00:00:00Z",
+  "text": "Artículo 1\nObjeto y ámbito de aplicación\n1. El presente Reglamento establece el Espacio Europeo de Datos de Salud (EEDS), para lo cual se disponen reglas, normas e infraestructuras comunes y un marco de gobernanza, con vistas a facilitar el acceso a los datos de salud electrónicos a efectos del uso primario de los datos de salud electrónicos y el uso secundario de estos datos.\n2. El presente Reglamento:\na)\ndesarrolla y complementa los derechos de las personas físicas establecidos en el Reglamento (UE) 2016/679 con respecto al uso primario y uso secundario de sus datos de salud electrónicos personales;\nb)\nestablece reglas comunes para los sistemas de historias clínicas electrónicas («sistemas HCE») en relación con dos componentes obligatorios armonizados de programa informático, a saber, el componente de programa informático europeo de interoperabilidad para sistemas HCE y el componente de programa informático europeo de registro para sistemas HCE, tal como se definen en el artículo 2, apartado 2, letras n) y o), respectivamente, y para las aplicaciones de bienestar para las que se afirme que son interoperables con los sistemas HCE en relación con esos dos componentes armonizados de programa informático, en lo que respecta al uso primario de datos de salud electrónicos;\nc)\nintroduce reglas y mecanismos comunes para el uso primario y el uso secundario de datos de salud electrónicos;\nd)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "data-protection"
+      ],
+      "industry": [
+        "health"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "major"
+  }
+}

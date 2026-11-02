@@ -1,0 +1,32 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/09/11/2026-18535/protecting-against-national-security-threats-to-the-communications-supply-chain-through-the",
+  "title": "Protecting Against National Security Threats to the Communications Supply Chain Through the Equipment Authorization Program",
+  "language": "en",
+  "published_at": "2026-09-11T00:00:00Z",
+  "text": "In this document, the Federal Communications Commission (Commission or FCC) takes further steps to strengthen its equipment authorization program against national security risks to the communications supply chain. The Commission closes a component-part loophole by prohibiting authorization of devices that incorporate logic-bearing hardware components produced by an entity identified on the Commission's Covered List, where the device would itself be prohibited from authorization had the Covered List entity produced the entire device. The Commission also requires that any modification or permissive change to equipment by an entity identified on the Covered List undergo full certification, clarifies that its marketing rules reach any entity (including online marketplaces) that markets unauthorized equipment, and requires online marketplaces, subject to limited exceptions, to display a device's FCC ID at the online point of sale. Finally, the Commission amends its definition of \"critical infrastructure,\" as used on the Covered List, and corrects two administrative errors in its rules.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

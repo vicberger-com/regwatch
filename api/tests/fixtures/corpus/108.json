@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32025R0038",
+  "title": "REGLAMENTO (UE) 2025/38 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 19 de diciembre de 2024 por el que se establecen medidas destinadas a reforzar la solidaridad y las capacidades en la Unión a fin de detectar ciberamenazas e incidentes, prepararse y responder a ellos y por el que se modifica el Reglamento (UE) 2021/694 (Reglamento de Cibersolidaridad)",
+  "language": "es",
+  "published_at": "2025-01-15T00:00:00Z",
+  "text": "Artículo 1\nObjeto y objetivos\n1. El presente Reglamento establece medidas para reforzar las capacidades de la Unión a fin de detectar amenazas e incidentes de ciberseguridad, prepararse para ellos y responder a ellos, en particular mediante la creación:\na)\nde una red paneuropea de centros cibernéticos (en lo sucesivo, «Sistema Europeo de Alerta de Ciberseguridad») a fin de desarrollar y mejorar las capacidades coordinadas de detección y la conciencia situacional común;\nb)\nde un Mecanismo de Emergencia en materia de Ciberseguridad para ayudar a los Estados miembros a prepararse para incidentes de ciberseguridad significativos, a gran escala y equivalentes a gran escala, y a responder a ellos, atenuar sus repercusiones y e iniciar la recuperación de ellos, así como ayudar a otros usuarios a responder a incidentes de ciberseguridad significativos y equivalentes a gran escala;\nc)\nde un Mecanismo Europeo de Revisión de Incidentes de Ciberseguridad para revisar y evaluar incidentes de ciberseguridad significativos o a gran escala.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "all"
+      ]
+    },
+    "severity": "major"
+  }
+}

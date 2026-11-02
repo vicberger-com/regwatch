@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32022R2554",
+  "title": "REGULAMENTO (UE) 2022/2554 DO PARLAMENTO EUROPEU E DO CONSELHO de 14 de dezembro de 2022 relativo à resiliência operacional digital do setor financeiro e que altera os Regulamentos (CE) n. o 1060/2009, (UE) n. o 648/2012, (UE) n. o 600/2014, (UE) n. o 909/2014 e (UE) 2016/1011 (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Artigo 19. o\nComunicação dos incidentes de caráter severo relacionados com as TIC e notificação voluntária de ciberameaças significativas\n1. As entidades financeiras comunicam os incidentes de caráter severo relacionados com as TIC à autoridade competente pertinente, tal como referido no artigo 46. o , nos termos do n. o 4 do presente artigo.\nCaso uma entidade financeira esteja sujeita à supervisão de mais do que uma autoridade nacional competente a que se refere o artigo 46. o , os Estados-Membros designam uma única autoridade competente como entidade competente pertinente responsável pelo desempenho das funções e deveres previstos no presente artigo.\nAs instituições de crédito classificadas como significativas, de acordo com o artigo 6. o , n. o 4, do Regulamento (UE) n. o 1024/2013, comunicam incidentes de caráter severo relacionados com as TIC à autoridade nacional competente designada nos termos do artigo 4. o da Diretiva 2013/36/UE, que transmite imediatamente esse relatório ao BCE.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "industry": [
+        "finance"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

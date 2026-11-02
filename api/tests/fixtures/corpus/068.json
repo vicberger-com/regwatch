@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32024R1183",
+  "title": "VERORDNUNG (EU) 2024/1183 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 11. April 2024 zur Änderung der Verordnung (EU) Nr. 910/2014 im Hinblick auf die Schaffung des europäischen Rahmens für eine digitale Identität",
+  "language": "de",
+  "published_at": "2024-04-30T00:00:00Z",
+  "text": "Artikel 1\nÄnderungen der Verordnung (EU) Nr. 910/2014\nDie Verordnung (EU) Nr. 910/2014 wird wie folgt geändert:\n1.\nArtikel 1 erhält folgende Fassung:\n„Artikel 1\nGegenstand\nDiese Verordnung dient dem ordnungsgemäßen Funktionieren des Binnenmarkts und der Gewährleistung eines angemessenen Sicherheitsniveaus bei unionsweit genutzten elektronischen Identifizierungsmitteln und Vertrauensdiensten, um natürlichen und juristischen Personen die Ausübung des Rechts auf sichere Teilhabe an der digitalen Gesellschaft und auf Zugang zu öffentlichen und privaten Online-Diensten in der gesamten Union zu ermöglichen und zu erleichtern. Dazu wird in dieser Verordnung Folgendes festgelegt:\na)\ndie Bedingungen, unter denen die Mitgliedstaaten elektronische Identifizierungsmittel für natürliche und juristische Personen, die einem notifizierten elektronischen Identifizierungssystem eines anderen Mitgliedstaats unterliegen anerkennen, sowie europäische Brieftaschen für die Digitale Identität bereitstellen und anerkennen müssen;\nb)\nVorschriften für Vertrauensdienste und insbesondere für elektronische Transaktionen;\nc)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity"
+      ],
+      "technology": [
+        "identity",
+        "mobile"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "public-sector"
+      ]
+    },
+    "severity": "major"
+  }
+}

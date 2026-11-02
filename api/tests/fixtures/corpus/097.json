@@ -1,0 +1,26 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32018R1807",
+  "title": "RÈGLEMENT (UE) 2018/1807 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 14 novembre 2018 établissant un cadre applicable au libre flux des données à caractère non personnel dans l'Union européenne (Texte présentant de l'intérêt pour l'EEE)",
+  "language": "fr",
+  "published_at": "2018-11-28T00:00:00Z",
+  "text": "Article 4\nLibre circulation des données au sein de l'Union\n1. Les exigences de localisation des données sont interdites, sauf si elles sont justifiées par des motifs de sécurité publique dans le respect du principe de proportionnalité.\nLe premier alinéa du présent paragraphe est sans préjudice du paragraphe 3 et des exigences de localisation des données établies sur la base du droit en vigueur de l'Union.\n2. Les États membres communiquent immédiatement à la Commission tout projet d'acte qui introduit une nouvelle exigence de localisation des données ou modifie une exigence de localisation des données existante conformément aux procédures définies aux articles 5, 6 et 7 de la directive (UE) 2015/1535.\n3. Au plus tard le 30 mai 2021, les États membres veillent à ce que toute exigence existante de localisation des données qui est établie dans une disposition législative, réglementaire ou administrative de nature générale et qui n'est pas conforme au paragraphe 1 du présent article soit abrogée.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

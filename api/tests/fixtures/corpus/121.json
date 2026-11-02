@@ -1,0 +1,30 @@
+{
+  "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2018-12257",
+  "title": "Real Decreto-ley 12/2018, de 7 de septiembre, de seguridad de las redes y sistemas de información.",
+  "language": "es",
+  "published_at": "2018-09-07T00:00:00Z",
+  "text": "Artículo 19. Obligación de notificar.\n1. Los operadores de servicios esenciales notificarán a la autoridad competente, a través del CSIRT de referencia, los incidentes que puedan tener efectos perturbadores significativos en dichos servicios.\nLas notificaciones podrán referirse también, conforme se determine reglamentariamente, a los sucesos o incidencias que puedan afectar a las redes y sistemas de información empleados para la prestación de los servicios esenciales, pero que aún no hayan tenido un efecto adverso real sobre aquéllos.\n2. Así mismo, los proveedores de servicios digitales notificarán a la autoridad competente, a través del CSIRT de referencia, los incidentes que tengan efectos perturbadores significativos en dichos servicios.\nLa obligación de la notificación del incidente únicamente se aplicará cuando el proveedor de servicios digitales tenga acceso a la información necesaria para valorar el impacto de un incidente.\n3. Las notificaciones tanto de operadores de servicios esenciales como de proveedores de servicios digitales se referirán a los incidentes que afecten a las redes y sistemas de información empleados en la prestación de los servicios indicados, tanto si se trata de redes y servicios propios como si lo son de proveedores externos, incluso si éstos son proveedores de servicios digitales sometidos a este real decreto-ley.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "ES"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "critical-infrastructure",
+        "cybersecurity"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

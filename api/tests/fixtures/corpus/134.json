@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32024R1183",
+  "title": "REGULAMENTO (UE) 2024/1183 DO PARLAMENTO EUROPEU E DO CONSELHO de 11 de abril de 2024 que altera o Regulamento (UE) n. o 910/2014 no respeitante à criação do Regime Europeu para a Identidade Digital",
+  "language": "pt",
+  "published_at": "2024-04-30T00:00:00Z",
+  "text": "Artigo 1. o\nAlteração do Regulamento (UE) n. o 910/2014\nO Regulamento (UE) n. o 910/2014 é alterado do seguinte modo:\n1)\nO artigo 1. o passa a ter a seguinte redação:\n«Artigo 1. o\nObjeto\nO presente regulamento visa assegurar o bom funcionamento do mercado interno e a disponibilização de um nível adequado de segurança dos meios de identificação eletrónica e dos serviços de confiança utilizados em toda a União, a fim de permitir e facilitar o exercício, por pessoas singulares e coletivas, do direito de participar na sociedade digital em segurança e de aceder aos serviços públicos e privados em linha em toda a União. Para o efeito, o presente regulamento:\na)\nEstabelece as condições em que os Estados-Membros devem reconhecer os meios de identificação eletrónica de pessoas singulares e coletivas abrangidas por um sistema de identificação eletrónica notificado de outro Estado-Membro e fornecer e reconhecer carteiras europeias de identidade digital;\nb)\nEstabelece normas aplicáveis aos serviços de confiança, nomeadamente às transações eletrónicas;\nc)\nEstabelece um regime jurídico para as assinaturas eletrónicas, os selos eletrónicos, os selos temporais eletrónicos, os documentos eletrónicos, os serviços de envio registado eletrónico, os serviços de certificados para autenticação de sítios Web, o arquivo eletrónico, o certificado eletrónico de atributos, dispositivos de criação de assinaturas eletrónicas, dispositivos de criação de selos eletrónicos, e os livros-razão eletrónicos.»;",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity"
+      ],
+      "technology": [
+        "identity",
+        "mobile"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "public-sector"
+      ]
+    },
+    "severity": "major"
+  }
+}

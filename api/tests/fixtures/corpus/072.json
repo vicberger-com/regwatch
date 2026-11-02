@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32025R0038",
+  "title": "VERORDNUNG (EU) 2025/38 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 19. Dezember 2024 über Maßnahmen zur Stärkung der Solidarität und der Kapazitäten in der Union für die Erkennung von, Vorsorge für und Bewältigung von Cyberbedrohungen und Sicherheitsvorfällen und zur Änderung der Verordnung (EU) 2021/694 (Cybersolidaritätsverordnung)",
+  "language": "de",
+  "published_at": "2025-01-15T00:00:00Z",
+  "text": "Artikel 1\nGegenstand und Ziele\n(1) In dieser Verordnung werden Maßnahmen zur Stärkung der Kapazitäten in der Union für die Erkennung von, Vorsorge für und Bewältigung von Cyberbedrohungen und Sicherheitsvorfällen festgelegt, und zwar insbesondere durch die Einrichtung\na)\neines europaweiten Netzes von Cyber-Hubs (im Folgenden „europäisches Warnsystem für Cybersicherheit“), um Fähigkeiten zur koordinierten Erkennung und gemeinsamen Lageerfassung aufzubauen und zu verbessern;\nb)\neines Cybernotfallmechanismus zur Unterstützung der Mitgliedstaaten bei der Vorsorge für, Bewältigung und Eindämmung der Auswirkungen von und Einleitung der Wiederherstellung nach schwerwiegenden Cybersicherheitsvorfällen und Cybersicherheitsvorfällen großen Ausmaßes und zur Unterstützung anderer Nutzer bei der Reaktion auf Cybersicherheitsvorfällen großen Ausmaßes und einem Cybersicherheitsvorfall großen Ausmaßes gleichwertige Sicherheitsvorfälle;\nc)\neines europäischen Überprüfungsmechanismus für Cybersicherheitsvorfälle zur Überprüfung und Bewertung von schwerwiegenden Cybersicherheitsvorfällen und Cybersicherheitsvorfällen großen Ausmaßes.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "all"
+      ]
+    },
+    "severity": "major"
+  }
+}

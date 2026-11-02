@@ -1,0 +1,29 @@
+{
+  "url": "https://www.legislation.gov.uk/ukpga/2021/25/section/1",
+  "title": "National Security and Investment Act 2021",
+  "language": "en",
+  "published_at": "2021-04-29T00:00:00Z",
+  "text": "Call-in for national security\nCall-in power\nCall-in notice for national security purposes\n1 1 The Secretary of State may give a notice if the Secretary of State reasonably suspects that—\na a trigger event has taken place in relation to a qualifying entity or qualifying asset, and the event has given rise to or may give rise to a risk to national security, or\nb arrangements are in progress or contemplation which, if carried into effect, will result in a trigger event taking place in relation to a qualifying entity or qualifying asset, and the event may give rise to a risk to national security.\n2 For the purposes of this Act, in considering whether a trigger event has taken place, or whether arrangements are in progress or contemplation which, if carried into effect, will result in a trigger event taking place, the effect of section 13(1) (notifiable acquisitions that are void) must be disregarded.\n3 A notice under subsection (1) is referred to in this Act as a call-in notice.\n4 If the Secretary of State decides to give a call-in notice, the notice must be given to—\na the acquirer,\nb if the trigger event relates to a qualifying entity, the entity, and\nc such other persons as the Secretary of State considers appropriate.\n5 The call-in notice must include a description of the trigger event to which it relates and state the names of the persons to whom the notice is given.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}

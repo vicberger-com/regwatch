@@ -1,0 +1,22 @@
+{
+  "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=A0030307&flno=2",
+  "title": "資通安全情資分享辦法",
+  "language": "zh",
+  "published_at": "2026-01-05T00:00:00Z",
+  "text": "第 2 條\n本辦法所稱資通安全情資（以下簡稱情資），指下列各款資訊：\n一、資通系統之惡意偵察或情蒐活動。\n二、資通系統之安全漏洞。\n三、使資通系統安全控制措施無效或利用安全漏洞之方法。\n四、與惡意程式相關之資訊。\n五、資通安全事件造成之實際損害或可能產生之負面影響。\n六、用以偵測、預防或因應前五款情形，或降低其損害之相關措施。\n七、其他與資通安全事件相關資訊。",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "TW"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "info"
+  }
+}

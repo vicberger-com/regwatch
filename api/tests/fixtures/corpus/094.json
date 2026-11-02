@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32025R0038",
+  "title": "RÈGLEMENT (UE) 2025/38 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 19 décembre 2024 établissant des mesures destinées à renforcer la solidarité et les capacités dans l’Union afin de détecter les cybermenaces et incidents, de s’y préparer et d’y réagir et modifiant le règlement (UE) 2021/694 (règlement sur la cybersolidarité)",
+  "language": "fr",
+  "published_at": "2025-01-15T00:00:00Z",
+  "text": "Article premier\nObjet et objectifs\n1. Le présent règlement établit des mesures destinées à renforcer les capacités dans l’Union afin de détecter les cybermenaces et incidents, de s’y préparer et d’y réagir, en mettant en place:\na)\nun réseau paneuropéen de cyberpôles (ci-après dénommé «système européen d’alerte en matière de cybersécurité») dans le but de mettre en place et de développer des capacités de détection coordonnée et d’appréciation commune de la situation;\nb)\nun mécanisme d’urgence dans le domaine de la cybersécurité pour aider les États membres à se préparer aux incidents de cybersécurité importants et aux incidents de cybersécurité majeurs, à y réagir, à en atténuer les effets et à amorcer le rétablissement à la suite de tels incidents, et pour aider d’autres utilisateurs à réagir aux incidents de cybersécurité importants et aux incidents de cybersécurité assimilés à des incidents majeurs;\nc)\nun mécanisme européen d’analyse des incidents de cybersécurité afin d’analyser et d’évaluer les incidents de cybersécurité importants ou incidents de cybersécurité majeurs.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "all"
+      ]
+    },
+    "severity": "major"
+  }
+}

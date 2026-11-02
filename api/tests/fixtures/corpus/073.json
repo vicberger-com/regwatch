@@ -1,0 +1,34 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32018L1972",
+  "title": "RICHTLINIE (EU) 2018/1972 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 11. Dezember 2018 über den europäischen Kodex für die elektronische Kommunikation (Neufassung) (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2018-12-17T00:00:00Z",
+  "text": "Artikel 40\nSicherheit von Netzen und Diensten\n(1) Die Mitgliedstaaten stellen sicher, dass die Anbieter öffentlicher elektronischer Kommunikationsnetze oder öffentlich zugänglicher elektronischer Kommunikationsdienste angemessene und verhältnismäßige technische und organisatorische Maßnahmen zur angemessenen Beherrschung der Risiken für die Sicherheit von Netzen und Diensten ergreifen. Diese Maßnahmen müssen unter Berücksichtigung des Standes der Technik ein Sicherheitsniveau gewährleisten, das angesichts des bestehenden Risikos angemessen ist. Insbesondere sind Maßnahmen, einschließlich gegebenenfalls Verschlüsselung, zu ergreifen, um Auswirkungen von Sicherheitsvorfällen auf Nutzer und auf andere Netze und Dienste zu vermeiden und so gering wie möglich zu halten.\nDie Agentur der Europäischen Union für Netz-und Informationssicherheit (im Folgenden „ENISA“) erleichtert im Einklang mit der Verordnung (EU) Nr. 526/2013 des Europäischen Parlaments und des Rates ( 45 ) die Koordinierung der Mitgliedstaaten, damit voneinander abweichende nationale Anforderungen, die Sicherheitsrisiken und Hindernisse für den Binnenmarkt mit sich bringen könnten, vermieden werden.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "incident-reporting",
+        "encryption"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "directive"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

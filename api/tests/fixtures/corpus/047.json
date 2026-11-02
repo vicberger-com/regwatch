@@ -1,0 +1,26 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/eng/regulations/SOR-2018-64/section-2.html",
+  "title": "Breach of Security Safeguards Regulations",
+  "language": "en",
+  "published_at": "2018-11-01T00:00:00Z",
+  "text": "Report — content, form and manner\n2 (1) A report of a breach of security safeguards referred to in subsection 10.1(2) of the Act must be in writing and must contain\n(a) a description of the circumstances of the breach and, if known, the cause;\n(b) the day on which, or the period during which, the breach occurred or, if neither is known, the approximate period;\n(c) a description of the personal information that is the subject of the breach to the extent that the information is known;\n(d) the number of individuals affected by the breach or, if unknown, the approximate number;\n(e) a description of the steps that the organization has taken to reduce the risk of harm to affected individuals that could result from the breach or to mitigate that harm;\n(f) a description of the steps that the organization has taken or intends to take to notify affected individuals of the breach in accordance with subsection 10.1(3) of the Act; and\n(g) the name and contact information of a person who can answer, on behalf of the organization, the Commissioner’s questions about the breach.\nNew information\n(2) An organization may submit to the Commissioner any new information referred to in subsection (1) that the organization becomes aware of after having made the report.\nMeans of communication\n(3) The report may be sent to the Commissioner by any secure means of communication.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

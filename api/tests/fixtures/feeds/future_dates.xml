@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- regwatch test fixture (issue #12): RSS 2.0 with dates a capture job must not trust.
+     Items: far future, year 9999, an impossible date, the +14:00 offset, no date at all,
+     the Unix epoch, an ISO 8601 date in an RFC 822 field, and a two-digit year.
+     Expected handling: clamp future dates to the discovery time or flag them; never
+     sort a 2099 item above today's items as "latest". -->
+<rss version="2.0">
+  <channel>
+    <title>Future and odd dates (fixture)</title>
+    <link>https://example.invalid/</link>
+    <description>Each item carries one date problem.</description>
+    <item>
+      <title>Regulation published in 2099</title>
+      <link>https://example.invalid/dates/2099</link>
+      <guid isPermaLink="false">dates-2099</guid>
+      <pubDate>Thu, 01 Jan 2099 00:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Regulation published at the end of year 9999</title>
+      <link>https://example.invalid/dates/9999</link>
+      <guid isPermaLink="false">dates-9999</guid>
+      <pubDate>Fri, 31 Dec 9999 23:59:59 GMT</pubDate>
+    </item>
+    <item>
+      <title>Regulation published on 31 February</title>
+      <link>https://example.invalid/dates/feb31</link>
+      <guid isPermaLink="false">dates-feb31</guid>
+      <pubDate>Wed, 31 Feb 2027 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Regulation published at +14:00 tomorrow</title>
+      <link>https://example.invalid/dates/plus14</link>
+      <guid isPermaLink="false">dates-plus14</guid>
+      <pubDate>Tue, 03 Nov 2026 23:30:00 +1400</pubDate>
+    </item>
+    <item>
+      <title>Regulation with no date</title>
+      <link>https://example.invalid/dates/none</link>
+      <guid isPermaLink="false">dates-none</guid>
+    </item>
+    <item>
+      <title>Regulation at the Unix epoch</title>
+      <link>https://example.invalid/dates/epoch</link>
+      <guid isPermaLink="false">dates-epoch</guid>
+      <pubDate>Thu, 01 Jan 1970 00:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Regulation with an ISO 8601 date</title>
+      <link>https://example.invalid/dates/iso</link>
+      <guid isPermaLink="false">dates-iso</guid>
+      <pubDate>2030-06-15T12:00:00Z</pubDate>
+    </item>
+    <item>
+      <title>Regulation with a two-digit year</title>
+      <link>https://example.invalid/dates/yy</link>
+      <guid isPermaLink="false">dates-yy</guid>
+      <pubDate>Sat, 01 Jan 50 00:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

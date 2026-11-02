@@ -1,0 +1,26 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32018R1807",
+  "title": "VERORDNUNG (EU) 2018/1807 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 14. November 2018 über einen Rahmen für den freien Verkehr nicht-personenbezogener Daten in der Europäischen Union (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2018-11-28T00:00:00Z",
+  "text": "Artikel 4\nFreier Datenverkehr in der Union\n(1) Datenlokalisierungsauflagen sind unzulässig, es sei denn, sie sind aus Gründen der öffentlichen Sicherheit unter Achtung des Grundsatzes der Verhältnismäßigkeit gerechtfertigt.\nAbsatz 3 und auf der Grundlage des bestehenden Unionsrechts festgelegte Datenlokalisierungsauflagen bleiben von Unterabsatz 1 dieses Absatzes unberührt.\n(2) Die Mitgliedstaaten teilen der Kommission umgehend alle Entwürfe von Vorschriften mit, die neue Datenlokalisierungsauflagen enthalten oder bestehende Datenlokalisierungsauflagen ändern, gemäß den Verfahren, die in den Artikeln 5, 6 und 7 der Richtlinie (EU) 2015/1535 festgelegt sind.\n(3) Die Mitgliedstaaten sorgen bis zum 30. Mai 2021 dafür, dass alle bestehenden Datenlokalisierungsauflagen, die durch allgemeine Rechts- und Verwaltungsvorschriften geregelt sind und die nicht mit Absatz 1 des vorliegenden Artikels vereinbar sind, aufgehoben werden.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

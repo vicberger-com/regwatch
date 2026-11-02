@@ -1,0 +1,12 @@
+# regwatch test fixture (issue #12): a crawl delay plus partial rules.
+# Expected: wait at least 10 seconds between requests; /pages/ allowed; /private/ and
+# /search disallowed; the regwatch agent group is more specific and wins for regwatch.
+User-agent: *
+Crawl-delay: 10
+Disallow: /private/
+Disallow: /search
+Allow: /pages/
+
+User-agent: regwatch
+Crawl-delay: 5
+Disallow: /private/

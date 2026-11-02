@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/09/01/2026-17894/revision-of-agency-information-collection-activity-under-omb-review-cybersecurity-measures-for",
+  "title": "Revision of Agency Information Collection Activity Under OMB Review: Cybersecurity Measures for Surface Modes",
+  "language": "en",
+  "published_at": "2026-09-01T00:00:00Z",
+  "text": "This notice announces that the Transportation Security Administration (TSA) has forwarded the Information Collection Request (ICR), Office of Management and Budget (OMB) control number 1652-0074, abstracted below, to OMB for a revision of the currently approved collection under the Paperwork Reduction Act (PRA). The ICR describes the nature of the information collection and its expected burden. The collection involves the designation of a Cybersecurity Coordinator; the reporting of cybersecurity incidents to the Cybersecurity and Infrastructure Security Agency; the development of a cybersecurity contingency/recovery plan to address cybersecurity gaps; and the completion of a cybersecurity assessment.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "transport"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "info"
+  }
+}

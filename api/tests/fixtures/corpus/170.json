@@ -1,0 +1,25 @@
+{
+  "url": "https://laws.e-gov.go.jp/law/345AC0000000090#Mp-At_1",
+  "title": "情報処理の促進に関する法律",
+  "language": "ja",
+  "published_at": "1970-05-22T00:00:00Z",
+  "text": "（目的）\n第一条　この法律は、プログラムの開発を促進し、プログラムの流通を円滑にし、情報処理システムの良好な状態を維持するとともにその性能の向上を図ることでその高度利用を促進し、及び情報処理サービス業等の育成のための措置を講ずること等によつて、情報処理システムが戦略的に利用され、及び多様なデータが活用される高度な情報化社会の実現を図り、もつて国民生活の向上及び国民経済の健全な発展に寄与することを目的とする。",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "JP"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "info"
+  }
+}

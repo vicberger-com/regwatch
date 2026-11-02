@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32022R2554",
+  "title": "VERORDNUNG (EU) 2022/2554 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 14. Dezember 2022 über die digitale operationale Resilienz im Finanzsektor und zur Änderung der Verordnungen (EG) Nr. 1060/2009, (EU) Nr. 648/2012, (EU) Nr. 600/2014, (EU) Nr. 909/2014 und (EU) 2016/1011 (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Artikel 19\nMeldung schwerwiegender IKT-bezogener Vorfälle und freiwillige Meldung erheblicher Cyberbedrohungen\n(1) Finanzunternehmen melden der nach Artikel 46 jeweils zuständigen Behörde gemäß Absatz 4 schwerwiegende IKT-bezogene Vorfälle.\nUnterliegt ein Finanzunternehmen der Aufsicht mehr als einer nach Artikel 46 zuständigen nationalen Behörde, so benennen die Mitgliedstaaten eine einzige zuständige Behörde als einschlägige zuständige Behörde, die für die Wahrnehmung der im vorliegenden Artikel aufgeführten Funktionen und Aufgaben verantwortlich ist.\nKreditinstitute, die gemäß Artikel 6 Absatz 4 der Verordnung (EU) Nr. 1024/2013 als bedeutend eingestuft wurden, melden schwerwiegende IKT-bezogene Vorfälle der gemäß Artikel 4 der Richtlinie 2013/36/EU benannten jeweils zuständigen nationalen Behörde, die diese Meldung unverzüglich an die EZB weiterleitet.\nFür die Zwecke von Unterabsatz 1 erstellen Finanzunternehmen nach Erfassung und Analyse aller relevanten Informationen unter Verwendung der in Artikel 20 genannten Vorlage die Erstmeldung und die Meldungen nach Absatz 4 und übermitteln diese der zuständigen Behörde. Falls es aus technischen Gründen nicht möglich ist, die Erstmeldung unter Verwendung der Vorlage zu übermitteln, teilen die Finanzunternehmen dies der zuständigen Behörde auf anderem Wege mit.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "industry": [
+        "finance"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}
