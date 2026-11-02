@@ -76,6 +76,12 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | pydantic-settings | `Settings` from environment variables (#27) | MIT | V `94150a0` | dependency | M0 |
 | SQLAlchemy, Alembic | ORM, migrations | MIT | V `2f6968c`, `47da01c` | dependency | M0 |
 | PostgreSQL 16 | database | PostgreSQL | V `7d3e000` | service | M0 |
+| asyncpg 0.32.0 | PostgreSQL driver for SQLAlchemy and Alembic (#28; psycopg is LGPL-3.0, CP-01 #39) | Apache-2.0 | V `d701e11` | dependency | M0 |
+| greenlet 3.5.6 | SQLAlchemy asyncio bridge (#28) | MIT; Stackless-derived files PSF-2.0 | V `abfe740` | dependency | M0 |
+| Mako 1.4.3, MarkupSafe 3.0.4 | Alembic revision templates (#28) | MIT, BSD-3 | V `6b833ae`, `ece2607` | dependency | M0 |
+| PyYAML 6.0.3 | seed and taxonomy YAML (#28) | MIT | V `49790e7` | dependency | M0, M2 |
+| NIST OSCAL content: CSF 2.0 catalog | `control_framework` seed terms, withdrawn entries filtered (#28, R-03 C5, BL-21) | CC0-1.0 and US public domain | V `f0de6d8` (LICENSE.md) | data (generated seed) | M2 |
+| UN M49 standard country or area codes | `jurisdiction.region_code` seed (#28) | © United Nations; codes used as identifiers only; terms page not reachable from the session (assumed, ASSUMPTIONS.md) | page read 2026-11-02 | data (generated seed) | M2 |
 | pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
 | Celery | task queue | BSD-3 | V `3f4d8d7` | dependency | M3 |
 | Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
@@ -133,6 +139,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |
 | Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | V `4fe07d8`, `92ae8b8`, `12cbff4` | tooling | security |
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
+| GitHub Actions `actions/checkout`, `actions/setup-node`, `actions/cache`, `astral-sh/setup-uv` | CI steps in `ci.yml`, pinned by commit SHA (#29) | MIT | V `3d3c42e`, `949feb2`, `55cc834`, `68559e9` | tooling (CI) | M0 |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
 | EUR-Lex / Cellar SPARQL and content API | EU legal data source | Commission Decision 2011/833/EU (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |

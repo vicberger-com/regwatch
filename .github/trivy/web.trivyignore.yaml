@@ -1,0 +1,30 @@
+# Accepted critical findings in the web image (development image for the Vite dev server;
+# it is not deployed). Used only by the `images` job in .github/workflows/ci.yml for
+# regwatch-web. Each entry expires; when it does, the job fails again until the finding is
+# fixed or re-accepted. Fix tracked in BL-60 (#29). Never add api-image findings here.
+vulnerabilities:
+  - id: CVE-2023-45853
+    purls:
+      - pkg:deb/debian/zlib1g
+    statement: zlib minizip overflow; Debian marks will_not_fix and the image never uses minizip
+    expired_at: 2026-12-02
+  - id: CVE-2026-59873
+    paths:
+      - root/.cache/node/corepack/v1/pnpm/9.15.9/dist/node_modules/tar/package.json
+    statement: tar bundled inside pnpm 9.15.9 (contract pins pnpm 9); used only at image build
+    expired_at: 2026-12-02
+  - id: CVE-2026-104848
+    paths:
+      - app/node_modules/.pnpm/tinypool@1.1.1/node_modules/tinypool/package.json
+    statement: tinypool under vitest 3 (test runner, dev only); fixed in vitest 4 (BL-60)
+    expired_at: 2026-12-02
+  - id: CVE-2026-104849
+    paths:
+      - app/node_modules/.pnpm/tinypool@1.1.1/node_modules/tinypool/package.json
+    statement: as CVE-2026-104848
+    expired_at: 2026-12-02
+  - id: CVE-2025-68121
+    paths:
+      - app/node_modules/.pnpm/@esbuild+linux-x64@0.25.12/node_modules/@esbuild/linux-x64/bin/esbuild
+    statement: Go stdlib crypto/tls in the esbuild binary (Vite 6 pins esbuild 0.25); esbuild makes no TLS connections in the dev server
+    expired_at: 2026-12-02
