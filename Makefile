@@ -26,11 +26,10 @@ seed: ## Load seed data
 lint: lint-api lint-web ## Ruff, mypy, ESLint and the TypeScript compiler
 
 lint-api:
-	cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy src
+	cd api && uv sync --frozen --quiet && uv run ruff check . && uv run ruff format --check . && uv run mypy src
 
 lint-web:
-	@if [ -f web/package.json ]; then cd web && pnpm lint && pnpm typecheck; \
-	else echo "lint-web: web/ not present yet"; fi
+	cd web && pnpm install --frozen-lockfile --silent && pnpm lint && pnpm typecheck
 
 test: test-api test-web ## Unit tests with coverage gates
 
@@ -38,8 +37,7 @@ test-api:
 	cd api && uv run pytest -m "$(UNIT_MARKERS)" --cov=regwatch --cov-fail-under=85
 
 test-web:
-	@if [ -f web/package.json ]; then cd web && pnpm test -- --coverage; \
-	else echo "test-web: web/ not present yet"; fi
+	cd web && pnpm install --frozen-lockfile --silent && pnpm test -- --coverage
 
 test-integration: env ## Start the stack, wait for health checks, run integration tests
 	$(COMPOSE) up -d --build --wait

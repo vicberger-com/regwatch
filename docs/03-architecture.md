@@ -92,6 +92,10 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | rapidfuzz | fuzzy dedupe | MIT | V `377d0c0` | dependency | M4 |
 | React, React DOM | UI | MIT | V `61aa00d` | dependency | M6 |
 | Vite | build | MIT | V `981f07f` | tooling | M6 |
+| TypeScript, pnpm, Prettier | compiler, package manager, formatter (#27) | Apache-2.0, MIT, MIT | V `c63de15`, `d22a3f6`, `1172b82` | tooling | M0 |
+| typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-jsx-a11y | lint rules (#27) | MIT | V `4ad6b75`, `d1727fb`, `7f3d698` | tooling | M0 |
+| DefinitelyTyped (`@types/react`, `@types/react-dom`, `@types/node`) | type declarations (#27) | MIT | V `8239b0b` (untagged HEAD, 2026-11-02) | tooling | M0 |
+| Node.js 22 (`node:22-slim` image) | runtime of the web development server only; not shipped (#27) | MIT, with bundled third-party notices | V `27f2131`, `14b1d12` (untagged HEAD, 2026-11-02) | tooling (base image) | M0 |
 | TanStack Query, Table, Router | data and routing | MIT | V `a6be1ce`, `95c4768`, `6b9fe6d` | dependency | M6 |
 | Tailwind CSS | styling | MIT | V `c2b24dd` | dependency | M6 |
 | shadcn/ui, Radix UI | accessible components | MIT | V `96da9cc`, `9aebdd4` | vendored (by design) | M6 |
@@ -120,6 +124,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | uv, Ruff, mypy | Python environments, lint and format, type check (#27) | MIT OR Apache-2.0, MIT, MIT (mypyc runtime files PSF-2.0) | V `3010295`, `ba65abf`, `ad02a35` | tooling | M0 |
 | CPython 3.12 (`python:3.12-slim` image) | runtime in the api image (#27) | PSF-2.0 (image packaging MIT) | V `f6650f9`, `f4c67ec` (untagged HEAD, 2026-11-02) | runtime (base image) | M0 |
 | Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
+| jest-dom, user-event (Testing Library), jsdom | DOM matchers, user interaction and DOM for Vitest (#27) | MIT | V `3782c78`, `1951eb7`, `058c0f5` | tooling | tests |
 | axe-core, @axe-core/playwright | accessibility tests | MPL-2.0 | V `e797173`, `2375f7f` | tooling | tests |
 | k6 | load tests | AGPL-3.0 | V `e088784` | tooling | tests |
 | OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |

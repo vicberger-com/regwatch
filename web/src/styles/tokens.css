@@ -1,0 +1,136 @@
+/*
+ * Design tokens (docs/contracts/screens.md, design brief). Light is the default; dark and
+ * high-contrast override colours on html[data-theme]. Tailwind reads these through
+ * tailwind.config.ts, so components never hard-code a colour.
+ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --border: #d9dee5;
+  --text: #1b2430;
+  --text-muted: #5b6675;
+  --accent: #1f5aa6; /* replaceable by branding.primary_color (M1) */
+  --accent-contrast: #ffffff;
+  --good: #1e7f4f;
+  --warning: #b7791f;
+  --critical: #b23a3a;
+  --focus: #ffb400;
+  /* Map recency scale, 5 steps: no change in period to most recent. */
+  --map-0: #e6ecf3;
+  --map-1: #b9cbe0;
+  --map-2: #7fa0c9;
+  --map-3: #4874ae;
+  --map-4: #123e7a;
+  --map-pattern-0: none;
+  --map-pattern-1: none;
+  --map-pattern-2: none;
+  --map-pattern-3: none;
+  --map-pattern-4: none;
+
+  /* Type: Inter, 12 / 13 / 14 (body) / 16 / 20 / 24 px, line height 1.45, weights 400 and 600. */
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --leading: 1.45;
+
+  /* Spacing: 4 px base. Density (M9) multiplies paddings: 0.85 compact, 1 default, 1.2 comfortable. */
+  --density: 1;
+  --space-1: calc(4px * var(--density));
+  --space-2: calc(8px * var(--density));
+  --space-3: calc(12px * var(--density));
+  --space-4: calc(16px * var(--density));
+  --space-6: calc(24px * var(--density));
+  --space-8: calc(32px * var(--density));
+  --space-12: calc(48px * var(--density));
+
+  /* Shape: 6 px radius, borders instead of shadows, one shadow level for menus and dialogs. */
+  --radius: 6px;
+  --border-width: 1px;
+  --shadow-menu: 0 4px 16px rgb(15 20 26 / 0.16);
+  --focus-width: 3px;
+
+  /* Hit targets: 32 px default, 44 px in the accessibility preset (M9). */
+  --hit-target: 32px;
+
+  --motion-duration: 150ms;
+  --motion-easing: ease;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f141a;
+  --surface: #171e26;
+  --border: #2a3440;
+  --text: #e6ebf0;
+  --text-muted: #9aa7b5;
+  --accent: #6fa3e8;
+  --accent-contrast: #0f141a;
+  --good: #4cc38a;
+  --warning: #e0a84a;
+  --critical: #f07a7a;
+  --map-0: #1c2733;
+  --map-1: #2b4560;
+  --map-2: #3f6894;
+  --map-3: #6493cc;
+  --map-4: #8fc1ff;
+  --shadow-menu: 0 4px 16px rgb(0 0 0 / 0.5);
+}
+
+/* High contrast: pure black and white, 7:1 minimum, 2 px borders, no muted text below 4.5:1. */
+:root[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --border: #ffffff;
+  --text: #ffffff;
+  --text-muted: #d6d6d6;
+  --accent: #8fc1ff;
+  --accent-contrast: #000000;
+  --good: #5ee89a;
+  --warning: #ffc94d;
+  --critical: #ff9b9b;
+  --focus: #ffb400;
+  --map-0: #000000;
+  --map-1: #3d3d3d;
+  --map-2: #7a7a7a;
+  --map-3: #b8b8b8;
+  --map-4: #ffffff;
+  /* Diagonal hatching per step, so the scale does not rely on lightness alone. */
+  --map-pattern-0: none;
+  --map-pattern-1: repeating-linear-gradient(
+    45deg,
+    #fff 0 1px,
+    transparent 1px 8px
+  );
+  --map-pattern-2: repeating-linear-gradient(
+    45deg,
+    #fff 0 1px,
+    transparent 1px 5px
+  );
+  --map-pattern-3: repeating-linear-gradient(
+    -45deg,
+    #000 0 1px,
+    transparent 1px 5px
+  );
+  --map-pattern-4: repeating-linear-gradient(
+    -45deg,
+    #000 0 2px,
+    transparent 2px 5px
+  );
+  --border-width: 2px;
+  --shadow-menu: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration: 0ms;
+  }
+}
