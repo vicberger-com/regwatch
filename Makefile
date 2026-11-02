@@ -20,8 +20,8 @@ stop: ## Stop the development stack
 migrate: env ## Apply database migrations (alembic upgrade head in the api container)
 	$(COMPOSE) run --rm --build api uv run --no-sync alembic upgrade head
 
-seed: env ## Load seed data (idempotent; regwatch-seed in the api container)
-	$(COMPOSE) run --rm --build api regwatch-seed
+seed: ## Load seed data
+	@echo "make seed: lands in #28 (seed loader and registry seeding)"; exit 1
 
 lint: lint-api lint-web ## Ruff, mypy, ESLint and the TypeScript compiler
 

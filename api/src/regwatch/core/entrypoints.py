@@ -1,8 +1,8 @@
 """Console entry points whose implementations land in later issues.
 
 ``regwatch-worker`` and ``regwatch-beat`` stay up and idle until Celery lands (M3), so the
-Compose stack keeps its contract services; ``regwatch-admin`` exits with status 2 and says
-which issue delivers it. ``regwatch-seed`` runs the seed loader (:mod:`regwatch.core.seed`).
+Compose stack keeps its contract services; ``regwatch-seed`` and ``regwatch-admin`` exit with
+status 2 and say which issue delivers them.
 """
 
 from __future__ import annotations
@@ -41,9 +41,7 @@ def beat() -> None:
 
 def seed() -> None:
     """Idempotent seed loader (``regwatch-seed``)."""
-    from regwatch.core.seed import main
-
-    raise SystemExit(main(sys.argv[1:]))
+    _not_yet("regwatch-seed", "#28")
 
 
 def admin() -> None:
