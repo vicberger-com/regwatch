@@ -17,8 +17,8 @@ dev: env ## Start the development stack with hot reload (http://localhost)
 stop: ## Stop the development stack
 	$(COMPOSE) down
 
-migrate: ## Apply database migrations
-	@echo "make migrate: lands in #28 (baseline migration 0001)"; exit 1
+migrate: env ## Apply database migrations (alembic upgrade head in the api container)
+	$(COMPOSE) run --rm --build api uv run --no-sync alembic upgrade head
 
 seed: ## Load seed data
 	@echo "make seed: lands in #28 (seed loader and registry seeding)"; exit 1

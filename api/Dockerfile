@@ -19,6 +19,9 @@ RUN --mount=type=secret,id=build_ca,required=false \
     if [ -f /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
     uv sync --frozen --no-install-project
 COPY src ./src
+# Migrations (#28): `make migrate` runs them in this image.
+COPY alembic.ini ./
+COPY alembic ./alembic
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -f /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
     uv sync --frozen && chown -R regwatch:regwatch /app
@@ -35,6 +38,8 @@ COPY src ./src
 RUN --mount=type=secret,id=build_ca,required=false \
     if [ -f /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
     uv sync --frozen --no-dev --no-editable && rm -rf src
+COPY alembic.ini ./
+COPY alembic ./alembic
 USER regwatch
 EXPOSE 8000
 CMD ["regwatch-api", "--host", "0.0.0.0", "--port", "8000"]

@@ -76,6 +76,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | pydantic-settings | `Settings` from environment variables (#27) | MIT | V `94150a0` | dependency | M0 |
 | SQLAlchemy, Alembic | ORM, migrations | MIT | V `2f6968c`, `47da01c` | dependency | M0 |
 | PostgreSQL 16 | database | PostgreSQL | V `7d3e000` | service | M0 |
+| asyncpg 0.32.0 | PostgreSQL driver for SQLAlchemy and Alembic (#28; psycopg is LGPL-3.0, CP-01 #39) | Apache-2.0 | V `d701e11` | dependency | M0 |
+| greenlet 3.5.6 | SQLAlchemy asyncio bridge (#28) | MIT; Stackless-derived files PSF-2.0 | V `abfe740` | dependency | M0 |
+| Mako 1.4.3, MarkupSafe 3.0.4 | Alembic revision templates (#28) | MIT, BSD-3 | V `6b833ae`, `ece2607` | dependency | M0 |
 | pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
 | Celery | task queue | BSD-3 | V `3f4d8d7` | dependency | M3 |
 | Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
