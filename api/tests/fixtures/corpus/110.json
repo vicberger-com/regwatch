@@ -1,0 +1,25 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32016L0680",
+  "title": "DIRECTIVA (UE) 2016/680 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 27 de abril de 2016 relativa a la protección de las personas físicas en lo que respecta al tratamiento de datos personales por parte de las autoridades competentes para fines de prevención, investigación, detección o enjuiciamiento de infracciones penales o de ejecución de sanciones penales, y a la libre circulación de dichos datos y por la que se deroga la Decisión Marco 2008/977/JAI del Consejo",
+  "language": "es",
+  "published_at": "2016-05-04T00:00:00Z",
+  "text": "Artículo 1\nObjeto y objetivos\n1. La presente Directiva establece las normas relativas a la protección de las personas físicas en lo que respecta al tratamiento de los datos personales por parte de las autoridades competentes, con fines de prevención, investigación, detección o enjuiciamiento de infracciones penales o de ejecución de sanciones penales, incluidas la protección y la prevención frente a las amenazas contra la seguridad pública.\n2. De conformidad con la presente Directiva, los Estados miembros deberán:\na)\nproteger los derechos y libertades fundamentales de las personas físicas y, en particular, su derecho a la protección de los datos personales, y\nb)\ngarantizar que el intercambio de datos personales por parte de las autoridades competentes en el interior de la Unión, en caso de que el Derecho de la Unión o del Estado miembro exijan dicho intercambio, no quede restringido ni prohibido por motivos relacionados con la protección de las personas físicas en lo que respecta al tratamiento de datos personales.\n3. La presente Directiva no impedirá a los Estados miembros ofrecer mayores garantías que las que en ella se establecen para la protección de los derechos y libertades del interesado con respecto al tratamiento de datos personales por parte de las autoridades competentes.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "data-protection"
+      ],
+      "industry": [
+        "public-sector"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "url": "https://www.legislation.gov.uk/uksi/2018/506/regulation/11",
+  "title": "The Network and Information Systems Regulations 2018",
+  "language": "en",
+  "published_at": "2018-04-19T00:00:00Z",
+  "text": "Operators of essential services\nThe duty to notify incidents\n11 1 An OES must notify the designated competent authority about any incident which has a significant impact on the continuity of the essential service which that OES provides (“a network and information systems (“NIS”) incident”).\n2 In order to determine the significance of the impact of an incident an OES must have regard to the following factors—\na the number of users affected by the disruption of the essential service;\nb the duration of the incident; and\nc the geographical area affected by the incident.\n3 The notification mentioned in paragraph (1) must—\na provide the following—\ni the operator’s name and the essential services it provides;\nii the time the NIS incident occurred;\niii the duration of the NIS incident;\niv information concerning the nature and impact of the NIS incident;\nv information concerning any, or any likely, cross-border impact of the NIS incident; and\nvi any other information that may be helpful to the competent authority; and\nb be provided to the competent authority—\ni without undue delay and in any event no later than 72 hours after the operator is aware that a NIS incident has occurred; and\nii in such form and manner as the competent authority determines.\n4 The information to be provided by an OES under paragraph (3)(a) is limited to information which may reasonably be expected to be within the knowledge of that OES.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "critical-infrastructure",
+        "cybersecurity"
+      ],
+      "industry": [
+        "energy",
+        "transport",
+        "health"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

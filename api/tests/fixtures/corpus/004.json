@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/07/31/2026-15601/modernization-of-the-nations-alerting-systems-protecting-the-nations-communications-systems-from",
+  "title": "Modernization of the Nation's Alerting Systems; Protecting the Nation's Communications Systems From Cybersecurity Threats",
+  "language": "en",
+  "published_at": "2026-07-31T00:00:00Z",
+  "text": "In the Report and Order, the Federal Communications Commission (the FCC or the Commission) seeks to preserve the public's trust in the Emergency Alert System (EAS) by requiring targeted cybersecurity improvements that will help protect against hijacking by cybercriminals and our nation's adversaries.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "cybersecurity"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

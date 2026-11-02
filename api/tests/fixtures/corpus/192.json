@@ -1,0 +1,28 @@
+{
+  "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=K0060111&flno=43",
+  "title": "電信管理法",
+  "language": "zh",
+  "published_at": "2026-08-05T00:00:00Z",
+  "text": "第 43 條\n為確保公眾電信網路資通安全及網路性能，主管機關得定期或不定期檢驗公眾電信網路。如涉及國家安全事項時，主管機關得限制特定電信相關設備之採購及使用。\n未使用電信資源之公眾電信網路由政府機關或學校設置者，主管機關得委託監督其業務之中央二級機關辦理前項檢驗。\n前二項檢驗程序、基準、方式及其他相關事項之辦法，由主管機關定之。",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "TW"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

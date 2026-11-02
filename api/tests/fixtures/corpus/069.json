@@ -1,0 +1,31 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32014R0910",
+  "title": "VERORDNUNG (EU) Nr. 910/2014 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 23. Juli 2014 über elektronische Identifizierung und Vertrauensdienste für elektronische Transaktionen im Binnenmarkt und zur Aufhebung der Richtlinie 1999/93/EG",
+  "language": "de",
+  "published_at": "2014-08-28T00:00:00Z",
+  "text": "Artikel 19\nSicherheitsanforderungen an Vertrauensdiensteanbieter\n(1) Qualifizierte und nichtqualifizierte Vertrauensdiensteanbieter ergreifen geeignete technische und organisatorische Maßnahmen zur Beherrschung der Sicherheitsrisiken im Zusammenhang mit den von ihnen erbrachten Vertrauensdiensten. Diese Maßnahmen müssen unter Berücksichtigung des jeweils neuesten Standes der Technik gewährleisten, dass das Sicherheitsniveau der Höhe des Risikos angemessen ist. Insbesondere sind Maßnahmen zu ergreifen, um Auswirkungen von Sicherheitsverletzungen zu vermeiden bzw. so gering wie möglich zu halten und die Beteiligten über die nachteiligen Folgen solcher Vorfälle zu informieren.\n(2) Qualifizierte und nichtqualifizierte Vertrauensdiensteanbieter melden der Aufsichtsstelle und wo zutreffend anderen einschlägigen Stellen wie etwa der für Informationssicherheit zuständigen nationalen Stelle oder der Datenschutzbehörde unverzüglich, in jedem Fall aber innerhalb von 24 Stunden nach Kenntnisnahme von dem betreffenden Vorfall, jede Sicherheitsverletzung oder jeden Integritätsverlust, die bzw. der sich erheblich auf den erbrachten Vertrauensdienst oder die darin vorhandenen personenbezogenen Daten auswirkt.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity",
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

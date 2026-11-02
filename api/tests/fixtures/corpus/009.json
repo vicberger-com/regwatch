@@ -1,0 +1,28 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/09/20/2024-21466/schools-and-libraries-cybersecurity-pilot-program",
+  "title": "Schools and Libraries Cybersecurity Pilot Program",
+  "language": "en",
+  "published_at": "2024-09-20T00:00:00Z",
+  "text": "In this document, the Federal Communications Commission (Commission) announces that the Office of Management and Budget (OMB) has approved, for a period of three years, an information collection associated with the rules for the Schools and Libraries Cybersecurity Pilot Program contained in the Commission's Schools and Libraries Cybersecurity Pilot Program Report and Order, WC Docket No. 23-234; FCC 24-63. This document is consistent with the Schools and Libraries Cybersecurity Pilot Program Report and Order, which stated that the Commission would publish a document in the Federal Register announcing the effective date of the new information collection requirements.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "industry": [
+        "public-sector"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "info"
+  }
+}

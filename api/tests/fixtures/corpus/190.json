@@ -1,0 +1,26 @@
+{
+  "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=J0080037&flno=1",
+  "title": "電子簽章法",
+  "language": "zh",
+  "published_at": "2024-05-15T00:00:00Z",
+  "text": "第 1 條\n為推動電子簽章之普及運用，確保電子簽章之安全，促進數位經濟、智慧政府及數位服務之發展，特制定本法。\n司法程序不適用本法之規定者，由司法院或法務部公告之。",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "TW"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

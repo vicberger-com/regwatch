@@ -1,0 +1,30 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/11/07/2024-24704/enhancing-surface-cyber-risk-management",
+  "title": "Enhancing Surface Cyber Risk Management",
+  "language": "en",
+  "published_at": "2024-11-07T00:00:00Z",
+  "text": "The Transportation Security Administration (TSA) is proposing to impose cyber risk management (CRM) requirements on certain pipeline and rail owner/operators and a more limited requirement, on certain over-the-road bus (OTRB) owner/operators, to report cybersecurity incidents. With the proposed addition of requirements applicable to pipeline facilities and systems, TSA is also proposing that a requirement to have a Physical Security Coordinator and report significant physical security concerns be extended to the same facilities and systems. Finally, TSA is proposing clarifications and reorganization of other regulatory requirements necessitated by these changes.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "industry": [
+        "transport"
+      ],
+      "technology": [
+        "operational-technology"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

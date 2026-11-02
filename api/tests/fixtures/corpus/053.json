@@ -1,0 +1,31 @@
+{
+  "url": "https://www.legislation.gov.au/C2018A00029/latest/text#s30AH",
+  "title": "Security of Critical Infrastructure Act 2018",
+  "language": "en",
+  "published_at": "2026-06-04T00:00:00Z",
+  "text": "30AH Critical infrastructure risk management program\n(1) A critical infrastructure risk management program is a written program:\n(a) that applies to a particular entity that is the responsible entity for one or more critical infrastructure assets; and\n(b) the purpose of which is to do the following for each of those assets:\n(i) identify each hazard where there is a material risk that the occurrence of the hazard could have a relevant impact on the asset;\n(ii) so far as it is reasonably practicable to do so—minimise or eliminate any material risk of such a hazard occurring;\n(iii) so far as it is reasonably practicable to do so—mitigate the relevant impact of such a hazard on the asset; and\n(c) that complies with such requirements (if any) as are specified in the rules.\n(2) Requirements specified under paragraph (1)(c):\n(a) may be of general application; or\n(b) may relate to one or more specified critical infrastructure assets. Note: For specification by class, see subsection 13(3) of the Legislation Act 2003 .\n(3) Subsection\n(2) of this section does not, by implication, limit subsection 33(3A) of the Acts Interpretation Act 1901 .\n(4) Rules made for the purposes of paragraph (1)(c) may require that a critical infrastructure risk management program include one or more provisions that:\n(a) permit a background check of an individual to be conducted under the AusCheck scheme; and",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "AU"
+    ],
+    "terms": {
+      "topic": [
+        "critical-infrastructure",
+        "supply-chain-security"
+      ],
+      "industry": [
+        "energy",
+        "transport"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "gv-rm",
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

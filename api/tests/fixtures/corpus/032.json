@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/03/13/2025-03718/review-of-submarine-cable-landing-license-rules-and-procedures-to-assess-evolving-national-security",
+  "title": "Review of Submarine Cable Landing License Rules and Procedures To Assess Evolving National Security, Law Enforcement, Foreign Policy, and Trade Policy Risks; Schedule of Application Fees",
+  "language": "en",
+  "published_at": "2025-03-13T00:00:00Z",
+  "text": "The Federal Communications Commission (\"FCC\" or \"Commission\") takes another important step to protect the Nation's submarine cable infrastructure from threats in an evolving national security and law enforcement landscape by undertaking the first major comprehensive review of the Commission's submarine cable rules since 2001. This review seeks to develop forward-looking rules to better protect submarine cables, identify and mitigate harms affecting national security and law enforcement, and facilitate the deployment of submarine cables and capacity to the market. Among other things, the Commission proposes to adopt a three-year periodic reporting requirement for submarine cable landing licenses; in the alternative, the Commission seeks comment on shortening the current 25-year submarine cable license term or adopting a shorter license term in combination with periodic reporting. The Commission also proposes or seeks comment on codifying the Commission's legal jurisdiction and other legal requirements in its rules to provide regulatory certainty to submarine cable owners and operators. Additionally, the Commission proposes and seeks comment on appropriate applicant and application requirements to account for the evolution of technologies and facilities and changes in the national security landscape over the last two decades and to ensure the Commission has targeted and granular information regarding the ownership, control, use of a submarine cable system, and other things,",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

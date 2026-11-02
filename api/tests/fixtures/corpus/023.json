@@ -1,0 +1,32 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/01/16/2025-00592/securing-the-information-and-communications-technology-and-services-supply-chain-connected-vehicles",
+  "title": "Securing the Information and Communications Technology and Services Supply Chain: Connected Vehicles",
+  "language": "en",
+  "published_at": "2025-01-16T00:00:00Z",
+  "text": "This final rule, published by the Department of Commerce's (Department) Bureau of Industry and Security (BIS), sets forth regulations and procedures to address undue or unacceptable risks to national security and U.S. persons posed by classes of transactions involving information and communications technology and services (ICTS) that are designed, developed, manufactured, or supplied by persons owned by, controlled by, or subject to the jurisdiction or direction of certain foreign adversaries and that are integral to connected vehicles as defined herein.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security"
+      ],
+      "industry": [
+        "transport"
+      ],
+      "technology": [
+        "iot",
+        "software-supply-chain"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}

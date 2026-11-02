@@ -1,0 +1,25 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32025R0327",
+  "title": "REGULAMENTO (UE) 2025/327 DO PARLAMENTO EUROPEU E DO CONSELHO de 11 de fevereiro de 2025 relativo ao Espaço Europeu de Dados de Saúde e que altera a Diretiva 2011/24/UE e o Regulamento (UE) 2024/2847 (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2025-03-05T00:00:00Z",
+  "text": "Artigo 1. o\nObjeto e âmbito de aplicação\n1. O presente regulamento cria o Espaço Europeu de Dados de Saúde («EEDS»), prevendo regras, normas e infraestruturas comuns e um regime de governação com vista a facilitar o acesso aos dados de saúde eletrónicos para efeitos de utilização primária de dados de saúde eletrónicos e utilização secundária desses dados.\n2. O presente regulamento:\na)\nEspecifica e complementa os direitos previstos no Regulamento (UE) 2016/679 das pessoas singulares em relação à utilização primária e à utilização secundária dos seus dados de saúde eletrónicos pessoais;\nb)\nPrevê regras comuns para os sistemas de registo de saúde eletrónicos («sistemas de RSE») em relação a dois componentes de software harmonizados obrigatórios, a saber, o «componente de software europeu de interoperabilidade para sistemas de RSE» e o «componente de software europeu de registo para sistemas de RSE», na aceção do artigo 2. o , n. o 2, alíneas n) e o), respetivamente, e para as aplicações de bem-estar alegadamente interoperáveis com os sistemas de RSE em relação a esses dois componentes de software harmonizados, no que diz respeito à utilização primária de dados de saúde eletrónicos;\nc)\nPrevê regras e mecanismos comuns para a utilização primária de dados de saúde eletrónicos e utilização secundária de dados de saúde eletrónicos;\nd)\nCria uma infraestrutura transfronteiriça que permite a utilização primária de dados de saúde eletrónicos pessoais em toda a União;\ne)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "data-protection"
+      ],
+      "industry": [
+        "health"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "major"
+  }
+}

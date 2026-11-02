@@ -1,0 +1,31 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32014R0910",
+  "title": "REGULAMENTO (UE) N. o 910/2014 DO PARLAMENTO EUROPEU E DO CONSELHO de 23 de julho de 2014 relativo à identificação eletrónica e aos serviços de confiança para as transações eletrónicas no mercado interno e que revoga a Diretiva 1999/93/CE",
+  "language": "pt",
+  "published_at": "2014-08-28T00:00:00Z",
+  "text": "Artigo 19. o\nRequisitos de segurança aplicáveis aos prestadores de serviços de confiança\n1. Os prestadores qualificados e não qualificados de serviços de confiança tomam as medidas de caráter técnico e organizativo que forem adequadas para gerir os riscos que se colocam à segurança dos serviços de confiança que prestam. Tendo em conta a evolução tecnológica mais recente, essas medidas assegurarão um nível de segurança proporcional ao grau de risco existente. Em particular, são tomadas medidas para impedir ou reduzir ao mínimo o impacto dos incidentes de segurança e informar as partes interessadas dos efeitos adversos dos eventuais incidentes.\n2. Os prestadores, qualificados e não qualificados, de serviços de confiança notificam, sem demora indevida, mas sempre no prazo de 24 horas após terem tomado conhecimento do ocorrido, a entidade supervisora e, se necessário, outras entidades, como a entidade nacional competente em matéria de segurança da informação ou a autoridade responsável pela proteção de dados, de todas as violações da segurança ou perdas de integridade que tenham um impacto significativo sobre o serviço de confiança prestado ou sobre os dados pessoais por ele conservados.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity",
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

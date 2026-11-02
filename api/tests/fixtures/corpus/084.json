@@ -1,0 +1,26 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/fra/lois/P-8.6/article-10.1.html",
+  "title": "Loi sur la protection des renseignements personnels et les documents électroniques",
+  "language": "fr",
+  "published_at": "2025-03-04T00:00:00Z",
+  "text": "Déclaration au commissaire\n10.1 (1) L’organisation déclare au commissaire toute atteinte aux mesures de sécurité qui a trait à des renseignements personnels dont elle a la gestion, s’il est raisonnable de croire, dans les circonstances, que l’atteinte présente un risque réel de préjudice grave à l’endroit d’un individu.\nModalités de la déclaration\n(2) La déclaration contient les renseignements prévus par règlement et est faite, selon les modalités réglementaires, le plus tôt possible après que l’organisation a conclu qu’il y a eu atteinte.\nAvis à l’intéressé\n(3) À moins qu’une règle de droit ne l’interdise, l’organisation est tenue d’aviser l’intéressé de toute atteinte aux mesures de sécurité qui a trait à des renseignements personnels le concernant et dont elle a la gestion, s’il est raisonnable de croire, dans les circonstances, que l’atteinte présente un risque réel de préjudice grave à son endroit.\nContenu de l’avis\n(4) L’avis contient suffisamment d’information pour permettre à l’intéressé de comprendre l’importance, pour lui, de l’atteinte et de prendre, si cela est possible, des mesures pour réduire le risque de préjudice qui pourrait en résulter ou pour atténuer un tel préjudice. Il contient aussi tout autre renseignement réglementaire.\nModalités de l’avis\n(5) L’avis est manifeste et est donné à l’intéressé directement, selon les modalités réglementaires. Dans les circonstances prévues par règlement, il est donné indirectement, selon les modalités réglementaires.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

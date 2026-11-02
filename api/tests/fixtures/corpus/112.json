@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32022R0030",
+  "title": "REGLAMENTO DELEGADO (UE) 2022/30 DE LA COMISIÓN de 29 de octubre de 2021 que completa la Directiva 2014/53/UE del Parlamento Europeo y del Consejo en lo que respecta a la aplicación de los requisitos esenciales contemplados en el artículo 3, apartado 3, letras d), e) y f), de dicha Directiva (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2022-01-12T00:00:00Z",
+  "text": "Artículo 1\n1. El requisito esencial establecido en el artículo 3, apartado 3, letra d), de la Directiva 2014/53/UE se aplicará a todo equipo radioeléctrico que pueda comunicarse por internet, ya sea directamente o a través de cualquier otro equipo («equipo radioeléctrico conectado a internet»).\n2. El requisito esencial establecido en el artículo 3, apartado 3, letra e), de la Directiva 2014/53/UE se aplicará a cualquiera de los siguientes equipos radioeléctricos, si son capaces de tratar, en el sentido del artículo 4, punto 2, del Reglamento (UE) 2016/679, datos personales, tal como se definen en el artículo 4, punto 1, del Reglamento (UE) 2016/679, o datos de tráfico y de localización, tal como se definen en el artículo 2, letras b) y c), de la Directiva 2002/58/CE:\na)\nequipos radioeléctricos conectados a internet distintos de los mencionados en las letras b), c) o d);\nb)\nequipos radioeléctricos diseñados o destinados exclusivamente al cuidado de niños;\nc)\nequipos radioeléctricos regulados por la Directiva 2009/48/CE;\nd)\nequipos radioeléctricos diseñados o destinados, exclusivamente o no, a llevarse, ajustarse o colgar de cualquiera de los elementos siguientes:\ni)\ncualquier parte del cuerpo humano, como la cabeza, el cuello, el tronco, los brazos, las manos y los pies,\nii)\ntodas las prendas de vestir, como accesorios para el cabello, para las manos y el calzado que pueda llevar una persona.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "privacy"
+      ],
+      "technology": [
+        "iot",
+        "mobile",
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "url": "https://www.legislation.gov.au/C2018A00029/latest/text#s30BC",
+  "title": "Security of Critical Infrastructure Act 2018",
+  "language": "en",
+  "published_at": "2026-06-04T00:00:00Z",
+  "text": "30BC Notification of critical cyber security incidents\n(1) If:\n(a) an entity is the responsible entity for a critical infrastructure asset; and\n(b) the entity becomes aware that:\n(i) a cyber security incident has occurred or is occurring; and\n(ii) the incident has had, or is having, a significant impact (whether direct or indirect) on the availability of the asset; the entity must:\n(c) give the relevant Commonwealth body (see section 30BF) a report that:\n(i) is about the incident; and\n(ii) includes such information (if any) as is prescribed by the rules; and\n(d) do so as soon as practicable, and in any event within 12 hours, after the entity becomes so aware. Civil penalty: 50 penalty units. Form of report etc.\n(2) A report under subsection\n(1) may be given:\n(a) orally; or\n(b) in writing.\n(3) If a report under subsection\n(1) is given orally, the entity must:\n(a) do both of the following:\n(i) make a written record of the report in the approved form;\n(ii) give a copy of the written record of the report to the relevant Commonwealth body (see section 30BF); and\n(b) do so within 84 hours after the report is given. Civil penalty: 50 penalty units.\n(4) If the report is given in writing, the entity must ensure that the report is in the approved form. Civil penalty: 50 penalty units. Exemption—written record\n(5) The head (however described) of the relevant Commonwealth body (see section 30BF) may, by written notice given to an entity, exempt the entity from subsection",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "AU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "energy",
+        "telecoms",
+        "health",
+        "finance"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

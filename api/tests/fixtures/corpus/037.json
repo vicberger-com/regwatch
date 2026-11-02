@@ -1,0 +1,26 @@
+{
+  "url": "https://www.legislation.gov.uk/ukpga/2022/46/section/1",
+  "title": "Product Security and Telecommunications Infrastructure Act 2022",
+  "language": "en",
+  "published_at": "2022-12-06T00:00:00Z",
+  "text": "Product security\nSecurity requirements\nSecurity requirements relating to products\nPower to specify security requirements\n1 1 The Secretary of State may by regulations specify requirements (“security requirements”) for the purpose of protecting or enhancing the security of—\na relevant connectable products made available to consumers in the United Kingdom;\nb users of such products.\n2 A security requirement is a requirement that—\na relates to relevant connectable products, or relevant connectable products of a specified description, and\nb applies to relevant persons, or relevant persons of a specified description.\nIn this subsection “specified” means specified in the regulations.\n3 See—\nsection 4, for the meaning of “relevant connectable product”;\nsection 7, for the meaning of “relevant person”.\n4 For provision imposing duties on relevant persons to comply with security requirements, see sections 8, 14 and 21.\n5 Section 2 contains further provision about regulations under this section.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "consumer-protection"
+      ],
+      "technology": [
+        "iot"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

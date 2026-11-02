@@ -1,0 +1,6 @@
+{
+  "_comment": "regwatch test fixture (issue #12): /redirect/chain/{n} answers with statuses[n % len(statuses)] and Location /redirect/chain/{n-1}; /redirect/chain/0 redirects to final. Default length 5: SafeFetcher limits redirects to 5 (docs/modules/M3-capture-framework.md), so 5 hops pass and /redirect/chain/6 must fail. /redirect/loop/a and /redirect/loop/b redirect to each other.",
+  "default_hops": 5,
+  "statuses": [301, 302, 303, 307, 308],
+  "final": "/pages/page_v1.html"
+}

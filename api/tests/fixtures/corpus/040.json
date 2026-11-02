@@ -1,0 +1,28 @@
+{
+  "url": "https://www.legislation.gov.uk/uksi/2022/933/regulation/3",
+  "title": "The Electronic Communications (Security Measures) Regulations 2022",
+  "language": "en",
+  "published_at": "2022-09-01T00:00:00Z",
+  "text": "Network architecture\n3 1 A network provider must take such measures as are appropriate and proportionate to ensure—\na except in relation to an existing part of the public electronic communications network, that the network is designed and constructed in a manner which reduces the risks of security compromises occurring,\nb in relation to an existing part of the public electronic communications network, that the part is redesigned and developed in a manner which reduces the risks of security compromises occurring, and\nc that the public electronic communications network is maintained in a manner which reduces the risks of security compromises occurring.\n2 For the purposes of paragraph (1), an existing part of a public electronic communications network is a part that was brought into operation before the coming into force of these Regulations.\n3 The duty in paragraph (1) includes in particular a duty—\na to identify and reduce the risks of security compromises to which the network as a whole and each particular function, or type of function, of the network may be exposed, having appropriate regard to the following—\ni whether the function contains sensitive data,\nii whether the function is a security critical function,\niii the location of the equipment performing the function or storing data related to the function, and\niv the exposure of the function to incoming signals,",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

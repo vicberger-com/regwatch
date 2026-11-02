@@ -1,0 +1,24 @@
+{
+  "url": "http://www.npc.gov.cn/npc/c2/c30834/202108/t20210820_313088.html#art40",
+  "title": "中华人民共和国个人信息保护法",
+  "language": "zh",
+  "published_at": "2021-08-20T00:00:00Z",
+  "text": "关键信息基础设施运营者和处理个人信息达到国家网信部门规定数量的个人信息处理者，应当将在中华人民共和国境内收集和产生的个人信息存储在境内。确需向境外提供的，应当通过国家网信部门组织的安全评估；法律、行政法规和国家网信部门规定可以不进行安全评估的，从其规定。",
+  "source_kind": "manual",
+  "expected": {
+    "jurisdictions": [
+      "CN"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "critical-infrastructure",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

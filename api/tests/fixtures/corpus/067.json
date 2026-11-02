@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32023R2854",
+  "title": "VERORDNUNG (EU) 2023/2854 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 13. Dezember 2023 über harmonisierte Vorschriften für einen fairen Datenzugang und eine faire Datennutzung sowie zur Änderung der Verordnung (EU) 2017/2394 und der Richtlinie (EU) 2020/1828 (Datenverordnung) (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2023-12-22T00:00:00Z",
+  "text": "Artikel 32\nStaatlicher Zugang und staatliche Übermittlung im internationalen Umfeld\n(1) Unbeschadet der Absätze 2 oder 3 treffen Anbieter von Datenverarbeitungsdiensten alle angemessenen technischen, organisatorischen und rechtlichen Maßnahmen, einschließlich Verträgen, um den staatlichen Zugang zu und die staatliche Übermittlung von in der Union gespeicherten nicht-personenbezogenen Daten im internationalen Umfeld und durch Drittländer zu verhindern, wenn dies im Widerspruch zum Unionsrecht oder zum nationalen Recht des betreffenden Mitgliedstaats stehen würde.\n(2) Für jegliche Entscheidung bzw. jegliches Urteil eines Gerichts eines Drittlands und jegliche Entscheidung einer Verwaltungsbehörde eines Drittlands, die Anbieter von Datenverarbeitungsdiensten auffordern, in den Anwendungsbereich dieser Verordnung fallende nicht-personenbezogene Daten zu übermitteln oder Zugang zu diesen Daten zu gewähren, gilt, dass sie unabhängig von der Art und Weise nur anerkannt werden bzw. vollstreckbar sind, wenn sie auf einer rechtskräftigen internationalen Übereinkunft, etwa auf einem Rechtshilfeabkommen zwischen dem anfragenden Drittland und der Union oder einer solcher Übereinkunft zwischen dem anfragenden Drittland und einem Mitgliedstaat, beruhen.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "cloud-outsourcing"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "technology"
+      ]
+    },
+    "severity": "major"
+  }
+}

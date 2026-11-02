@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/ES/TXT/?uri=CELEX:32022L2557",
+  "title": "DIRECTIVA (UE) 2022/2557 DEL PARLAMENTO EUROPEO Y DEL CONSEJO de 14 de diciembre de 2022 relativa a la resiliencia de las entidades críticas y por la que se deroga la Directiva 2008/114/CE del Consejo (Texto pertinente a efectos del EEE)",
+  "language": "es",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Artículo 1\nObjeto y ámbito de aplicación\n1. La presente Directiva:\na)\nobliga a los Estados miembros a adoptar medidas específicas destinadas a garantizar la prestación sin obstrucciones en el mercado interior de servicios esenciales para el mantenimiento de funciones sociales o actividades económicas vitales dentro del ámbito de aplicación del artículo 114 del TFUE, en particular las obligaciones de identificar las entidades críticas y de apoyarlas en el cumplimiento de las obligaciones impuestas a estas últimas;\nb)\nestablece obligaciones a fin de que las entidades críticas aumenten su resiliencia y capacidad de prestar los servicios mencionados en la letra a) en el mercado interior;\nc)\nestablece normas:\ni)\nsobre la supervisión de las entidades críticas,\nii)\nsobre la ejecución,\niii)\npara la identificación de las entidades críticas de especial importancia europea y sobre misiones de asesoramiento para evaluar las medidas adoptadas por tales entidades con el fin de cumplir sus obligaciones con arreglo al capítulo III;\nd)\nestablece procedimientos comunes de cooperación e información sobre la aplicación de la presente Directiva;\ne)\nestablece medidas con vistas a lograr un alto nivel de resiliencia de las entidades críticas a fin de garantizar la prestación de servicios esenciales dentro de la Unión y mejorar el funcionamiento del mercado interior.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "energy",
+        "transport",
+        "health"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

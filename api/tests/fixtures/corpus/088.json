@@ -1,0 +1,27 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/fra/reglements/DORS-2005-30/article-2.html",
+  "title": "Règlement sur les signatures électroniques sécurisées",
+  "language": "fr",
+  "published_at": "2011-03-10T00:00:00Z",
+  "text": "2 Pour l'application de la définition de signature électronique sécurisée, au paragraphe 31(1) de la Loi, la signature électronique sécurisée à l'égard des données contenues dans un document électronique est la signature numérique qui résulte de l'exécution des opérations consécutives suivantes :\na) l'application de la fonction de hachage aux données pour générer un condensé;\nb) l'application d'une clé privée au condensé pour le chiffrer;\nc) l'incorporation, l'adjonction ou l'association du condensé ainsi chiffré au document électronique;\nd) la transmission du document électronique et du condensé chiffré accompagnés :\n(i) soit du certificat de signature numérique,\n(ii) soit d'un moyen permettant d'accéder à ce certificat;\ne) à la réception du document électronique et du condensé chiffré et, selon le cas, du certificat de signature numérique ou du moyen permettant d'accéder à celui-ci :\n(i) l'application de la clé publique contenue dans le certificat de signature numérique pour déchiffrer le condensé et produire le condensé visé à l'alinéa a),\n(ii) l'application de la fonction de hachage aux données contenues dans le document électronique pour générer un nouveau condensé,\n(iii) la comparaison entre le condensé visé à l'alinéa a) et celui visé au sous-alinéa (ii) pour établir qu'ils sont identiques,\n(iv) la vérification de la validité du certificat de signature numérique en conformité avec l'article 3.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity",
+        "encryption"
+      ],
+      "technology": [
+        "identity",
+        "cryptography"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "info"
+  }
+}

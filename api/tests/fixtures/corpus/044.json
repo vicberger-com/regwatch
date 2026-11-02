@@ -1,0 +1,25 @@
+{
+  "url": "https://www.legislation.gov.uk/ukpga/2023/50/section/1",
+  "title": "Online Safety Act 2023",
+  "language": "en",
+  "published_at": "2023-10-26T00:00:00Z",
+  "text": "Introduction\nIntroduction\n1 1 This Act provides for a new regulatory framework which has the general purpose of making the use of internet services regulated by this Act safer for individuals in the United Kingdom.\n2 To achieve that purpose, this Act (among other things)—\na imposes duties which, in broad terms, require providers of services regulated by this Act to identify, mitigate and manage the risks of harm (including risks which particularly affect individuals with a certain characteristic) from—\ni illegal content and activity, and\nii content and activity that is harmful to children, and\nb confers new functions and powers on the regulator, OFCOM.\n3 Duties imposed on providers by this Act seek to secure (among other things) that services regulated by this Act are—\na safe by design, and\nb designed and operated in such a way that—\ni a higher standard of protection is provided for children than for adults,\nii users’ rights to freedom of expression and privacy are protected, and\niii transparency and accountability are provided in relation to those services.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "GB"
+    ],
+    "terms": {
+      "topic": [
+        "consumer-protection"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "major"
+  }
+}

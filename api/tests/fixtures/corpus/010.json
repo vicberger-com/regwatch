@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/07/30/2024-14148/cybersecurity-labeling-for-internet-of-things",
+  "title": "Cybersecurity Labeling for Internet of Things",
+  "language": "en",
+  "published_at": "2024-07-30T00:00:00Z",
+  "text": "In this document, the Federal Communications Commission (Commission or FCC) establishes a voluntary cybersecurity labeling program for wireless consumer Internet of Things, or IoT, products. The program will provide consumers with an easy-to-understand and quickly recognizable FCC IoT Label that includes the U.S. Cyber Trust Mark and a QR code linked to a dynamic, decentralized, publicly available registry of more detailed cybersecurity information. This program will help consumers make safer purchasing decisions, raise consumer confidence regarding the cybersecurity of the IoT products they buy, and encourage manufacturers to develop IoT products with security-by- design principles in mind.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "consumer-protection"
+      ],
+      "technology": [
+        "iot"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

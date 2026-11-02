@@ -1,0 +1,23 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32021D0914",
+  "title": "DÉCISION D’EXÉCUTION (UE) 2021/914 DE LA COMMISSION du 4 juin 2021 relative aux clauses contractuelles types pour le transfert de données à caractère personnel vers des pays tiers en vertu du règlement (UE) 2016/679 du Parlement européen et du Conseil (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2021-06-07T00:00:00Z",
+  "text": "Article premier\n1. Les clauses contractuelles types figurant en annexe sont considérées comme offrant des garanties appropriées au sens de l’article 46, paragraphe 1, et de l’article 46, paragraphe 2, point c), du règlement (UE) 2016/679 pour le transfert, par un responsable du traitement ou un sous-traitant, de données à caractère personnel dont le traitement est soumis audit règlement (l’exportateur de données) à un responsable du traitement ou à un sous-traitant (ultérieur) dont le traitement des données n’est pas soumis audit règlement (l’importateur de données).\n2. Les clauses contractuelles types énoncent également les droits et obligations des responsables du traitement et des sous-traitants en ce qui concerne les questions mentionnées à l’article 28, paragraphes 3 et 4, du règlement (UE) 2016/679, pour ce qui est du transfert de données à caractère personnel d’un responsable du traitement à un sous-traitant, ou d’un sous-traitant à un sous-traitant ultérieur.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cross-border-transfer",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "decision"
+      ]
+    },
+    "severity": "notable"
+  }
+}

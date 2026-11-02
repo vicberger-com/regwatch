@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32023R1781",
+  "title": "RÈGLEMENT (UE) 2023/1781 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 13 septembre 2023 établissant un cadre de mesures pour renforcer l’écosystème européen des semi-conducteurs et modifiant le règlement (UE) 2021/694 (règlement sur les puces) (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2023-09-18T00:00:00Z",
+  "text": "Article premier\nObjet et objectifs généraux\n1. Le présent règlement établit un cadre pour renforcer l’écosystème des semi-conducteurs à l’échelle de l’Union, notamment par les mesures suivantes:\na)\nle lancement de l’initiative «Semi-conducteurs pour l’Europe» (ci-après dénommée «initiative»);\nb)\nla définition des critères permettant de reconnaître et de soutenir des installations de production intégrées et des fonderies ouvertes de l’Union qui sont des installations pionnières et qui améliorent la sécurité d’approvisionnement et la résilience de l’écosystème des semi-conducteurs de l’Union;\nc)\nla mise en place d’un mécanisme de coordination entre les États membres et la Commission pour la cartographie et le suivi du secteur des semi-conducteurs de l’Union ainsi que pour la prévention des crises et la réaction en cas de pénurie de semi-conducteurs et, le cas échéant, la consultation des parties prenantes du secteur des semi-conducteurs.\n2. Le premier objectif général du présent règlement consiste à veiller à ce que les conditions nécessaires à la compétitivité et à la capacité d’innovation de l’Union soient réunies et à garantir l’adaptation de l’industrie aux changements structurels.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}

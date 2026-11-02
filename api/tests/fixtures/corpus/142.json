@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32022R0030",
+  "title": "REGULAMENTO DELEGADO (UE) 2022/30 DA COMISSÃO de 29 de outubro de 2021 que complementa a Diretiva 2014/53/UE do Parlamento Europeu e do Conselho no que diz respeito à aplicação dos requisitos essenciais referidos no artigo 3. o , n. o 3, alíneas d), e) e f), dessa diretiva (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2022-01-12T00:00:00Z",
+  "text": "Artigo 1. o\n1. Os requisitos essenciais estabelecidos no artigo 3. o , n. o 3, alínea d), da Diretiva 2014/53/UE aplicam-se a qualquer equipamento de rádio capaz de comunicar por si só na Internet, independentemente de comunicar diretamente ou através de qualquer outro equipamento («equipamento de rádio ligado à Internet»).\n2. Os requisitos essenciais estabelecidos no artigo 3. o , n. o 3, alínea e), da Diretiva 2014/53/UE aplicam-se a qualquer um dos equipamentos de rádio seguintes, caso esses equipamentos de rádio sejam capazes de, na aceção do artigo 4. o , ponto 2, do Regulamento (UE) 2016/679, tratar dados pessoais, conforme definidos no artigo 4. o , ponto 1, do Regulamento (UE) 2016/679, ou dados de tráfego e dados de localização, conforme definidos no artigo 2. o , alíneas b) e c), da Diretiva 2002/58/CE:\na)\nEquipamentos de rádio ligados à Internet, com exceção dos equipamentos referidos nas alíneas b), c) ou d);\nb)\nEquipamentos de rádio concebidos ou destinados exclusivamente a cuidados infantis;\nc)\nEquipamentos de rádio abrangidos pela Diretiva 2009/48/CE;\nd)\nEquipamentos de rádio concebidos ou destinados, exclusivamente ou não, a ser usados, presos ou pendurados em qualquer um dos seguintes:\ni)\nqualquer parte do corpo humano, incluindo a cabeça, pescoço, tronco, braços, mãos, pernas e pés,\nii)\nqualquer vestuário, incluindo acessórios para a cabeça, para as mãos e calçado, usado por seres humanos.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "privacy"
+      ],
+      "technology": [
+        "iot",
+        "mobile",
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

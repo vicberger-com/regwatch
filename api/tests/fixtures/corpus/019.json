@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2024/09/11/2024-20529/establishment-of-reporting-requirements-for-the-development-of-advanced-artificial-intelligence",
+  "title": "Establishment of Reporting Requirements for the Development of Advanced Artificial Intelligence Models and Computing Clusters",
+  "language": "en",
+  "published_at": "2024-09-11T00:00:00Z",
+  "text": "This proposed rule would amend the Bureau of Industry and Security's (BIS) Industrial Base Surveys--Data Collections regulations by establishing reporting requirements for the development of advanced artificial intelligence (AI) models and computing clusters under the Executive order of October 30, 2023, \"Safe, Secure, and Trustworthy Development and Use of Artificial Intelligence.\"",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "ai-governance"
+      ],
+      "technology": [
+        "ai-machine-learning",
+        "cloud"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

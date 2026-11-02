@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32024R1183",
+  "title": "RÈGLEMENT (UE) 2024/1183 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 11 avril 2024 modifiant le règlement (UE) n o 910/2014 en ce qui concerne l’établissement du cadre européen relatif à une identité numérique",
+  "language": "fr",
+  "published_at": "2024-04-30T00:00:00Z",
+  "text": "Article premier\nModifications du règlement (UE) n o 910/2014\nLe règlement (UE) n o 910/2014 est modifié comme suit:\n1)\nL’article 1 er est remplacé par le texte suivant:\n«Article premier\nObjet\nLe présent règlement vise à assurer le bon fonctionnement du marché intérieur et à offrir un niveau adéquat de sécurité des moyens d’identification électronique et des services de confiance utilisés dans l’ensemble de l’Union, afin de permettre et de faciliter l’exercice, par les personnes physiques et morales, du droit de participer à la société numérique en toute sécurité et d’accéder aux services publics et privés en ligne dans toute l’Union. Pour ce faire, le présent règlement:\na)\nfixe les conditions dans lesquelles les États membres reconnaissent les moyens d’identification électronique des personnes physiques et morales qui relèvent d’un schéma d’identification électronique notifié d’un autre État membre et fournissent et reconnaissent les portefeuilles européens d’identité numérique;\nb)\nétablit des règles applicables aux services de confiance, en particulier pour les transactions électroniques;\nc)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "digital-identity"
+      ],
+      "technology": [
+        "identity",
+        "mobile"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "public-sector"
+      ]
+    },
+    "severity": "major"
+  }
+}

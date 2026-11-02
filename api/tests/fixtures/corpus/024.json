@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/09/23/2025-18394/supply-chain-risk-management-reliability-standards-revisions-equipment-and-services-produced-or",
+  "title": "Supply Chain Risk Management Reliability Standards Revisions; Equipment and Services Produced or Provided by Certain Entities Identified as Risks to National Security",
+  "language": "en",
+  "published_at": "2025-09-23T00:00:00Z",
+  "text": "The Federal Energy Regulatory Commission (Commission) directs the North American Electric Reliability Corporation (NERC), the Commission-certified Electric Reliability Organization, to develop new or modified Reliability Standards that address the sufficiency of responsible entities' supply chain risk management plans related to the identification of and response to supply chain risks. Further, the Commission directs NERC to develop modifications related to supply chain protections for protected cyber assets. This final action also terminates a related notice of inquiry.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "energy"
+      ],
+      "regulation_type": [
+        "standard"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

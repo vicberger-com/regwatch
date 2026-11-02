@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32022R0030",
+  "title": "RÈGLEMENT DÉLÉGUÉ (UE) 2022/30 DE LA COMMISSION du 29 octobre 2021 complétant la directive 2014/53/UE du Parlement européen et du Conseil en ce qui concerne l’application des exigences essentielles visées à l’article 3, paragraphe 3, points d), e) et f), de cette directive (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2022-01-12T00:00:00Z",
+  "text": "Article premier\n1. L’exigence essentielle énoncée à l’article 3, paragraphe 3, point d), de la directive 2014/53/UE s’applique à tout équipement radioélectrique capable de communiquer par lui-même sur l’internet, qu’il communique directement ou par l’intermédiaire d’un autre équipement («équipement radioélectrique connecté à l’internet»).\n2. L’exigence essentielle énoncée à l’article 3, paragraphe 3, point e), de la directive 2014/53/UE s’applique à chacun des équipements radioélectriques suivants si l’équipement radioélectrique en question est capable de procéder au traitement, au sens de l’article 4, point 2, du règlement (UE) 2016/679, des données à caractère personnel, telles que définies à l’article 4, point 1, dudit règlement, ou des données relatives au trafic et des données de localisation, telles que définies à l’article 2, points b) et c), de la directive 2002/58/CE:\na)\néquipements radioélectriques connectés à l’internet, autres que les équipements visés aux points b), c) ou d);\nb)\néquipements radioélectriques conçus pour la garde d’enfants ou destinés exclusivement à celle-ci;\nc)\néquipements radioélectriques couverts par la directive 2009/48/CE;\nd)\néquipements radioélectriques conçus pour ou destinés, exclusivement ou non, à être portés sur:\ni)\ntoute partie du corps, y compris la tête, le cou, le torse, les bras, les mains, les jambes et les pieds;\nii)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "privacy"
+      ],
+      "technology": [
+        "iot",
+        "mobile",
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

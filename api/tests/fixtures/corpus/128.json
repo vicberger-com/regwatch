@@ -1,0 +1,30 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32022L2555",
+  "title": "DIRETIVA (UE) 2022/2555 DO PARLAMENTO EUROPEU E DO CONSELHO de 14 de dezembro de 2022 relativa a medidas destinadas a garantir um elevado nível comum de cibersegurança na União que altera o Regulamento (UE) n. o 910/2014 e a Diretiva (UE) 2018/1972 e revoga a Diretiva (UE) 2016/1148 (Diretiva SRI 2) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Artigo 23. o\nObrigações de notificação\n1. Os Estados-Membros devem assegurar que as entidades essenciais e importantes notificam a sua CSIRT ou, se aplicável, a sua autoridade competente, sem demora injustificada e nos termos do n. o 4, de qualquer incidente que tenha um impacto significativo na prestação dos seus serviços, tal como referido no n. o 3 (incidente significativo). Se for caso disso, as entidades em causa devem notificar os destinatários dos seus serviços, sem demora injustificada, de incidentes significativos suscetíveis de afetar negativamente a prestação desses serviços. Compete a cada Estado-Membro garantir que as referidas entidades comunicam, nomeadamente, quaisquer informações que permitam à CSIRT ou, se aplicável, à autoridade competente determinar o eventual impacto transfronteiriço do incidente. A mera notificação não sujeita a entidade notificadora a responsabilidades acrescidas.\nSempre que as entidades em causa notifiquem a autoridade competente de um incidente significativo nos termos do primeiro parágrafo, o Estado-Membro vela por que essa autoridade competente transmita a notificação à CSIRT após a sua receção.\nEm caso de incidente transfronteiriço ou intersetorial significativo, os Estados-Membros devem assegurar que os seus pontos de contacto únicos recebam em tempo útil as informações pertinentes notificadas em conformidade com o n. o 4.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "incident-reporting",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "directive"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

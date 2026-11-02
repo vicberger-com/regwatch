@@ -1,0 +1,552 @@
+{
+ "_comment": "Interim snapshot of the #28 seed files (branch feat/M0-seed at 94f7dc4: api/seed/taxonomy.yaml, control_framework.yaml, jurisdictions.yaml), keys and labels only, for corpus validation before #28 merges. Facets from docs/04-data-model.md 4.5 and BL-21. When api/seed/ is on main, tests/unit/test_fixture_corpus.py checks this file against it; regenerate with: python -m tests.fixtures.validate_corpus --snapshot-seed",
+ "jurisdictions": [
+  "AD",
+  "AE",
+  "AF",
+  "AG",
+  "AI",
+  "AL",
+  "AM",
+  "AO",
+  "AQ",
+  "AR",
+  "AS",
+  "AT",
+  "AU",
+  "AW",
+  "AX",
+  "AZ",
+  "BA",
+  "BB",
+  "BD",
+  "BE",
+  "BF",
+  "BG",
+  "BH",
+  "BI",
+  "BJ",
+  "BL",
+  "BM",
+  "BN",
+  "BO",
+  "BQ",
+  "BR",
+  "BS",
+  "BT",
+  "BV",
+  "BW",
+  "BY",
+  "BZ",
+  "CA",
+  "CC",
+  "CD",
+  "CF",
+  "CG",
+  "CH",
+  "CI",
+  "CK",
+  "CL",
+  "CM",
+  "CN",
+  "CO",
+  "COE",
+  "CR",
+  "CU",
+  "CV",
+  "CW",
+  "CX",
+  "CY",
+  "CZ",
+  "DE",
+  "DJ",
+  "DK",
+  "DM",
+  "DO",
+  "DZ",
+  "EC",
+  "EE",
+  "EG",
+  "EH",
+  "ER",
+  "ES",
+  "ET",
+  "EU",
+  "FI",
+  "FJ",
+  "FK",
+  "FM",
+  "FO",
+  "FR",
+  "GA",
+  "GB",
+  "GD",
+  "GE",
+  "GF",
+  "GG",
+  "GH",
+  "GI",
+  "GL",
+  "GM",
+  "GN",
+  "GP",
+  "GQ",
+  "GR",
+  "GS",
+  "GT",
+  "GU",
+  "GW",
+  "GY",
+  "HK",
+  "HM",
+  "HN",
+  "HR",
+  "HT",
+  "HU",
+  "ID",
+  "IE",
+  "IL",
+  "IM",
+  "IN",
+  "INTL",
+  "IO",
+  "IQ",
+  "IR",
+  "IS",
+  "IT",
+  "JE",
+  "JM",
+  "JO",
+  "JP",
+  "KE",
+  "KG",
+  "KH",
+  "KI",
+  "KM",
+  "KN",
+  "KP",
+  "KR",
+  "KW",
+  "KY",
+  "KZ",
+  "LA",
+  "LB",
+  "LC",
+  "LI",
+  "LK",
+  "LR",
+  "LS",
+  "LT",
+  "LU",
+  "LV",
+  "LY",
+  "MA",
+  "MC",
+  "MD",
+  "ME",
+  "MF",
+  "MG",
+  "MH",
+  "MK",
+  "ML",
+  "MM",
+  "MN",
+  "MO",
+  "MP",
+  "MQ",
+  "MR",
+  "MS",
+  "MT",
+  "MU",
+  "MV",
+  "MW",
+  "MX",
+  "MY",
+  "MZ",
+  "NA",
+  "NC",
+  "NE",
+  "NF",
+  "NG",
+  "NI",
+  "NL",
+  "NO",
+  "NP",
+  "NR",
+  "NU",
+  "NZ",
+  "OECD",
+  "OM",
+  "PA",
+  "PE",
+  "PF",
+  "PG",
+  "PH",
+  "PK",
+  "PL",
+  "PM",
+  "PN",
+  "PR",
+  "PS",
+  "PT",
+  "PW",
+  "PY",
+  "QA",
+  "RE",
+  "RO",
+  "RS",
+  "RU",
+  "RW",
+  "SA",
+  "SB",
+  "SC",
+  "SD",
+  "SE",
+  "SG",
+  "SH",
+  "SI",
+  "SJ",
+  "SK",
+  "SL",
+  "SM",
+  "SN",
+  "SO",
+  "SR",
+  "SS",
+  "ST",
+  "SV",
+  "SX",
+  "SY",
+  "SZ",
+  "TC",
+  "TD",
+  "TF",
+  "TG",
+  "TH",
+  "TJ",
+  "TK",
+  "TL",
+  "TM",
+  "TN",
+  "TO",
+  "TR",
+  "TT",
+  "TV",
+  "TW",
+  "TZ",
+  "UA",
+  "UG",
+  "UM",
+  "UN",
+  "US",
+  "UY",
+  "UZ",
+  "VA",
+  "VC",
+  "VE",
+  "VG",
+  "VI",
+  "VN",
+  "VU",
+  "WF",
+  "WS",
+  "XK",
+  "YE",
+  "YT",
+  "ZA",
+  "ZM",
+  "ZW"
+ ],
+ "facets": {
+  "topic": [
+   {
+    "key": "cybersecurity",
+    "label": "Cybersecurity"
+   },
+   {
+    "key": "data-protection",
+    "label": "Data protection"
+   },
+   {
+    "key": "privacy",
+    "label": "Privacy"
+   },
+   {
+    "key": "critical-infrastructure",
+    "label": "Critical infrastructure"
+   },
+   {
+    "key": "incident-reporting",
+    "label": "Incident reporting"
+   },
+   {
+    "key": "ai-governance",
+    "label": "AI governance"
+   },
+   {
+    "key": "digital-identity",
+    "label": "Digital identity"
+   },
+   {
+    "key": "telecoms-security",
+    "label": "Telecoms security"
+   },
+   {
+    "key": "product-security",
+    "label": "Product security"
+   },
+   {
+    "key": "cloud-outsourcing",
+    "label": "Cloud and outsourcing"
+   },
+   {
+    "key": "cross-border-transfer",
+    "label": "Cross-border transfer"
+   },
+   {
+    "key": "supply-chain-security",
+    "label": "Supply chain security"
+   },
+   {
+    "key": "encryption",
+    "label": "Encryption"
+   },
+   {
+    "key": "consumer-protection",
+    "label": "Consumer protection"
+   }
+  ],
+  "industry": [
+   {
+    "key": "finance",
+    "label": "Finance"
+   },
+   {
+    "key": "health",
+    "label": "Health"
+   },
+   {
+    "key": "energy",
+    "label": "Energy"
+   },
+   {
+    "key": "telecoms",
+    "label": "Telecoms"
+   },
+   {
+    "key": "public-sector",
+    "label": "Public sector"
+   },
+   {
+    "key": "defence",
+    "label": "Defence"
+   },
+   {
+    "key": "transport",
+    "label": "Transport"
+   },
+   {
+    "key": "retail",
+    "label": "Retail"
+   },
+   {
+    "key": "technology",
+    "label": "Technology"
+   },
+   {
+    "key": "all",
+    "label": "All industries"
+   }
+  ],
+  "technology": [
+   {
+    "key": "cloud",
+    "label": "Cloud"
+   },
+   {
+    "key": "ai-machine-learning",
+    "label": "AI and machine learning"
+   },
+   {
+    "key": "iot",
+    "label": "IoT"
+   },
+   {
+    "key": "cryptography",
+    "label": "Cryptography"
+   },
+   {
+    "key": "identity",
+    "label": "Identity"
+   },
+   {
+    "key": "networks",
+    "label": "Networks"
+   },
+   {
+    "key": "software-supply-chain",
+    "label": "Software supply chain"
+   },
+   {
+    "key": "mobile",
+    "label": "Mobile"
+   },
+   {
+    "key": "operational-technology",
+    "label": "Operational technology"
+   }
+  ],
+  "regulation_type": [
+   {
+    "key": "act",
+    "label": "Act"
+   },
+   {
+    "key": "regulation",
+    "label": "Regulation"
+   },
+   {
+    "key": "directive",
+    "label": "Directive"
+   },
+   {
+    "key": "bill",
+    "label": "Bill"
+   },
+   {
+    "key": "guidance",
+    "label": "Guidance"
+   },
+   {
+    "key": "standard",
+    "label": "Standard"
+   },
+   {
+    "key": "decision",
+    "label": "Decision"
+   },
+   {
+    "key": "enforcement_action",
+    "label": "Enforcement action"
+   },
+   {
+    "key": "consultation",
+    "label": "Consultation"
+   }
+  ],
+  "control_framework": [
+   {
+    "key": "gv",
+    "label": "GV Govern"
+   },
+   {
+    "key": "gv-oc",
+    "label": "GV.OC Organizational Context"
+   },
+   {
+    "key": "gv-ov",
+    "label": "GV.OV Oversight"
+   },
+   {
+    "key": "gv-po",
+    "label": "GV.PO Policy"
+   },
+   {
+    "key": "gv-rm",
+    "label": "GV.RM Risk Management Strategy"
+   },
+   {
+    "key": "gv-rr",
+    "label": "GV.RR Roles, Responsibilities, and Authorities"
+   },
+   {
+    "key": "gv-sc",
+    "label": "GV.SC Cybersecurity Supply Chain Risk Management"
+   },
+   {
+    "key": "id",
+    "label": "ID Identify"
+   },
+   {
+    "key": "id-am",
+    "label": "ID.AM Asset Management"
+   },
+   {
+    "key": "id-im",
+    "label": "ID.IM Improvement"
+   },
+   {
+    "key": "id-ra",
+    "label": "ID.RA Risk Assessment"
+   },
+   {
+    "key": "pr",
+    "label": "PR Protect"
+   },
+   {
+    "key": "pr-aa",
+    "label": "PR.AA Identity Management, Authentication, and Access Control"
+   },
+   {
+    "key": "pr-at",
+    "label": "PR.AT Awareness and Training"
+   },
+   {
+    "key": "pr-ds",
+    "label": "PR.DS Data Security"
+   },
+   {
+    "key": "pr-ir",
+    "label": "PR.IR Technology Infrastructure Resilience"
+   },
+   {
+    "key": "pr-ps",
+    "label": "PR.PS Platform Security"
+   },
+   {
+    "key": "de",
+    "label": "DE Detect"
+   },
+   {
+    "key": "de-ae",
+    "label": "DE.AE Adverse Event Analysis"
+   },
+   {
+    "key": "de-cm",
+    "label": "DE.CM Continuous Monitoring"
+   },
+   {
+    "key": "rs",
+    "label": "RS Respond"
+   },
+   {
+    "key": "rs-an",
+    "label": "RS.AN Incident Analysis"
+   },
+   {
+    "key": "rs-co",
+    "label": "RS.CO Incident Response Reporting and Communication"
+   },
+   {
+    "key": "rs-ma",
+    "label": "RS.MA Incident Management"
+   },
+   {
+    "key": "rs-mi",
+    "label": "RS.MI Incident Mitigation"
+   },
+   {
+    "key": "rc",
+    "label": "RC Recover"
+   },
+   {
+    "key": "rc-co",
+    "label": "RC.CO Incident Recovery Communication"
+   },
+   {
+    "key": "rc-rp",
+    "label": "RC.RP Incident Recovery Plan Execution"
+   }
+  ]
+ }
+}

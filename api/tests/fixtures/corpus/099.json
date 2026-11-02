@@ -1,0 +1,32 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32024R2690",
+  "title": "RÈGLEMENT D’EXÉCUTION (UE) 2024/2690 DE LA COMMISSION du 17 octobre 2024 établissant des règles relatives à l’application de la directive (UE) 2022/2555 pour ce qui est des exigences techniques et méthodologiques liées aux mesures de gestion des risques en matière de cybersécurité et précisant plus en détail les cas dans lesquels un incident est considéré comme important, en ce qui concerne les fournisseurs de services DNS, les registres des noms de domaine de premier niveau, les fournisseurs de services d’informatique en nuage, les fournisseurs de services de centres de données, les fournisseurs de réseaux de diffusion de contenu, les fournisseurs de services gérés, les fournisseurs de services de sécurité gérés, ainsi que les fournisseurs de places de marché en ligne, de moteurs de recherche en ligne et de plateformes de services de réseaux sociaux, et les prestataires de services de confiance (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2024-10-18T00:00:00Z",
+  "text": "Article 3\nIncidents importants\n1. Un incident est considéré comme important au sens de l’article 23, paragraphe 3, de la directive (UE) 2022/2555 eu égard aux entités concernées lorsqu’un ou plusieurs des critères suivants sont remplis:\na)\nl’incident a causé ou est susceptible de causer à l’entité concernée une perte financière directe supérieure à 500 000 EUR ou à 5 % du chiffre d’affaires annuel total de l’entité concernée au cours de l’exercice complet précédent, le montant le plus faible étant retenu;\nb)\nl’incident a causé ou est susceptible de provoquer l’exfiltration de secrets d’affaires de l’entité concernée, au sens de l’article 2, point 1), de la directive (UE) 2016/943;\nc)\nl’incident a causé ou est susceptible de causer la mort d’une personne physique;\nd)\nl’incident a causé ou est susceptible de causer des dommages considérables à la santé d’une personne physique;\ne)\nil y a eu un accès non autorisé effectif au réseau et aux systèmes d’information d’une entité concernée, qui est suspecté d’être malveillant et est susceptible de causer une perturbation opérationnelle grave;\nf)\nl’incident répond aux critères énoncés à l’article 4;\ng)\nl’incident répond à un ou plusieurs des critères énoncés aux articles 5 à 14.\n2. Les interruptions de service programmées et les conséquences prévues des opérations de maintenance programmées effectuées par les entités concernées ou pour leur compte ne sont pas considérées comme des incidents importants.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "cloud"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "notable"
+  }
+}

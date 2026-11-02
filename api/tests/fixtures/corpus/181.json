@@ -1,0 +1,23 @@
+{
+  "url": "https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=A0030297&flno=33",
+  "title": "資通安全管理法",
+  "language": "zh",
+  "published_at": "2025-09-24T00:00:00Z",
+  "text": "第 33 條\n本法所定資通安全事件，涉及個人資料外洩時，公務機關及特定非公務機關應另依個人資料保護法及其相關法令規定辦理。",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "TW"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "data-protection"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

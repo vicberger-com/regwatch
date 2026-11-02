@@ -1,0 +1,30 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/09/16/2025-17899/resilient-networks-concerning-disruptions-to-communications",
+  "title": "Resilient Networks; Concerning Disruptions to Communications",
+  "language": "en",
+  "published_at": "2025-09-16T00:00:00Z",
+  "text": "In this document, the Federal Communications Commission (Commission) adopts an Order on Reconsideration (Order) which grants in part, the Alliance for Telecommunications Industry Solutions' (ATIS's) petition for reconsideration of the Second Report and Order & Further Notice Proposed Rulemaking (FNPRM)--in which the Commission adopted certain rules governing Disaster Information Reporting System (DIRS) activations--to clarify what the Commission expects from providers during DIRS activations. Specifically, the Order clarifies the scope of the suspension of Network Outage Reporting System (NORS) reporting obligations during DIRS activations, thereby reducing filing burdens. The Commission otherwise denies ATIS's petition.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "telecoms-security",
+        "critical-infrastructure",
+        "incident-reporting"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "technology": [
+        "networks"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

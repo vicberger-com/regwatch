@@ -1,0 +1,29 @@
+{
+  "url": "https://www.legislation.gov.au/C2024A00098/latest/text#s27",
+  "title": "Cyber Security Act 2024",
+  "language": "en",
+  "published_at": "2024-11-29T00:00:00Z",
+  "text": "27 Obligation to report following a ransomware payment\n(1) The reporting business entity must give the designated Commonwealth body a report (a ransomware payment report ) that complies with the requirements of this section within 72 hours of making the ransomware payment or becoming aware that the ransomware payment has been made (whichever is applicable). Note: For the definition of designated Commonwealth body : see section 8.\n(2) The ransomware payment report must contain information relating to the following, in accordance with any requirements prescribed by the rules, that, at the time of making the report, the reporting business entity knows or is able, by reasonable search or enquiry, to find out:\n(a) if the reporting business entity made the payment—the reporting business entity’s contact and business details;\n(b) if another entity made the payment—that entity’s contact and business details;\n(c) the cyber security incident, including its impact on the reporting business entity;\n(d) the demand made by the extorting entity;\n(e) the ransomware payment;\n(f) communications with the extorting entity relating to the incident, the demand and the payment.\n(3) The reporting business entity may include other information relating to the cyber security incident in the ransomware payment report.\n(4) The ransomware payment report must be given:\n(a) in the form approved by the Secretary (if any); and\n(b) in the manner (if any) prescribed by the rules.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "AU"
+    ],
+    "terms": {
+      "topic": [
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

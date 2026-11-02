@@ -1,0 +1,3 @@
+# regwatch test fixture (issue #12): allows every path for every agent.
+User-agent: *
+Allow: /

@@ -1,0 +1,30 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32019R0881",
+  "title": "REGULAMENTO (UE) 2019/881 DO PARLAMENTO EUROPEU E DO CONSELHO de 17 de abril de 2019 relativo à ENISA (Agência da União Europeia para a Cibersegurança) e à certificação da cibersegurança das tecnologias da informação e comunicação e que revoga o Regulamento (UE) n. o 526/2013 (Regulamento Cibersegurança) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2019-06-07T00:00:00Z",
+  "text": "Artigo 46. o\nEnquadramento europeu para a certificação da cibersegurança\n1. É criado o enquadramento europeu para a certificação da cibersegurança a fim de melhorar as condições de funcionamento do mercado interno elevando o nível de cibersegurança na União e permitindo a adoção de uma abordagem harmonizada a nível da União relativamente aos sistemas europeus de certificação da cibersegurança, tendo em vista criar um mercado único digital de produtos, serviços e processos de TIC.\n2. O enquadramento europeu para a certificação da cibersegurança prevê um mecanismo destinado a criar sistemas europeus de certificação da cibersegurança e a atestar que os produtos, serviços e processos de TIC que tenham sido avaliados de acordo com esses sistemas cumprem os requisitos de segurança especificados, para efeitos da proteção da disponibilidade, autenticidade, integridade ou confidencialidade dos dados armazenados, transmitidos ou tratados, ou as funções ou serviços oferecidos por esses produtos, serviços e processos ou acessíveis por seu intermédio ao longo do respetivo ciclo de vida.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "product-security"
+      ],
+      "technology": [
+        "cloud",
+        "iot"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "industry": [
+        "technology"
+      ]
+    },
+    "severity": "major"
+  }
+}

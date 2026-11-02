@@ -1,0 +1,30 @@
+{
+  "url": "https://www.gesetze-im-internet.de/bsig_2025/__30.html",
+  "title": "Gesetz über das Bundesamt für Sicherheit in der Informationstechnik und über die Sicherheit in der Informationstechnik von Einrichtungen (BSI-Gesetz - BSIG) – § 30 Risikomanagementmaßnahmen besonders wichtiger Einrichtungen und wichtiger Einrichtungen",
+  "language": "de",
+  "published_at": "2025-12-05T00:00:00Z",
+  "text": "§ 30 Risikomanagementmaßnahmen besonders wichtiger Einrichtungen und wichtiger Einrichtungen\n(1) Besonders wichtige Einrichtungen und wichtige Einrichtungen sind verpflichtet, geeignete, verhältnismäßige und wirksame technische und organisatorische Maßnahmen, die in Absatz 2 konkretisiert werden, zu ergreifen, um Störungen der Verfügbarkeit, Integrität und Vertraulichkeit der informationstechnischen Systeme, Komponenten und Prozesse, die sie für die Erbringung ihrer Dienste nutzen, zu vermeiden und Auswirkungen von Sicherheitsvorfällen möglichst gering zu halten. Bei der Bewertung der Verhältnismäßigkeit der Maßnahmen nach Satz 1 sind das Ausmaß der Risikoexposition, die Größe der Einrichtung, die Umsetzungskosten und die Eintrittswahrscheinlichkeit und Schwere von Sicherheitsvorfällen sowie ihre gesellschaftlichen und wirtschaftlichen Auswirkungen zu berücksichtigen. Die Einhaltung der Verpflichtung nach Satz 1 ist durch die Einrichtungen zu dokumentieren.",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "DE"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "supply-chain-security"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "act"
+      ],
+      "control_framework": [
+        "gv-sc",
+        "gv-rm"
+      ]
+    },
+    "severity": "major"
+  }
+}

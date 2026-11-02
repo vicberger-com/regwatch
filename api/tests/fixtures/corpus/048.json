@@ -1,0 +1,22 @@
+{
+  "url": "https://laws-lois.justice.gc.ca/eng/acts/C-46/section-342.1.html",
+  "title": "Criminal Code",
+  "language": "en",
+  "published_at": "2026-07-18T00:00:00Z",
+  "text": "Unauthorized use of computer\n342.1 (1) Everyone is guilty of an indictable offence and liable to imprisonment for a term of not more than 10 years, or is guilty of an offence punishable on summary conviction who, fraudulently and without colour of right,\n(a) obtains, directly or indirectly, any computer service;\n(b) by means of an electro-magnetic, acoustic, mechanical or other device, intercepts or causes to be intercepted, directly or indirectly, any function of a computer system;\n(c) uses or causes to be used, directly or indirectly, a computer system with intent to commit an offence under paragraph (a) or (b) or under section 430 in relation to computer data or a computer system; or\n(d) uses, possesses, traffics in or permits another person to have access to a computer password that would enable a person to commit an offence under paragraph (a), (b) or (c).\nDefinitions\n(2) In this section,\ncomputer data means representations, including signs, signals or symbols, that are in a form suitable for processing in a computer system;  (données informatiques)\ncomputer password means any computer data by which a computer service or computer system is capable of being obtained or used; (mot de passe)\ncomputer program means computer data representing instructions or statements that, when executed in a computer system, causes the computer system to perform a function; (programme d’ordinateur)",
+  "source_kind": "web_page",
+  "expected": {
+    "jurisdictions": [
+      "CA"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity"
+      ],
+      "regulation_type": [
+        "act"
+      ]
+    },
+    "severity": "notable"
+  }
+}

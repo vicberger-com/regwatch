@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/05/15/2026-09822/promoting-the-integrity-and-security-of-telecommunications-certification-bodies-measurement",
+  "title": "Promoting the Integrity and Security of Telecommunications Certification Bodies, Measurement Facilities, and the Equipment Authorization Program",
+  "language": "en",
+  "published_at": "2026-05-15T00:00:00Z",
+  "text": "In this document, the Federal Communications Commission (Commission or FCC) adopts measures to strengthen national security and encourage reciprocity in testing and certification. The FCC creates a fast-track priority review process for devices subject to Pre-Approval Guidance (PAG) for applications tested in Trusted Test Labs. Also, updates post-market surveillance and enforcement procedures, and establishes confidential reporting channels for industry participants to raise concerns about violations or national security threats. Lastly, directs development of a consolidated list of prohibited entities to streamline applicant screening and aligns ownership reporting timelines for publicly traded companies with U.S. Securities and Exchange Commission requirements.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "telecoms-security"
+      ],
+      "industry": [
+        "telecoms"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

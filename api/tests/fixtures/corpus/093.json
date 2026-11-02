@@ -1,0 +1,27 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32022L2557",
+  "title": "DIRECTIVE (UE) 2022/2557 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 14 décembre 2022 sur la résilience des entités critiques, et abrogeant la directive 2008/114/CE du Conseil (Texte présentant de l’intérêt pour l’EEE)",
+  "language": "fr",
+  "published_at": "2022-12-27T00:00:00Z",
+  "text": "Article premier\nObjet et champ d’application\n1. La présente directive:\na)\nimpose aux États membres l’obligation d’adopter des mesures spécifiques visant à garantir que les services qui sont essentiels au maintien de fonctions sociétales ou d’activités économiques vitales, dans le champ d’application de l’article 114 du traité sur le fonctionnement de l’Union européenne, soient fournis sans entrave dans le marché intérieur, en particulier l’obligation de recenser les entités critiques et l’obligation d’ aider les entités critiques à s’acquitter des obligations qui leur incombent;\nb)\nimpose aux entités critiques des obligations visant à renforcer leur résilience et leur capacité à fournir les services visés au point a) dans le marché intérieur;\nc)\nétablit des règles relatives:\ni)\nà la supervision des entités critiques;\nii)\nà l’exécution des règles;\niii)\nau recensement des entités critiques d’importance européenne particulière, ainsi qu’aux missions de conseil pour évaluer les mesures que ces entités ont mises en place pour satisfaire aux obligations qui leur incombent en vertu du chapitre III;\nd)\nétablit des procédures communes en matière de coopération et d’établissement de rapports sur l’application de la présente directive;\ne)\nprévoit des mesures visant à atteindre un niveau élevé de résilience des entités critiques afin de garantir la fourniture de services essentiels dans l’Union et d’améliorer le fonctionnement du marché intérieur.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "energy",
+        "transport",
+        "health"
+      ],
+      "regulation_type": [
+        "directive"
+      ]
+    },
+    "severity": "major"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2023/03/21/2023-05766/cybersecurity-risk-management-for-investment-advisers-registered-investment-companies-and-business",
+  "title": "Cybersecurity Risk Management for Investment Advisers, Registered Investment Companies, and Business Development Companies; Reopening of Comment Period",
+  "language": "en",
+  "published_at": "2023-03-21T00:00:00Z",
+  "text": "The Securities and Exchange Commission (\"Commission\") is reopening the comment period for a release (\"Investment Management Cybersecurity Release\") proposing new rules under the Investment Advisers Act of 1940 (\"Advisers Act\") and the Investment Company Act of 1940 (\"Investment Company Act\") that would require registered investment advisers (\"advisers\") and investment companies (\"funds\") to adopt and implement written cybersecurity policies and procedures reasonably designed to address cybersecurity risks, disclose information about cybersecurity risks and incidents, report information confidentially to the Commission about certain cybersecurity incidents, and maintain related records. Reopening the comment period for the Investment Management Cybersecurity Release will allow interested persons additional time to analyze the issues and prepare their comments in light of other regulatory developments on cybersecurity.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "cybersecurity",
+        "incident-reporting"
+      ],
+      "industry": [
+        "finance"
+      ],
+      "regulation_type": [
+        "consultation"
+      ]
+    },
+    "severity": "notable"
+  }
+}

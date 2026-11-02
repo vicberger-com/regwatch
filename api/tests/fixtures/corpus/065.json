@@ -1,0 +1,31 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32024R2847",
+  "title": "VERORDNUNG (EU) 2024/2847 DES EUROPÄISCHEN PARLAMENTS UND DES RATES vom 23. Oktober 2024 über horizontale Cybersicherheitsanforderungen für Produkte mit digitalen Elementen und zur Änderung der Verordnungen (EU) Nr. 168/2013 und (EU) 2019/1020 und der Richtlinie (EU) 2020/1828 (Cyberresilienz-Verordnung) (Text von Bedeutung für den EWR)",
+  "language": "de",
+  "published_at": "2024-11-20T00:00:00Z",
+  "text": "Artikel 14\nMeldepflichten der Hersteller\n(1) Ein Hersteller meldet jede aktiv ausgenutzte Schwachstelle, die in dem Produkt mit digitalen Elementen enthalten ist und von der er Kenntnis erlangt, gleichzeitig dem gemäß Absatz 7 als Koordinator benannten CSIRT und der ENISA. Der Hersteller meldet diese aktiv ausgenutzte Schwachstelle über die gemäß Artikel 16 eingerichtete einheitliche Meldeplattform.\n(2) Für die Zwecke der Mitteilung gemäß Absatz 1 legt der Hersteller Folgendes vor:\na)\nunverzüglich, in jedem Fall aber innerhalb von 24 Stunden, nachdem der Hersteller davon Kenntnis erlangt hat, eine Frühwarnung über eine aktiv ausgenutzte Schwachstelle unter Angabe der Mitgliedstaaten, in deren Hoheitsgebiet das Produkt mit digitalen Elementen des Herstellers seiner Kenntnis nach bereitgestellt wurde;\nb)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "incident-reporting",
+        "cybersecurity"
+      ],
+      "technology": [
+        "iot",
+        "software-supply-chain"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "rs-co"
+      ]
+    },
+    "severity": "major"
+  }
+}

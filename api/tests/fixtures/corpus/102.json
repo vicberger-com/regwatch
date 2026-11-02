@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32019R0452",
+  "title": "RÈGLEMENT (UE) 2019/452 DU PARLEMENT EUROPÉEN ET DU CONSEIL du 19 mars 2019 établissant un cadre pour le filtrage des investissements directs étrangers dans l'Union",
+  "language": "fr",
+  "published_at": "2019-03-21T00:00:00Z",
+  "text": "Article 4\nFacteurs susceptibles d'être pris en considération par les États membres ou la Commission\n1. Pour déterminer si un investissement direct étranger est susceptible de porter atteinte à la sécurité ou à l'ordre public, les États membres et la Commission peuvent prendre en considération ses effets potentiels, entre autres, sur:\na)\nles infrastructures critiques, qu'elles soient physiques ou virtuelles, y compris les infrastructures concernant l'énergie, les transports, l'eau, la santé, les communications, les médias, le traitement ou le stockage de données, l'aérospatiale, la défense, les infrastructures électorales ou financières et les installations sensibles ainsi que les terrains et les biens immobiliers essentiels pour l'utilisation desdites infrastructures;\nb)\nles technologies critiques et les biens à double usage au sens de l'article 2, point 1), du règlement (CE) n o 428/2009 du Conseil ( 15 ) , y compris les technologies concernant l'intelligence artificielle, la robotique, les semi-conducteurs, la cybersécurité, l'aérospatiale, la défense, le stockage de l'énergie, les technologies quantiques et nucléaires, ainsi que les nanotechnologies et les biotechnologies;\nc)\nl'approvisionnement en intrants essentiels, y compris l'énergie ou les matières premières, ainsi que la sécurité alimentaire;\nd)\nl'accès à des informations sensibles, y compris des données à caractère personnel, ou la capacité de contrôler de telles informations; ou\ne)",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security",
+        "critical-infrastructure"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "notable"
+  }
+}

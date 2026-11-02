@@ -1,0 +1,26 @@
+{
+  "url": "https://www.federalregister.gov/documents/2026/07/07/2026-13628/policy-statement-concerning-the-suppression-of-accuracy-in-artificial-intelligence-systems",
+  "title": "Policy Statement Concerning the Suppression of Accuracy in Artificial Intelligence Systems",
+  "language": "en",
+  "published_at": "2026-07-07T00:00:00Z",
+  "text": "The Federal Trade Commission (\"Commission\") is proposing a policy statement regarding the application of the prohibition on deceptive acts or practices in section 5 of the Federal Trade Commission Act to companies that market artificial intelligence (\"AI\") systems.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "ai-governance",
+        "consumer-protection"
+      ],
+      "technology": [
+        "ai-machine-learning"
+      ],
+      "regulation_type": [
+        "guidance"
+      ]
+    },
+    "severity": "notable"
+  }
+}

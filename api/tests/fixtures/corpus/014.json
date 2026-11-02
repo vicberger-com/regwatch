@@ -1,0 +1,29 @@
+{
+  "url": "https://www.federalregister.gov/documents/2025/06/27/2025-11669/cybersecurity-in-medical-devices-quality-system-considerations-and-content-of-premarket-submissions",
+  "title": "Cybersecurity in Medical Devices: Quality System Considerations and Content of Premarket Submissions; Guidance for Industry and Food and Drug Administration Staff; Availability",
+  "language": "en",
+  "published_at": "2025-06-27T00:00:00Z",
+  "text": "The Food and Drug Administration (FDA or Agency) is announcing the availability of a final guidance entitled \"Cybersecurity in Medical Devices: Quality System Considerations and Content of Premarket Submissions.\" This guidance updates the previous version of the guidance, of the same title, issued on September 27, 2023, and finalizes the draft guidance entitled \"Select Updates for the Premarket Cybersecurity Guidance: Section 524B of the FD&C Act\" issued on March 13, 2024. This guidance provides FDA's recommendations to industry regarding cybersecurity device design, labeling, and the documentation that FDA recommends be included in premarket submissions for devices with cybersecurity risk. Additionally, this guidance has been updated to identify the information FDA generally considers to be necessary for cyber devices to support obligations under the new amendments to the Federal Food, Drug, and Cosmetic Act (FD&C Act) for ensuring cybersecurity of devices.",
+  "source_kind": "api_feed",
+  "expected": {
+    "jurisdictions": [
+      "US"
+    ],
+    "terms": {
+      "topic": [
+        "product-security",
+        "cybersecurity"
+      ],
+      "industry": [
+        "health"
+      ],
+      "technology": [
+        "iot"
+      ],
+      "regulation_type": [
+        "guidance"
+      ]
+    },
+    "severity": "notable"
+  }
+}

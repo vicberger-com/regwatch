@@ -1,0 +1,29 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32024R1689",
+  "title": "REGULAMENTO (UE) 2024/1689 DO PARLAMENTO EUROPEU E DO CONSELHO de 13 de junho de 2024 que cria regras harmonizadas em matéria de inteligência artificial e que altera os Regulamentos (CE) n. o 300/2008, (UE) n. o 167/2013, (UE) n. o 168/2013, (UE) 2018/858, (UE) 2018/1139 e (UE) 2019/2144 e as Diretivas 2014/90/UE, (UE) 2016/797 e (UE) 2020/1828 (Regulamento da Inteligência Artificial) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2024-07-12T00:00:00Z",
+  "text": "Artigo 50. o\nObrigações de transparência aplicáveis aos prestadores e responsáveis pela implantação de determinados sistemas de inteligência artificial\n1. Os prestadores devem assegurar que os sistemas de IA destinados a interagir diretamente com pessoas singulares sejam concebidos e desenvolvidos de maneira que as pessoas singulares em causa sejam informadas de que estão a interagir com um sistema de IA, salvo se tal for óbvio do ponto de vista de uma pessoa singular razoavelmente informada, atenta e advertida, tendo em conta as circunstâncias e o contexto de utilização. Esta obrigação não se aplica a sistemas de IA legalmente autorizados para detetar, prevenir, investigar ou reprimir infrações penais, sob reserva de garantias adequadas dos direitos e liberdades de terceiros, salvo se esses sistemas estiverem disponíveis ao público para denunciar uma infração penal.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "ai-governance",
+        "consumer-protection"
+      ],
+      "technology": [
+        "ai-machine-learning"
+      ],
+      "industry": [
+        "all"
+      ],
+      "regulation_type": [
+        "regulation"
+      ]
+    },
+    "severity": "major"
+  }
+}

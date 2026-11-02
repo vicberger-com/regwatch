@@ -1,0 +1,28 @@
+{
+  "url": "https://eur-lex.europa.eu/legal-content/PT/TXT/?uri=CELEX:32023R1781",
+  "title": "REGULAMENTO (UE) 2023/1781 DO PARLAMENTO EUROPEU E DO CONSELHO de 13 de setembro de 2023 que estabelece um regime de medidas para reforçar o ecossistema europeu dos semicondutores e que altera o Regulamento (UE) 2021/694 (Regulamento dos Circuitos Integrados) (Texto relevante para efeitos do EEE)",
+  "language": "pt",
+  "published_at": "2023-09-18T00:00:00Z",
+  "text": "Artigo 1. o\nObjeto e objetivos gerais\n1. O presente regulamento estabelece um regime para o reforço do ecossistema dos semicondutores a nível da União, em especial por via das seguintes medidas:\na)\nCriação da Iniciativa «Circuitos Integrados para a Europa» («Iniciativa»);\nb)\nDefinição dos critérios a aplicar para reconhecer e apoiar unidades de produção integrada e fundições abertas da UE que sejam unidades pioneiras e que promovam a segurança do aprovisionamento e a resiliência do ecossistema dos semicondutores da União;\nc)\nCriação de um mecanismo de coordenação entre os Estados-Membros e a Comissão para mapear e acompanhar o setor dos semicondutores da União, bem como a prevenção das crises e a resposta às situações de escassez de semicondutores, e, se for caso disso, para consultar as partes interessadas do setor dos semicondutores.\n2. O primeiro objetivo geral do presente regulamento consiste em assegurar as condições necessárias à competitividade e à capacidade de inovação da União e o ajustamento da indústria a mudanças estruturais.\n3. O segundo objetivo geral, distinto, mas complementar do primeiro objetivo geral estabelecido no n. o 2, consiste em melhorar o funcionamento do mercado interno, estabelecendo um regime jurídico uniforme da União que permita aumentar a resiliência e a segurança do aprovisionamento da União no domínio das tecnologias de semicondutores.",
+  "source_kind": "rss",
+  "expected": {
+    "jurisdictions": [
+      "EU"
+    ],
+    "terms": {
+      "topic": [
+        "supply-chain-security"
+      ],
+      "industry": [
+        "technology"
+      ],
+      "regulation_type": [
+        "regulation"
+      ],
+      "control_framework": [
+        "gv-sc"
+      ]
+    },
+    "severity": "major"
+  }
+}
