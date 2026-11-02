@@ -50,10 +50,10 @@ openapi: ## Export the OpenAPI document and regenerate the web client
 	@echo "make openapi: lands in #30 (route stubs and generated client)"; exit 1
 
 licenses: ## License inventory and allow-list check
-	@echo "make licenses: lands in #29 (CI pipeline)"; exit 1
+	scripts/license-scan.sh
 
 security: ## Bandit, Semgrep, pip-audit, pnpm audit, gitleaks
-	@echo "make security: lands in #29 (CI pipeline)"; exit 1
+	scripts/security-scan.sh
 
 backup: ## Back up PostgreSQL and the object store
 	@echo "make backup: lands with M10 operations hardening"; exit 1
