@@ -24,6 +24,7 @@ services:
     networks: [regwatch, edge]
     depends_on:
       api: { condition: service_healthy }
+      web: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
       interval: 10s
@@ -65,6 +66,23 @@ services:
     command: ["regwatch-beat"]
     depends_on:
       api: { condition: service_healthy }
+
+  # Vite dev server with hot reload; proxy sends every non-/api path here.
+  web:
+    build:
+      context: ../web
+    image: regwatch-web:dev
+    volumes:
+      - ../web/src:/app/src:ro
+      - ../web/index.html:/app/index.html:ro
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   db:
     image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a

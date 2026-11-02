@@ -130,8 +130,22 @@ Same method as above, except that the license file was read from a shallow `git 
 | A6 | mypy | python/mypy | v2.4.1 | ad02a35e623d105ab7340f75558716bc09f8242e | LICENSE | MIT; mypyc `lib-rt` files PSF-2.0 | allowed (tooling) |
 | A7 | CPython | python/cpython | v3.12.3 | f6650f9ad73359051f3e558c2431a109bc016664 | LICENSE | PSF-2.0 | not on the allow-list; see BL-53 |
 | A8 | Docker official Python image | docker-library/python | untagged HEAD, 2026-11-02 | f4c67ece208dead594e43628d22e3c6027dd97ab | LICENSE | MIT | allowed |
+| A9 | TypeScript | microsoft/TypeScript | v5.9.3 | c63de15a992d37f0d6cec03ac7631872838602cb | LICENSE.txt | Apache-2.0 | allowed (tooling) |
+| A10 | typescript-eslint | typescript-eslint/typescript-eslint | v8.72.1 | 4ad6b7553781fa3c93fc26642d7219d2e6624504 | LICENSE | MIT | allowed (tooling) |
+| A11 | eslint-plugin-react-hooks | facebook/react | eslint-plugin-react-hooks@7.1.1 | d1727fbf987392749b374f3afe62227d2c70fc41 | LICENSE | MIT | allowed (tooling) |
+| A12 | eslint-plugin-jsx-a11y | jsx-eslint/eslint-plugin-jsx-a11y | v6.10.2 | 7f3d698f40d697471555e1dae74bfc7ee94d0b86 | LICENSE.md | MIT | allowed (tooling) |
+| A13 | Prettier | prettier/prettier | 3.9.10 | 1172b82c295c4f889fd787dc6c78c3e194ebf353 | LICENSE | MIT | allowed (tooling) |
+| A14 | pnpm | pnpm/pnpm | v9.15.9 | d22a3f65ee047ecee7c89dd6f1971ecea4ecd4d4 | LICENSE | MIT | allowed (tooling) |
+| A15 | jsdom | jsdom/jsdom | v30.1.3 | 058c0f55f369a70bcb113d660ae562b9066f2d44 | LICENSE.txt | MIT | allowed (tooling) |
+| A16 | jest-dom | testing-library/jest-dom | v7.0.1 | 3782c78b3dc9824675afe0cb8f1722f8c96f494d | LICENSE | MIT | allowed (tooling) |
+| A17 | user-event | testing-library/user-event | v14.6.8 | 1951eb77cc190a68eb6dac6bd40b53648b18805f | LICENSE | MIT | allowed (tooling) |
+| A18 | DefinitelyTyped | DefinitelyTyped/DefinitelyTyped | untagged HEAD, 2026-11-02 | 8239b0b905a41a5dead2beb0cfa05893a09dc087 | LICENSE | MIT | allowed (tooling) |
+| A19 | Node.js | nodejs/node | v22.23.4 | 27f213124280b4db4cd1e3dd42f6f8afd01ceff7 | LICENSE | MIT, with bundled third-party notices | allowed (development image only) |
+| A20 | Docker official Node image | nodejs/docker-node | untagged HEAD, 2026-11-02 | 14b1d124e21d312c46b30db98985ab7e58a89594 | LICENSE | MIT | allowed (development image only) |
 
-Transitive Python packages in `api/uv.lock` (Starlette, AnyIO, python-dotenv, typing-extensions and others) are not listed here; the license scan in #29 (pip-licenses with the allow-list) covers them.
+Re-read at the versions pinned in `web/pnpm-lock.yaml`, because rows 21, 22, 26, 55 and 64 above were read at newer majors; all unchanged (MIT): React v18.3.1 `f1338f8080abd1386454a10bbf93d67bfe37ce85`, Vite v6.4.5 `83ab40b53969349d5c4ed259313fff367bb86827`, Tailwind CSS v3.4.19 `f38be227df384504a170409c2131ca5ca8bfe025`, Vitest v3.2.7 `c0c203db7ae2948536ad54f93e3a2b168334e245`, ESLint v9.39.5 `4a24e8c09d374d773a034e36b1d7a7fbe1216478`.
+
+Transitive packages in `api/uv.lock` (Starlette, AnyIO, python-dotenv, typing-extensions and others) and `web/pnpm-lock.yaml` are not listed here; the license scan in #29 (pip-licenses, license-checker and the allow-list) covers them.
 
 ## Exceptions (component evaluation records)
 
