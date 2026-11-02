@@ -16,7 +16,7 @@ from regwatch.api.app import API_PREFIX, api_routes, create_app
 from regwatch.core.routing import PERMISSION_KEY
 from regwatch.core.settings import Settings
 
-from ..openapi_semantic import ACCEPTED, PENDING_PREFIXES, compare, load, operations
+from ..openapi_semantic import ACCEPTED, compare, load, operations
 
 CONTRACT_PATH = Path(__file__).resolve().parents[3] / "openapi" / "regwatch.v1.yaml"
 CONTRACT = load(CONTRACT_PATH)
@@ -49,15 +49,7 @@ def test_every_contract_operation_is_routed(app: FastAPI) -> None:
     routed = _routed(app)
     missing = sorted(operations(CONTRACT) - set(routed))
     extra = sorted(set(routed) - operations(CONTRACT))
-    assert [op for op in missing if not op[0].startswith(PENDING_PREFIXES)] == []
-    assert extra == []
-
-
-def test_pending_prefixes_are_still_pending(app: FastAPI) -> None:
-    """Each pending prefix covers an unrouted operation; remove it once part 2 routes them."""
-    unrouted = operations(CONTRACT) - set(_routed(app))
-    for prefix in PENDING_PREFIXES:
-        assert any(p.startswith(prefix) for p, _ in unrouted), prefix
+    assert missing == [] and extra == []
 
 
 def test_permission_metadata_matches_contract(app: FastAPI) -> None:
@@ -114,6 +106,10 @@ async def test_stubs_answer_501_problem(app: FastAPI) -> None:
         assert resp.headers["content-type"] == "application/problem+json"
         resp = await client.post(f"{API_PREFIX}/admin/branding/logo", content=b"x")
         assert resp.status_code == 501
+        resp = await client.post(f"{API_PREFIX}/taxonomy/import", content=b"facets: []")
+        assert resp.status_code == 501
+        resp = await client.request("OPTIONS", f"{API_PREFIX}/jurisdictions/regions")
+        assert resp.headers["allow"] == "GET"  # not PATCH of /jurisdictions/{code}
         resp = await client.put(f"{API_PREFIX}/admin/users")
         assert resp.status_code == 405
         assert resp.headers["allow"] == "GET, POST"
