@@ -47,7 +47,7 @@ Secrets (database password, SMTP credentials, session signing key, search API ke
 2. Every vendored file or snippet carries its original header and a `THIRD_PARTY_NOTICES.md` entry with source URL, commit, license text and copyright line.
 3. Pattern reuse (reading a project's approach and rewriting) is documented in the component evaluation as `pattern` with a link, to keep provenance honest even when no license obligation arises.
 4. Services run unmodified (SearXNG, Gotenberg, Valkey) are pulled by digest; modifying any AGPL service requires an ADR and publishing the modified source.
-5. Data and fonts: Natural Earth (public domain), Inter (SIL OFL 1.1), ISO country names (MIT package); CC-BY data requires an attribution line in the application's About dialog.
+5. Data and fonts: Natural Earth (public domain), Inter (SIL OFL 1.1; allowed for fonts only, license file shipped beside the fonts, BL-57), ISO country names (MIT package); CC-BY data requires an attribution line in the application's About dialog.
 6. The release pipeline produces a CycloneDX SBOM and a license report attached to each release.
 
 ## 8.7 Security review and disclosure

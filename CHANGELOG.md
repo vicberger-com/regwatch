@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Changed
+- License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
+
 ### Added
 - M0 scaffold, api and dev stack: `api/` Python 3.12 package (uv, Ruff, mypy, pytest) with the contract sub-packages, FastAPI app factory, `GET /api/v1/health` and `/version`, fail-fast `Settings` for every `env.example` variable, structlog JSON logs with request ids and the five entry points (worker, beat, seed and admin as stubs); root `Makefile`; `deploy/compose.yaml` with the contract services, internal `regwatch` network and Caddy proxy; `scripts/dev-env.sh`; register rows for Uvicorn, pydantic-settings, pytest-asyncio, uv, Ruff, mypy and CPython; BL-53 to BL-56 (#27, #24, REQ-01, REQ-26)
 - M0 scaffold, web: `web/` Node 22 project with pnpm 9, Vite 6, React 18, strict TypeScript, ESLint 9 flat config (typescript-eslint, react-hooks, jsx-a11y), Prettier, Tailwind 3.4 on design tokens in `src/styles/tokens.css` for the light, dark and high-contrast themes, an app shell with a theme switch persisted in localStorage, Vitest with Testing Library; `web` dev service behind the proxy; register rows for the web toolchain; BL-57, BL-58 (#27, REQ-01, REQ-18, REQ-26)
