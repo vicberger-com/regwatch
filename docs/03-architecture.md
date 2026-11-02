@@ -130,6 +130,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |
 | Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | V `4fe07d8`, `92ae8b8`, `12cbff4` | tooling | security |
 | Trivy, gitleaks, pip-audit | image, secret and dependency scanning | Apache-2.0, MIT, Apache-2.0 | V `e713f67`, `83d9cd6`, `8894eb8` | tooling | security |
+| GitHub Actions `actions/checkout`, `actions/setup-node`, `actions/cache`, `astral-sh/setup-uv` | CI steps in `ci.yml`, pinned by commit SHA (#29) | MIT | V `3d3c42e`, `949feb2`, `55cc834`, `68559e9` | tooling (CI) | M0 |
 | ScanCode toolkit or license-checker and pip-licenses | license inventory | Apache-2.0 AND CC-BY-4.0, BSD-3, MIT | V `abd87fb`, `05f5e14`, `a870ce4` | tooling | compliance |
 | Ollama (optional) | local model server | MIT | V `04088e7` | service | M4 |
 | EUR-Lex / Cellar SPARQL and content API | EU legal data source | Commission Decision 2011/833/EU (data) | terms read 2026-11-01 (R-06) | service (external API) | M3 |
