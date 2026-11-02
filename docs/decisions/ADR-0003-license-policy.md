@@ -87,3 +87,12 @@ The owner accepted the recommended default for every open question above:
 - Q2 accepted: the data-terms list and three use classes (BL-20).
 - Q3: yes for titles and summaries only, for internal monitoring, shown with the original and a machine-translation label; take legal advice before any output leaves the organisation.
 - Q4: only the owner approves exceptions, at the next gate.
+
+## Amendment (2026-11-02)
+
+The owner added two licenses to the 3.5 allow-list after the M0 scaffold (#27) found them in use:
+
+- **PSF-2.0** (BL-53): the CPython runtime in the api image, typing-extensions and mypyc runtime files. Permissive; no copyleft.
+- **SIL OFL-1.1, fonts only** (BL-57): the self-hosted Inter typeface. The license file must ship beside the font files, and the fonts may not be sold on their own.
+
+The license scan in #29 encodes both.
