@@ -1,6 +1,6 @@
 # 3. Architecture and technology stack
 
-Decision: a modular monolith API (Python, FastAPI) with a separate worker pool for capture and processing, PostgreSQL as the only system of record, a React single-page application with a MapLibre choropleth, and sidecar containers for PDF rendering and optional search. Every component is permissively licensed or runs as an unmodified service behind a network boundary. Rationale and alternatives are recorded in ADR-0001 to ADR-0006 (section 3.7).
+Decision: a modular monolith API (Python, FastAPI) with a separate worker pool for capture and processing, PostgreSQL as the only system of record, a React single-page application with a MapLibre choropleth, and sidecar containers for PDF rendering and optional search. Every component is permissively licensed or runs as an unmodified service behind a network boundary. Rationale and alternatives are recorded in ADR-0001 to ADR-0008 (section 3.7).
 
 ## 3.1 Component view
 
@@ -135,16 +135,18 @@ Status note: research item R-01 (#3, 2026-11-01) verified 50 of 51 rows against 
 
 ## 3.7 Architecture decision records to write in Phase 0
 
-| ADR | Decision | Alternatives considered |
-| --- | --- | --- |
-| ADR-0001 | Modular monolith API plus worker pool | Microservices per connector; serverless functions |
-| ADR-0002 | PostgreSQL as system of record and first search engine | Meilisearch, OpenSearch, Elasticsearch |
-| ADR-0003 | License policy and the service-boundary exception for AGPL tooling | Strict permissive-only; no exceptions |
-| ADR-0004 | MapLibre with vendored Natural Earth GeoJSON | Leaflet with raster tiles; D3 geo projections; ECharts geo |
-| ADR-0005 | Puck for the report builder | Custom dnd-kit grid; GrapesJS (BSD-3) |
-| ADR-0006 | Celery and Valkey for scheduling | Procrastinate; APScheduler in-process; Temporal |
-| ADR-0007 | Local authentication first, OpenID Connect later | Keycloak from day one |
-| ADR-0008 | Gotenberg for PDF | WeasyPrint only; browser-side pdfmake |
+All eight are `proposed`; the owner accepts them at Gate G0 (#2). Index: `docs/decisions/README.md`.
+
+| ADR | Decision | Alternatives considered | Status |
+| --- | --- | --- | --- |
+| [ADR-0001](decisions/ADR-0001-modular-monolith.md) | Modular monolith API plus worker pool | Microservices per connector; serverless functions | proposed |
+| [ADR-0002](decisions/ADR-0002-postgresql-search.md) | PostgreSQL as system of record and first search engine | Meilisearch, OpenSearch, Elasticsearch | proposed |
+| [ADR-0003](decisions/ADR-0003-license-policy.md) | License policy and the service-boundary exception for AGPL tooling | Strict permissive-only; no exceptions | proposed |
+| [ADR-0004](decisions/ADR-0004-map-boundaries.md) | MapLibre with vendored Natural Earth GeoJSON | Leaflet with raster tiles; D3 geo projections; ECharts geo | proposed |
+| [ADR-0005](decisions/ADR-0005-report-builder.md) | Puck for the report builder | Custom dnd-kit grid; GrapesJS (BSD-3) | proposed |
+| [ADR-0006](decisions/ADR-0006-celery-valkey-scheduling.md) | Celery and Valkey for scheduling | Procrastinate; APScheduler in-process; Temporal | proposed |
+| [ADR-0007](decisions/ADR-0007-local-auth-then-oidc.md) | Local authentication first, OpenID Connect later | Keycloak from day one | proposed |
+| [ADR-0008](decisions/ADR-0008-gotenberg-pdf.md) | Gotenberg for PDF | WeasyPrint only; browser-side pdfmake | proposed |
 
 ## 3.8 Phase 0 open-source review protocol (REQ-19, REQ-20)
 
