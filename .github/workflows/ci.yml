@@ -216,7 +216,16 @@ jobs:
           cat ../api.log
           exit 1
       - if: steps.pre.outputs.ready == 'true'
-        name: Schemathesis against the committed OpenAPI (7.1, zero schema violations)
+        name: Schemathesis against the served OpenAPI (7.1, zero schema violations)
+        # The served document is held semantically equal to openapi/regwatch.v1.yaml by the
+        # openapi job (make openapi) and also documents the 501 stub and 422 validation
+        # responses. While routes are stubs (#30), not_a_server_error is replaced by the
+        # no_unexpected_server_error hook (any 5xx but a documented 501 fails) and
+        # positive_data_acceptance is off; it returns as modules implement their routes.
+        env:
+          SCHEMATHESIS_HOOKS: tests.schemathesis_hooks
         run: |
           cd api
-          uv run schemathesis run ../openapi/regwatch.v1.yaml --url http://127.0.0.1:8000/api/v1
+          uv run schemathesis run http://127.0.0.1:8000/api/v1/openapi.json \
+            --url http://127.0.0.1:8000/api/v1 \
+            --exclude-checks not_a_server_error,positive_data_acceptance
