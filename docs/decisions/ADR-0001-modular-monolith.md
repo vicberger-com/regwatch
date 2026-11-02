@@ -1,6 +1,6 @@
 # ADR-0001: Modular monolith API and worker pool in one Python codebase, with third-party services as HTTP sidecars
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-01, REQ-04, REQ-05 (also REQ-19, REQ-20, REQ-27)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-01, REQ-04, REQ-05 (also REQ-19, REQ-20, REQ-27)
 **Research:** R-02 (#4), R-04 (#6), R-07 (#9), R-08 (#11); `docs/03-architecture.md` 3.1 to 3.3; `docs/contracts/M0-tooling.md`
 
 ## Context
@@ -55,3 +55,14 @@
 3. BL-15: when server printing is scheduled, should it use a Python path instead of the contract's Node `print-bridge/`?
 4. Should SearXNG and LibreTranslate sit on a separate egress network segment, and should LibreTranslate get its models from egress at first start or from a volume prepared offline?
 5. Do you confirm that calls to internal sidecars use the fixed-URL internal client rather than SafeFetcher? `CLAUDE.md` says all outbound HTTP in workers goes through SafeFetcher, and SafeFetcher rejects private addresses by design.
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1 accepted: the sidecar rule, decisions 2 to 5.
+- Q2 (BL-17) deferred to the M7 builder spike in Phase 4; Jinja2 stays the contract until then.
+- Q3 (BL-15) accepted in principle: a future server print path is Python; nothing is built now.
+- Q4 accepted: SearXNG and LibreTranslate on a separate egress segment; LibreTranslate downloads its models once at first start into a persistent volume, then runs without egress (BL-48).
+- Q5 accepted: sidecar calls use the fixed-URL internal client; CLAUDE.md now limits SafeFetcher to external hosts.

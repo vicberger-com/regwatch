@@ -80,5 +80,5 @@ Owner answers received 2026-11-01 (issue #1). Items marked *answered* are decide
 10. What export formats beyond PDF are needed (CSV, Excel, JSON, DOCX)? *Answered:* PDF and CSV in phase 4; Excel and DOCX backlog.
 11. Should changes be alerted proactively (email digest, webhook) in addition to the map? *Answered:* daily email digest in phase 4 (E1).
 12. What is the budget for paid search or news APIs? *Answered:* zero; self-hosted options first.
-13. License for this repository's own code? *Assumed:* none chosen yet; repository stays private; owner decision pending.
-14. Phase dates and pilot group? *Assumed:* unset; owner sets them at G0.
+13. License for this repository's own code? *Answered at G0 (2026-11-02):* proprietary, all rights reserved; the repository stays private; see LICENSE.
+14. Phase dates and pilot group? *Answered at G0 (2026-11-02):* no fixed dates; phases run back to back; the pilot group is named at Gate G5.

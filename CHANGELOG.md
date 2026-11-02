@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+## [G0] - 2026-11-02
+
+### Added
+- Gate G0 decision log `docs/decisions/G0-decisions.md` and the completed decision sheet; proprietary LICENSE (#2, REQ-21, REQ-24)
+
+### Changed
+- ADR-0001 to ADR-0008 accepted at Gate G0, with ADR-0005 decision 3 deferred to the M7 builder spike (BL-17); pending assumptions accepted; owner decisions recorded on BL-07, BL-15, BL-17, BL-20, BL-21, BL-24, BL-27, BL-34, BL-41, BL-42, BL-44, BL-46, BL-48 and BL-51; Valkey contract pin moved to 9; CLAUDE.md limits SafeFetcher to external hosts (#2, #1, REQ-21, REQ-23)
+
 ### Changed
 - Claude Code GitHub Actions disabled (manual dispatch only); issue work runs as cloud sessions billed to the cloud session credit (REQ-26)
 - Component register: 50 of 51 rows upgraded from S to V with the commit SHAs at which each LICENSE file was read. `ipp` (npm) stays at S because its repository has no LICENSE file. Register text corrected for the Puck package name (`@puckeditor/core`), the structlog dual license (MIT OR Apache-2.0) and the ScanCode data license (CC-BY-4.0) (#3, REQ-19, REQ-20)

@@ -1,6 +1,6 @@
 # ADR-0008: Gotenberg for PDF from the same server-rendered HTML; browser print only at launch
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-10, REQ-15 (also REQ-12, REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-10, REQ-15 (also REQ-12, REQ-20)
 **Research:** R-01 rows 37 and 38 (#3), R-02 (#4), R-04 (#6); `docs/modules/M7-report-builder.md`, `docs/modules/M8-output-delivery.md`; `docs/08-security-compliance.md` 8.1; ADR-0005
 
 ## Context
@@ -49,3 +49,12 @@
 1. Is the PDF/A-2b archival option needed at launch, or can it wait until M8 has verified it?
 2. Do you accept the WeasyPrint fallback trigger in decision 5?
 3. If BL-17 is declined and Jinja2 stays, should charts be rendered by a small Node SSR step (a second-language sidecar under ADR-0001 decision 5) or by a Playwright screenshot?
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1: PDF/A-2b is not needed at launch; add it after M8 verifies it.
+- Q2 accepted: the WeasyPrint fallback trigger.
+- Q3: decided together with BL-17 at the M7 builder spike.

@@ -1,6 +1,6 @@
 # ADR-0004: Natural Earth 1:50m admin-0 as a build-time GeoJSON for the MapLibre choropleth
 
-**Status:** proposed · **Date:** 2026-11-01 · **Requirements:** REQ-06, REQ-18 (also REQ-19, REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-01 · **Requirements:** REQ-06, REQ-18 (also REQ-19, REQ-20)
 **Research:** R-05, `docs/research/R-05-map-boundaries.md` (#7); licenses in R-01 rows 29 to 32 and in R-05
 
 ## Context
@@ -42,3 +42,8 @@ R-05 measured MapLibre GL JS 6.16.0 in headless Chromium against Natural Earth v
 - Negative: Equal Earth depends on an experimental MapLibre API, so an upgrade may change it (mitigation: exact pin, projection test, Mercator fallback). MapLibre alone takes about 451 KB of the 600 KB gzip bundle budget, which leaves about 150 KB for React, TanStack, Radix and application code on the map route (ECharts must be lazy-loaded). Thirteen ISO codes have no polygon of their own and rely on the listbox and table view.
 - Register: world-atlas and topojson-client are rejected; mapshaper is added as tooling (3.6). BL-12 is resolved by this ADR.
 - Follow-up backlog rows: BL-25 (per-deployment worldview from NE 1:10m worldview files), BL-26 (ISO 3166-2 subdivision layer, loaded per country).
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+- Accepted as written. The R-05 assumptions are accepted: Natural Earth default view with disputed areas drawn neutral and a non-endorsement statement on the legal page; French overseas regions are list-only; Antarctica is drawn neutral as AQ.

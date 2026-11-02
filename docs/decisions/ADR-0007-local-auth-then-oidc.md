@@ -1,6 +1,6 @@
 # ADR-0007: Local accounts and server-side sessions first, OpenID Connect in Phase 5
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-14, REQ-16 (also REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-14, REQ-16 (also REQ-20)
 **Research:** R-01 rows 42 to 45 (#3); `docs/02-requirements.md` G13 and 2.4 answer 8; `docs/modules/M1-identity-access-admin.md`; `docs/contracts/registries.yaml`, `schema.sql`, `env.example`, `openapi/regwatch.v1.yaml`
 
 ## Context
@@ -52,3 +52,14 @@
 3. Should group claims from the identity provider ever map to roles? This ADR says no: roles stay managed in the application.
 4. Should multi-factor authentication (E7) come before Phase 5, with OIDC, or not at all?
 5. Which identity provider does the organisation use? This is not established and is needed before M1b.
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1: automatic linking by verified email, only from the configured identity provider, with an audit entry.
+- Q2: password login stays for administrators only, as a recovery path.
+- Q3: no; roles stay managed in the application.
+- Q4: multi-factor authentication (TOTP) in Phase 5, before user evaluation, for local accounts.
+- Q5: not known yet; the owner names the identity provider before M1b.

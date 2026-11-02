@@ -1,6 +1,6 @@
 # ADR-0006: Celery and Valkey for scheduling, with per-host politeness enforced in SafeFetcher
 
-**Status:** proposed · **Date:** 2026-11-02 · **Requirements:** REQ-04, REQ-05 (also REQ-02, REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02 · **Date:** 2026-11-02 · **Requirements:** REQ-04, REQ-05 (also REQ-02, REQ-20)
 **Research:** R-01 rows 7 and 8 (#3), R-03 (#5), R-06 (#8), R-07 (#9); `docs/03-architecture.md` 3.2; `docs/08-security-compliance.md` 8.3; `docs/modules/M3-capture-framework.md`; `docs/contracts/registries.yaml`
 
 ## Context
@@ -78,3 +78,12 @@
 1. For hosts that publish no limit (EUR-Lex Cellar, the Federal Register), should the default stay at 8.3's 1 request per 2 seconds, with R-06's 10 per minute set only in those starter sources, or should 10 per minute become the default for official APIs?
 2. Is a broker with no persistence acceptable, given decision 2 (records and schedules in PostgreSQL; lost messages re-enqueued on the next tick)?
 3. BL-51: keep the contract's Valkey 8 line and re-verify its license, or move the contract to 9, the line R-01 verified?
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+The owner accepted the recommended default for every open question above:
+
+- Q1: keep the 1 request per 2 s default; set 10 per minute only in the Cellar and Federal Register starter sources.
+- Q2 accepted: a broker with no persistence.
+- Q3 (BL-51): the contract moves to Valkey 9, the line R-01 verified.

@@ -1,6 +1,6 @@
 # ADR-0005: Puck for the report builder, with a project-owned keyboard layer and server rendering through Puck's Render
 
-**Status:** proposed · **Date:** 2026-11-01 · **Requirements:** REQ-12, REQ-13, REQ-18 (also REQ-19, REQ-20)
+**Status:** accepted at Gate G0 on 2026-11-02, except decision 3 (Node render worker), deferred to the M7 builder spike with BL-17 · **Date:** 2026-11-01 · **Requirements:** REQ-12, REQ-13, REQ-18 (also REQ-19, REQ-20)
 **Research:** R-02, `docs/research/R-02-puck-report-builder.md` (#4); license verified in R-01 E3
 
 ## Context
@@ -56,3 +56,9 @@ R-02 tested Puck `@puckeditor/core` 0.24.0 at commit `d14401c`:
   - The editor bundle is large, so the builder route must be lazy-loaded.
   - Puck bundles `@dnd-kit/*` 0.4.0, so a separate dnd-kit 0.5.x for list ordering ships a second copy.
 - **Follow-up backlog rows:** BL-16 (accessibility layer and upstream fixes), BL-17 (render worker contract change), BL-18 (M7 spec and 3.2 corrections), BL-19 (fallback trigger).
+
+
+## Owner decisions at Gate G0 (2026-11-02)
+
+- Accepted, except decision 3, which follows BL-17 and is decided at the M7 builder spike in Phase 4. Until then the server render path is Jinja2 per the contracts.
+- The keyboard assumption (keyboard alternatives satisfy WCAG 2.1.1 and 2.5.7) is accepted; confirm it with an accessibility check during M7 use testing.
