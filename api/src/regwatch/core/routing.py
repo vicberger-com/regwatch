@@ -2,8 +2,8 @@
 
 ``spec()`` builds the keyword arguments for an ``APIRouter`` decorator from the contract:
 response model, status code, documented error responses, and the ``x-permission`` key that
-M1 enforcement (#31, #32) reads from ``route.openapi_extra``. ``not_implemented()`` is the body
-of every stub handler until its module lands.
+``core.permissions.require`` enforces once a route is implemented (``stub=False``).
+``not_implemented()`` is the body of every stub handler until its module lands.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from fastapi import Depends, Query
 from fastapi.responses import Response
 
 from regwatch.core.errors import PROBLEM_MEDIA_TYPE, NotImplementedProblem
+from regwatch.core.permissions import require
 
 PROBLEM_REF = {"$ref": "#/components/schemas/Problem"}
 PERMISSION_KEY = "x-permission"
@@ -63,6 +64,8 @@ def spec(
     extra: dict[str, Any] = {}
     if perm:
         extra[PERMISSION_KEY] = perm
+        if not stub:
+            kwargs["dependencies"] = [Depends(require(perm))]
     if public:
         extra["security"] = []
     if body is not None:

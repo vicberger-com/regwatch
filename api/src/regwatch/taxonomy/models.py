@@ -1,6 +1,6 @@
 """SQLAlchemy models. Tables come from docs/contracts/schema.sql (migration 0001, #28).
 
-Only the columns the seed loader writes are mapped so far; M2 maps the rest.
+Columns M2 reads or writes are mapped; ``created_at`` and ``updated_at`` stay server-side.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ class Jurisdiction(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jurisdiction.id"))
     region_code: Mapped[str | None]
     geometry_ref: Mapped[str | None]
+    active: Mapped[bool] = mapped_column(server_default=text("true"))
 
 
 class Facet(Base):
@@ -40,6 +41,7 @@ class Facet(Base):
     show_in_filters: Mapped[bool]
     sort_order: Mapped[int]
     system: Mapped[bool]
+    hidden: Mapped[bool] = mapped_column(server_default=text("false"))
 
 
 class Term(Base):
@@ -52,3 +54,5 @@ class Term(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("term.id"))
     synonyms: Mapped[list[str]] = mapped_column(ARRAY(Text))
     match_rules: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    color_token: Mapped[str | None]
+    active: Mapped[bool] = mapped_column(server_default=text("true"))

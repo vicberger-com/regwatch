@@ -57,6 +57,7 @@ settings:                       # runtime-editable, stored in the `setting` tabl
   translation.scope:            { type: enum, values: [titles_summaries, full_text], default: titles_summaries, module: M4 }
   translation.target_language:  { type: string, default: en, module: M4 }
   translation.data_processing_basis: { type: string, default: "", module: M4, note: must be non-empty before a hosted provider can be selected }
+  taxonomy.version:             { type: integer, default: 0, module: M2, note: bumped by every taxonomy write; read-only cache key for the attribute validator }
   search.page_size_max:         { type: integer, default: 200, module: M5 }
   search.export_row_cap:        { type: integer, default: 50000, module: M5 }
   search.provider:              { type: enum, values: [none, searxng, http], default: none, module: M3 }

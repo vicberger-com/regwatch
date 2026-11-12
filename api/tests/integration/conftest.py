@@ -1,11 +1,14 @@
 """PostgreSQL 16 for migration and seed tests: one throwaway container, one database per test.
 
 Needs a Docker daemon. The image is the digest pinned in deploy/compose.yaml. Commands run
-inside the container (psql, pg_dump), so the host needs no PostgreSQL client.
+inside the container (psql, pg_dump), so the host needs no PostgreSQL client. Without Docker,
+``IT_POSTGRES_PORT`` names a local PostgreSQL 16 on 127.0.0.1 (superuser ``postgres``) whose
+psql and pg_dump are on PATH.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 import uuid
@@ -37,22 +40,31 @@ def _docker(*args: str, stdin: str | None = None) -> str:
 
 @dataclass(frozen=True)
 class Postgres:
-    container: str
+    container: str | None
     port: int
+
+    def _exec(self, *args: str, stdin: str | None = None) -> str:
+        if self.container:
+            return _docker("exec", "-i", self.container, *args, stdin=stdin)
+        local = [args[0], "-h", "127.0.0.1", "-p", str(self.port), *args[1:]]
+        result = subprocess.run(local, input=stdin, capture_output=True, text=True, check=False)  # noqa: S603
+        if result.returncode != 0:
+            raise RuntimeError(f"{args[0]} failed: {result.stderr.strip()}")
+        return result.stdout
 
     def url(self, database: str) -> str:
         return f"postgresql://postgres:{PASSWORD}@127.0.0.1:{self.port}/{database}"
 
     def psql(self, database: str, sql: str) -> str:
-        return _docker(
-            "exec", "-i", self.container, "psql", "-U", "postgres", "-d", database,
+        return self._exec(
+            "psql", "-U", "postgres", "-d", database,
             "-v", "ON_ERROR_STOP=1", "-q", "-A", "-t", "-f", "-", stdin=sql,
         )  # fmt: skip
 
     def schema_dump(self, database: str) -> list[str]:
         """``pg_dump --schema-only`` without comments, settings or the Alembic table."""
-        out = _docker(
-            "exec", self.container, "pg_dump", "-U", "postgres", "--schema-only", "--no-owner",
+        out = self._exec(
+            "pg_dump", "-U", "postgres", "--schema-only", "--no-owner",
             "--exclude-table=alembic_version", database,
         )  # fmt: skip
         skip = ("--", "SET ", "SELECT pg_catalog.set_config", "\\restrict", "\\unrestrict")
@@ -61,6 +73,9 @@ class Postgres:
 
 @pytest.fixture(scope="session")
 def postgres() -> Iterator[Postgres]:
+    if os.environ.get("IT_POSTGRES_PORT"):
+        yield Postgres(None, int(os.environ["IT_POSTGRES_PORT"]))
+        return
     name = f"regwatch-it-{uuid.uuid4().hex[:8]}"
     _docker(
         "run", "-d", "--rm", "--name", name, "-e", f"POSTGRES_PASSWORD={PASSWORD}",

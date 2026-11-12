@@ -1,0 +1,66 @@
+"""The permission seam (#34): x-permission enforced through one replaceable dependency."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import httpx
+import pytest
+from fastapi import APIRouter, FastAPI
+
+from regwatch.core.errors import install_problem_handlers
+from regwatch.core.permissions import Principal, current_principal
+from regwatch.core.routing import spec
+from regwatch.core.settings import Settings, get_settings
+
+router = APIRouter()
+
+
+@router.get("/live", **spec(desc="Live", perm="taxonomy.manage", stub=False))
+async def live() -> None:
+    return None
+
+
+@router.get("/stub", **spec(desc="Stub", perm="taxonomy.manage"))
+async def stub() -> None:
+    return None
+
+
+def make_app(env: str, principal: Principal | None = None) -> FastAPI:
+    app = FastAPI()
+    app.include_router(router)
+    install_problem_handlers(app)
+    settings = Settings(secret_key="a" * 64, database_url="postgresql://u@h/d",
+                        queue_url="valkey://h/0", base_url="http://localhost", env=env)  # fmt: skip
+    app.dependency_overrides[get_settings] = lambda: settings
+    if principal is not None:
+        override: Callable[[], Principal] = lambda: principal  # noqa: E731
+        app.dependency_overrides[current_principal] = override
+    return app
+
+
+async def get(app: FastAPI, path: str) -> httpx.Response:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        return await client.get(path)
+
+
+@pytest.mark.parametrize(("env", "status"), [("development", 200), ("test", 200),
+                                             ("production", 401)])  # fmt: skip
+async def test_pre_m1_principal_depends_on_environment(env: str, status: int) -> None:
+    resp = await get(make_app(env), "/live")
+    assert resp.status_code == status
+
+
+async def test_missing_permission_is_403_problem_naming_it() -> None:
+    viewer = Principal(user_id=None, permissions=frozenset({"taxonomy.read"}))
+    resp = await get(make_app("production", viewer), "/live")
+    assert resp.status_code == 403
+    assert resp.json()["type"].endswith("/forbidden")
+    assert "taxonomy.manage" in resp.json()["detail"]
+
+
+async def test_granted_permission_passes_and_stubs_are_not_gated() -> None:
+    admin = Principal(user_id=None, permissions=frozenset({"taxonomy.manage"}))
+    assert (await get(make_app("production", admin), "/live")).status_code == 200
+    assert (await get(make_app("production"), "/stub")).status_code == 200
