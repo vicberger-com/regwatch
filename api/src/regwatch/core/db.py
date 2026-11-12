@@ -7,8 +7,17 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import Depends, Request
 from sqlalchemy import MetaData
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
@@ -34,3 +43,18 @@ def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
     if poolclass_null:
         return create_async_engine(async_url(url), poolclass=NullPool)
     return create_async_engine(async_url(url), pool_pre_ping=True)
+
+
+def install_sessions(state: object, url: str) -> None:
+    """Give an app (``app.state``) a session factory; the engine connects on first use."""
+    state.sessions = async_sessionmaker(create_engine(url), expire_on_commit=False)  # type: ignore[attr-defined]
+
+
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """One session per request; writes commit explicitly, anything uncommitted rolls back."""
+    factory: async_sessionmaker[AsyncSession] = request.app.state.sessions
+    async with factory() as session:
+        yield session
+
+
+Session = Annotated[AsyncSession, Depends(get_session)]

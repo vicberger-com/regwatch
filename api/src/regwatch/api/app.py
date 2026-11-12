@@ -12,6 +12,7 @@ from regwatch.api.middleware import RequestContextMiddleware
 from regwatch.api.openapi import install_openapi
 from regwatch.api.router import router as system_router
 from regwatch.capture.router import router as capture_router
+from regwatch.core.db import install_sessions
 from regwatch.core.errors import install_problem_handlers
 from regwatch.core.logging_setup import configure_logging
 from regwatch.core.settings import Settings, get_settings
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.dependency_overrides[get_settings] = lambda: settings
     app.add_middleware(RequestContextMiddleware)
+    install_sessions(app.state, settings.database_url.get_secret_value())
     for router in MODULE_ROUTERS:
         app.include_router(router, prefix=API_PREFIX)
     install_problem_handlers(app, api_routes())

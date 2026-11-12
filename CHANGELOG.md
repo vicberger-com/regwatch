@@ -5,10 +5,12 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Changed
+- Registry setting `taxonomy.version` (M2 cache key) added to `docs/contracts/registries.yaml` and the seed (#34, REQ-03)
 - License allow-list: MIT-0, BlueOak-1.0.0 and Python-2.0 added by owner decision, and the nine tooling exceptions for them removed; data terms TW-OGDL-1.0, BOE-2024 and UrhG-5 added to ADR-0003 decision 5, with the five PRC statute excerpts approved for the private test corpus only; ADR-0003 amendment 2 (#29, #12, BL-59, BL-63, REQ-20, REQ-25)
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- M2 attribute validator (`taxonomy/attribute_validator.py`, every value type, synonyms, Hypothesis fuzzing), taxonomy cache with explicit invalidation and a version bump per write, the permission seam `core.permissions` enforcing `x-permission` on implemented routes, a per-request database session; integration tests can use a local PostgreSQL via `IT_POSTGRES_PORT`; BL-64 (#34, REQ-03, REQ-11)
 - Test fixtures in `api/tests/fixtures/`: 200-document corpus in seven languages with expected labels, a validator and `NOTICES.md`; feed and page fixtures; `make fixtures-check` (#12, REQ-25)
 - Test fixture HTTP server (`api/tests/support/fixture_server.py`, pytest fixture `fixture_server`, `make fixture-server`), seeded synthetic data generator writing COPY files, and security payload files with a loader (#12, REQ-25)
 - OpenAPI route stubs, part 2: taxonomy, jurisdictions, capture, items, search, map, views, reports, outputs and printer stubs; every one of the 68 contract paths (91 operations) now routed with zero semantic differences (#30, REQ-01)

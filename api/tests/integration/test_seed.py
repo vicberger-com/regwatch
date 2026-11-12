@@ -21,7 +21,7 @@ EXPECTED = {
     "permission": 23,
     "role": 4,
     "role_permission": 23 + 15 + 10 + 4,
-    "setting": 39,
+    "setting": 40,
     "feature_flag": 8,
     "jurisdiction": 250 + 5,
     "facet": 5,
