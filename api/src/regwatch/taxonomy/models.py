@@ -56,3 +56,12 @@ class Term(Base):
     match_rules: Mapped[dict[str, Any]] = mapped_column(JSONB)
     color_token: Mapped[str | None]
     active: Mapped[bool] = mapped_column(server_default=text("true"))
+
+
+class ItemTerm(Base):
+    """``item_term``: only the keys M2 counts and moves; M4 maps the tagging columns."""
+
+    __tablename__ = "item_term"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    term_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)

@@ -6,6 +6,10 @@ default checks cannot hold while handlers are stubs and are replaced, not droppe
 ``not_a_server_error`` (a stub answers 501 by design) becomes ``no_unexpected_server_error``
 (any 5xx other than a documented 501 fails), and ``positive_data_acceptance`` (valid input
 must get 2xx) returns when each module implements its routes.
+
+Operations tagged ``taxonomy`` read PostgreSQL once implemented (M2, #34), so they run with
+the same checks against a migrated, seeded database in
+``tests/integration/test_taxonomy_contract.py`` and in the CI ``contract`` job.
 """
 
 from __future__ import annotations
@@ -22,7 +26,8 @@ from regwatch.core.settings import Settings
 from ..conftest import VALID_ENV
 
 APP = create_app(Settings(**{k.removeprefix("REGWATCH_").lower(): v for k, v in VALID_ENV.items()}))
-schema = schemathesis.openapi.from_asgi("/api/v1/openapi.json", APP)
+DB_TAGS = ("taxonomy",)
+schema = schemathesis.openapi.from_asgi("/api/v1/openapi.json", APP).exclude(tag=DB_TAGS)
 
 
 def no_unexpected_server_error(ctx: Any, response: Any, case: Any) -> bool:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt
 
 from regwatch.core.schemas import UNSET
 
@@ -18,8 +18,8 @@ class MatchRules(BaseModel):
     keywords: list[str] = UNSET
     regex: list[str] = UNSET
     languages: list[str] = UNSET
-    min_hits: int = 1
-    weight: float = 1.0
+    min_hits: StrictInt = 1
+    weight: StrictFloat = 1.0
 
 
 class Term(BaseModel):
@@ -43,7 +43,7 @@ class TermWrite(BaseModel):
     synonyms: list[str] = UNSET
     match_rules: MatchRules = UNSET
     color_token: str | None = None
-    active: bool = UNSET
+    active: StrictBool = UNSET
 
 
 class Facet(BaseModel):
@@ -65,12 +65,12 @@ class FacetWrite(BaseModel):
     key: str = Field(default=UNSET, pattern=KEY_PATTERN)
     label: str = UNSET
     value_type: ValueType = UNSET
-    multi: bool = UNSET
-    required: bool = UNSET
-    show_in_view_selector: bool = UNSET
-    show_in_filters: bool = UNSET
-    sort_order: int = UNSET
-    hidden: bool = UNSET
+    multi: StrictBool = UNSET
+    required: StrictBool = UNSET
+    show_in_view_selector: StrictBool = UNSET
+    show_in_filters: StrictBool = UNSET
+    sort_order: StrictInt = UNSET
+    hidden: StrictBool = UNSET
 
 
 class TermMerge(BaseModel):
@@ -123,7 +123,7 @@ class JurisdictionWrite(BaseModel):
     parent_code: str | None = None
     region_code: str | None = None
     geometry_ref: str | None = None
-    active: bool = UNSET
+    active: StrictBool = UNSET
 
 
 class Region(BaseModel):

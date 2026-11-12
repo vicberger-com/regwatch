@@ -46,6 +46,8 @@ def spec(
     ``content`` names a non-JSON response media type (its schema is a string); ``body`` is a
     non-JSON request body documented as-is (the handler reads ``Request`` itself).
     """
+    if perm and not stub:  # the contract's session and x-permission rules (info.description)
+        errors = (401, 403, *errors)
     responses: dict[int | str, dict[str, Any]] = {
         code: problem((error_desc or {}).get(code, "Error")) for code in errors
     }

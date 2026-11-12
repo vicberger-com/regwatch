@@ -3,19 +3,22 @@
 Every implemented route depends on :func:`require` for the key in its ``x-permission``
 (``spec(..., stub=False)`` wires it). :func:`current_principal` is the part M1 (#31, #32)
 replaces: it will resolve the ``rw_session`` cookie to a user and the union of their role
-permissions. Until then no sign-in exists, so outside production every request acts as a
-principal holding ``*``; production refuses with 401. Tests override ``current_principal``
-with an explicit principal, so neither handlers nor tests change when M1 lands.
+permissions. Until then no sign-in exists: outside production, a session cookie equal to
+:func:`dev_session_token` (derived from the secret key) acts as a principal holding ``*``;
+any other request, and every request in production, gets 401. Unit tests override
+``current_principal`` with an explicit principal, so handlers and tests survive M1.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from regwatch.core.errors import ProblemError
 from regwatch.core.settings import Settings, get_settings
@@ -35,13 +38,22 @@ class Principal:
         return ALL in self.permissions or permission in self.permissions
 
 
+def dev_session_token(settings: Settings) -> str:
+    """The pre-M1 development session value; never accepted in production."""
+    key = settings.secret_key.get_secret_value().encode()
+    return hmac.new(key, b"regwatch pre-M1 development session", hashlib.sha256).hexdigest()
+
+
 async def current_principal(
-    settings: Annotated[Settings, Depends(get_settings)],
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
 ) -> Principal:
     """Pre-M1 placeholder; M1 replaces this body and keeps the signature's return type."""
-    if settings.env == "production":
-        raise ProblemError(401, "unauthenticated", "Sign-in is not available yet.")
-    return Principal(user_id=None, permissions=frozenset({ALL}))
+    cookie = request.cookies.get(settings.session_cookie_name, "")
+    if settings.env != "production" and hmac.compare_digest(
+        cookie.encode(), dev_session_token(settings).encode()
+    ):
+        return Principal(user_id=None, permissions=frozenset({ALL}))
+    raise ProblemError(401, "unauthenticated", "A valid session is required.")
 
 
 CurrentPrincipal = Annotated[Principal, Depends(current_principal)]

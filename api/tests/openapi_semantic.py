@@ -7,8 +7,10 @@ normalised before comparison: ``$ref`` targets are inlined (recursive references
 What remains is compared per operation: tags, security, ``x-permission``, parameters,
 request body and responses.
 
-The live document may add two kinds of response the contract does not list: ``422`` for
-request validation and ``501`` for stubs; both must be problem details. Anything else that
+The live document may add response kinds the contract does not list: ``422`` for request
+validation, ``501`` for stubs, and ``401`` and ``403`` on operations with an
+``x-permission`` (the contract states those rules once, in ``info.description``); all must be
+problem details. Anything else that
 differs is reported, unless it is listed in ``ACCEPTED`` with its reason.
 
 Usage (from ``api/``): ``python -m tests.openapi_semantic CONTRACT.yaml [--live FILE]
@@ -30,6 +32,7 @@ import yaml
 METHODS = ("get", "put", "post", "patch", "delete")
 _ANNOTATIONS = {"title", "description", "summary", "examples", "example", "operationId"}
 FRAMEWORK_CODES = {"422", "501"}
+AUTH_CODES = {"401", "403"}
 PROBLEM = {"application/problem+json"}
 
 # Differences that are understood and tracked; each value says why it is accepted.
@@ -40,6 +43,22 @@ ACCEPTED: dict[str, str] = {
     'GET /health.responses.200.application/json.required: only in live: ["checked_at", "db", "queue", "status", "version"]': _CP02,  # noqa: E501
     'GET /version.responses.200.application/json.required: only in live: ["commit", "version"]': _CP02,  # noqa: E501
 }
+_CP04 = "M2 answers 404 for unknown keys and 409 for duplicates; CP-04 (#51) proposes documenting them"
+_PROBLEM_ONLY_IN_LIVE = (
+    ' only in live: {"application/problem+json": {"properties": {"type": {"type": "string"},'
+    ' "title": {"type": "string"}, "status": {"type": "integer"}, "detail": {"type": "string"},'
+    ' "instance": {"type": "string"}, "requ'
+)
+ACCEPTED |= {
+    f"{op}.responses.{code}:{_PROBLEM_ONLY_IN_LIVE}": _CP04
+    for op, code in [
+        ("POST /taxonomy/facets", 409), ("PATCH /taxonomy/facets/{key}", 404),
+        ("DELETE /taxonomy/facets/{key}", 404), ("GET /taxonomy/facets/{key}/terms", 404),
+        ("POST /taxonomy/facets/{key}/terms", 404), ("POST /taxonomy/facets/{key}/terms", 409),
+        ("PATCH /taxonomy/terms/{id}", 404), ("POST /jurisdictions", 409),
+        ("PATCH /jurisdictions/{code}", 404),
+    ]
+}  # fmt: skip
 
 
 def _component(doc: dict[str, Any], ref: str) -> tuple[str, Any]:
@@ -188,7 +207,8 @@ def compare(
     out += [f"{m.upper()} {p}: not in the contract" for p, m in sorted(have - want)]
     for path, method in sorted(want & have):
         a, b = operation(contract, path, method), operation(live, path, method)
-        for code in FRAMEWORK_CODES - set(a["responses"]):
+        framework = FRAMEWORK_CODES | (AUTH_CODES if a["x-permission"] else set())
+        for code in framework - set(a["responses"]):
             extra = b["responses"].pop(code, None)
             if extra is not None and set(extra) != PROBLEM:
                 out.append(f"{method.upper()} {path}: {code} is not problem details")
