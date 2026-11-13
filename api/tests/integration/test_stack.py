@@ -11,6 +11,7 @@ BASE_URL = os.environ.get("IT_PROXY_URL", "http://localhost")
 
 
 @pytest.mark.integration
+@pytest.mark.stack
 def test_health_through_proxy_reports_dependencies_up() -> None:
     resp = httpx.get(f"{BASE_URL}/api/v1/health", timeout=5)
     assert resp.status_code == 200

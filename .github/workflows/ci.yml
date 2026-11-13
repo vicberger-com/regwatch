@@ -49,12 +49,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: ./.github/actions/setup-api
-      - name: Unit tests, 85 percent coverage floor (7.1)
+      # 7.1 as amended by CP-04: unit tests first with the 100 percent floor on
+      # security-critical modules, then the database integration tests (a throwaway
+      # PostgreSQL in Docker, bound to 127.0.0.1), with the 85 percent floor on both together.
+      - name: Unit and database tests, both coverage floors (7.1, CP-04)
         run: make test-api
-      - name: 100 percent floor on security-critical modules (7.1)
-        run: |
-          cd api && uv run coverage json -q -o coverage.json
-          python3 -I ../scripts/coverage_critical.py coverage.json
 
   test-web:
     runs-on: ubuntu-24.04

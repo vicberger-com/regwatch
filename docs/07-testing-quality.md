@@ -6,7 +6,7 @@ Every module passes five reviews before the owner evaluates it: automated tests,
 
 | Level | Tooling | Floor | Where |
 | --- | --- | --- | --- |
-| Unit, API | pytest, pytest-cov, Hypothesis | 85 percent lines on `regwatch/` excluding generated code; 100 percent on `SafeFetcher`, permission checks, attribute validator, output destination validation | `api/tests/unit` |
+| Unit, API | pytest, pytest-cov, Hypothesis | 85 percent lines on `regwatch/` excluding generated code, counted over unit and database integration tests together (CP-04, owner decision 2026-11-12); 100 percent on `SafeFetcher`, permission checks, attribute validator, output destination validation, counted over unit tests alone | `api/tests/unit`, `api/tests/integration` |
 | Unit, web | Vitest, Testing Library | 80 percent on `src/features` and `src/lib` | `web/src/**/*.test.tsx` |
 | Integration | pytest with Docker services (PostgreSQL, Valkey, Gotenberg, Mailpit, local HTTP fixture server) | every API route exercised at least once; every connector against fixtures | `api/tests/integration` |
 | Contract | Schemathesis (MIT) against the committed OpenAPI; generated TypeScript client type-checks | zero schema violations | CI job `contract` |

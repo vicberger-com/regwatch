@@ -1,9 +1,12 @@
 # Root targets fixed by docs/contracts/M0-tooling.md.
 COMPOSE := docker compose -f deploy/compose.yaml
 UNIT_MARKERS := not integration and not security and not perf
+# Integration tests that start their own throwaway PostgreSQL in Docker; `stack` ones need
+# the Compose stack and run in test-integration only.
+DB_MARKERS := integration and not stack
 
 .PHONY: help dev stop migrate seed lint lint-api lint-web test test-api test-web \
-        test-integration e2e openapi licenses security backup restore env
+        test-unit test-integration e2e openapi licenses security backup restore env
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -31,10 +34,19 @@ lint-api:
 lint-web:
 	cd web && pnpm install --frozen-lockfile --silent && pnpm lint && pnpm typecheck
 
-test: test-api test-web ## Unit tests with coverage gates
+test: test-api test-web ## Unit and database tests with coverage gates (needs Docker)
 
-test-api:
-	cd api && uv run pytest -m "$(UNIT_MARKERS)" --cov=regwatch --cov-fail-under=85
+# 7.1 as amended by CP-04: the 85 percent floor counts unit and database integration tests
+# together; the 100 percent floor on security-critical modules counts unit tests only.
+test-api: ## Unit tests, then database integration tests; both coverage floors
+	cd api && uv sync --frozen --quiet && \
+		uv run pytest -m "$(UNIT_MARKERS)" --cov=regwatch --cov-report= && \
+		uv run coverage json -q -o coverage-unit.json && \
+		python3 -I ../scripts/coverage_critical.py coverage-unit.json && \
+		uv run pytest -m "$(DB_MARKERS)" --cov=regwatch --cov-append --cov-fail-under=85
+
+test-unit: ## Unit tests only, no Docker and no coverage floor (quick local loop)
+	cd api && uv run pytest -m "$(UNIT_MARKERS)"
 
 test-web:
 	cd web && pnpm install --frozen-lockfile --silent && pnpm test -- --coverage

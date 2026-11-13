@@ -10,6 +10,9 @@ dist/
 .ruff_cache/
 .pytest_cache/
 .coverage
+.hypothesis/
+coverage-unit.json
+coverage.json
 htmlcov/
 coverage/
 .schemathesis/

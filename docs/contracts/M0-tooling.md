@@ -40,8 +40,9 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 | `make migrate` | `uv run alembic upgrade head` inside the api container |
 | `make seed` | `uv run regwatch-seed seed/` |
 | `make lint` | `uv run ruff check . && uv run ruff format --check . && uv run mypy src` in api; `pnpm lint && pnpm typecheck` in web |
-| `make test` | `uv run pytest -m "not integration and not security and not perf" --cov=regwatch --cov-fail-under=85` in api; `pnpm test -- --coverage` in web |
-| `make test-integration` | starts the test services and runs `pytest -m integration` |
+| `make test` | in api (CP-04): `uv run pytest -m "not integration and not security and not perf" --cov=regwatch`, the 100 percent floor on security-critical modules from that unit run (`scripts/coverage_critical.py`), then `uv run pytest -m "integration and not stack" --cov=regwatch --cov-append --cov-fail-under=85` (needs Docker; tests start a throwaway PostgreSQL); `pnpm test -- --coverage` in web |
+| `make test-unit` | the api unit run alone, without Docker or a floor |
+| `make test-integration` | starts the test services and runs `pytest -m integration` (including `stack` tests, which need the Compose stack) |
 | `make e2e` | `pnpm exec playwright test` against the running dev stack |
 | `make openapi` | exports the live OpenAPI document to `openapi/regwatch.v1.yaml` and regenerates the web client; CI runs it and diffs |
 | `make licenses` | `scripts/license-scan.sh` (pip-licenses, license-checker, allow-list check) |
@@ -54,7 +55,7 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 
 ## CI (`.github/workflows/ci.yml`)
 
-Jobs, all required on pull requests to `main`: `lint-api`, `lint-web`, `test-api` (unit, coverage gate), `test-web`, `migrations` (upgrade head, downgrade base, upgrade head on empty PostgreSQL), `openapi` (regenerate and diff), `contract` (Schemathesis against the running api), `licenses`, `secrets` (gitleaks), `images` (Trivy on built images). `e2e` runs on pushes to `main` and on pull requests labelled `run-e2e`. `security.yml` runs nightly: full Semgrep, pip-audit, pnpm audit, ZAP baseline against a staging stack started in the job.
+Jobs, all required on pull requests to `main`: `lint-api`, `lint-web`, `test-api` (unit and database integration tests, coverage gates, CP-04), `test-web`, `migrations` (upgrade head, downgrade base, upgrade head on empty PostgreSQL), `openapi` (regenerate and diff), `contract` (Schemathesis against the running api), `licenses`, `secrets` (gitleaks), `images` (Trivy on built images). `e2e` runs on pushes to `main` and on pull requests labelled `run-e2e`. `security.yml` runs nightly: full Semgrep, pip-audit, pnpm audit, ZAP baseline against a staging stack started in the job.
 
 ## Version lines
 

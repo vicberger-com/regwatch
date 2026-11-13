@@ -72,7 +72,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = '-ra --strict-markers -m "not integration and not security and not perf"'
 markers = [
-    "integration: needs running services (db, queue); selected by the CI integration job",
+    "integration: needs Docker services (a throwaway PostgreSQL); counted in the coverage floor",
+    "stack: needs the running Compose stack (make test-integration); also marked integration",
     "security: security regression tests; selected by the CI security job",
     "perf: performance tests; selected by the CI perf job",
 ]
