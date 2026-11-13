@@ -6,15 +6,51 @@ absent, and an explicit ``null`` is rejected. Serialise such models with ``exclu
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from typing import Annotated, Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 UNSET: Any = None
 
 T = TypeVar("T")
 
 Email = Annotated[str, Field(json_schema_extra={"format": "email"})]
+
+# Input checks that leave the published JSON Schema unchanged (AfterValidator adds nothing to
+# it), so the live document stays equal to the contract (review finding 10).
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MAX_EMAIL = 254
+
+
+def check_email(value: str) -> str:
+    """A syntactic check until email-validator is registered (BL-14)."""
+    value = value.strip()
+    if len(value) > MAX_EMAIL or not _EMAIL.match(value):
+        raise ValueError("must be an email address")
+    return value
+
+
+def max_len(limit: int, *, min_len: int = 0) -> Callable[[str], str]:
+    def check(value: str) -> str:
+        if not min_len <= len(value.strip() if min_len else value) <= limit:
+            raise ValueError(f"must have {min_len} to {limit} characters")
+        return value
+
+    return check
+
+
+def max_items(limit: int) -> Callable[[list[str]], list[str]]:
+    def check(value: list[str]) -> list[str]:
+        if len(value) > limit or any(len(v) > 200 for v in value):
+            raise ValueError(f"must have at most {limit} entries of up to 200 characters")
+        return value
+
+    return check
+
+
+EmailIn = Annotated[str, AfterValidator(check_email), Field(json_schema_extra={"format": "email"})]
 
 
 class Page(BaseModel, Generic[T]):  # noqa: UP046 - Pydantic generic model

@@ -104,8 +104,10 @@ async def list_users(
            perm=USERS, errors=(409,), stub=False),
 )  # fmt: skip
 async def create_user(
-    body: UserCreate, principal: CurrentPrincipal, request: Request, db: DbSession
-) -> UserWithPassword:
+    body: UserCreate, principal: CurrentPrincipal, request: Request, response: Response,
+    db: DbSession,
+) -> UserWithPassword:  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"  # carries a credential (finding 11)
     out = await services.admin_create_user(
         db, body.email, body.display_name, body.roles, principal, services.client_ip(request)
     )
@@ -135,8 +137,9 @@ async def update_user(
     **spec(TemporaryPassword, desc="One-time temporary password", perm=USERS, stub=False),
 )  # fmt: skip
 async def reset_password(
-    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+    id: UUID, principal: CurrentPrincipal, request: Request, response: Response, db: DbSession
 ) -> TemporaryPassword:
+    response.headers["Cache-Control"] = "no-store"  # carries a credential (finding 11)
     temporary = await services.reset_password(db, id, principal, services.client_ip(request))
     return TemporaryPassword(temporary_password=temporary)
 

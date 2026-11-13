@@ -263,3 +263,33 @@ async def test_admins_removing_each_other_leave_one_manager(admin: httpx.AsyncCl
     )
     assert sum("admin" in u["roles"] for u in users) == 1
     await other.aclose()
+
+
+async def test_input_limits_and_no_store(
+    admin: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review findings 7, 8, 10 and 11."""
+    too_many = ["viewer"] * 51
+    for bad in ({"email": "not an email", "display_name": "X", "roles": []},
+                {"email": "x@example.org", "display_name": "  ", "roles": []},
+                {"email": "y@example.org", "display_name": "Y", "roles": too_many}):  # fmt: skip
+        assert (await admin.post(_api("/admin/users"), json=bad)).status_code == 422, bad
+    nul = {"email": "n@example.org", "display_name": "a\u0000b", "roles": []}
+    resp = await admin.post(_api("/admin/users"), json=nul)
+    assert resp.status_code == 422 and "NUL" in resp.json()["detail"]
+    assert "n@example.org" not in caplog.text and "$argon2id$" not in caplog.text
+
+    plain = {"email": "c@example.org", "display_name": "C", "roles": []}
+    ok = await admin.post(_api("/admin/users"), json=plain)
+    assert ok.status_code == 201 and ok.headers["cache-control"] == "no-store"
+    reset = await admin.post(_api(f"/admin/users/{ok.json()['id']}/reset-password"))
+    assert reset.headers["cache-control"] == "no-store"
+
+    put = lambda key, value: admin.put(_api(f"/admin/settings/{key}"), json={"value": value})  # noqa: E731
+    assert (await put("branding.primary_color", "red;}</style>")).status_code == 400
+    assert (await put("general.site_title", "x" * 81)).status_code == 400
+    assert (await put("legal.required_markings", "x" * 2001)).status_code == 400
+    assert (await put("branding.logo_ref", "../../../etc/passwd")).status_code == 400
+    assert (await put("branding.primary_color", "#00ff00")).status_code == 200
+    assert (await put("branding.primary_color", "")).status_code == 200
+    assert (await put("general.site_title", "Policy Watch")).status_code == 200

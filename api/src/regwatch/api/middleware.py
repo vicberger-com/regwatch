@@ -7,6 +7,7 @@ duration of the request and echoed in the response. Bodies are never read or log
 
 from __future__ import annotations
 
+import json
 import re
 import time
 import uuid
@@ -19,6 +20,71 @@ REQUEST_ID_HEADER = "x-request-id"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 _log = structlog.get_logger("regwatch.access")
+
+MAX_BODY_BYTES = 2 * 1024 * 1024  # 8.2 request limit; uploads get their own caps when they land
+
+
+class BodySizeLimitMiddleware:
+    """Refuse request bodies over ``MAX_BODY_BYTES`` with 413 before anything parses them.
+
+    FastAPI reads and decodes a JSON body before route dependencies run, so this limit sits
+    in front of the session gate (review finding 3). ``Content-Length`` is checked first;
+    chunked bodies are counted as they arrive.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int = MAX_BODY_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        declared = next((v for k, v in scope["headers"] if k == b"content-length"), None)
+        if declared is not None and (not declared.isdigit() or int(declared) > self.max_bytes):
+            await self._refuse(scope, send)
+            return
+        seen = 0
+        started = refused = False
+
+        async def counting_receive() -> Message:
+            nonlocal seen, refused
+            message = await receive()
+            if message["type"] == "http.request":
+                seen += len(message.get("body", b""))
+                if seen > self.max_bytes and not refused:
+                    refused = True
+                    if not started:
+                        await self._refuse(scope, send)
+                    # The app sees a disconnect and stops reading; its answer is dropped.
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal started
+            if refused:
+                return
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        await self.app(scope, counting_receive, tracking_send)
+
+    async def _refuse(self, scope: Scope, send: Send) -> None:
+        body = {"type": "https://regwatch/errors/payload-too-large", "title": "Content Too Large",
+                "status": 413, "detail": f"Request bodies are limited to {self.max_bytes} bytes.",
+                "instance": scope.get("path", "")}  # fmt: skip
+        rid = structlog.contextvars.get_contextvars().get("request_id")
+        if rid:
+            body["request_id"] = rid
+        payload = json.dumps(body).encode()
+        headers = [
+            (b"content-type", b"application/problem+json"),
+            (b"content-length", str(len(payload)).encode()),
+            (b"connection", b"close"),
+        ]
+        await send({"type": "http.response.start", "status": 413, "headers": headers})
+        await send({"type": "http.response.body", "body": payload})
 
 
 def resolve_request_id(raw: str | None) -> str:

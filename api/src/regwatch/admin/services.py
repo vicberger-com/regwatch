@@ -15,6 +15,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,6 +111,25 @@ async def values(db: AsyncSession, keys: list[str] | None = None) -> dict[str, A
     return out
 
 
+# Settings that also have a dedicated route keep that route's limits here (review finding 8).
+_DEDICATED: dict[str, tuple[type[BaseModel], str]] = {
+    **{key: (BrandingWrite, field) for field, key in BRANDING_KEYS.items()},
+    **{key: (LegalWrite, field) for field, key in LEGAL_KEYS.items()},
+}
+
+
+def _check_owned_by_dedicated_route(key: str, value: Any) -> None:
+    if key == "branding.logo_ref":
+        raise invalid("value", "set by the logo upload, not by the settings API")
+    if key in _DEDICATED:
+        model, field = _DEDICATED[key]
+        try:
+            empty_colour = field == "primary_color" and value == ""
+            model.model_validate({field: None if empty_colour else value})
+        except ValidationError as exc:
+            raise invalid("value", exc.errors()[0]["msg"]) from exc
+
+
 def _setting_out(defn: SettingDef, row: Setting | None) -> SettingOut:
     out = SettingOut(key=defn.key, value=row.value if row else defn.default, type=defn.type,
                      default=defn.default)  # fmt: skip
@@ -149,6 +169,7 @@ async def put_setting(
     if defn is None:
         raise not_found("setting")
     check_value(defn, value)
+    _check_owned_by_dedicated_route(key, value)
     if HOSTED.get(key) == value and not (await values(db, [BASIS_KEY]))[BASIS_KEY].strip():
         raise invalid("value", f"record {BASIS_KEY} before selecting a hosted provider (8.4)")
     if key == BASIS_KEY and not value.strip():

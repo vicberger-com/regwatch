@@ -179,6 +179,25 @@ async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+# Database errors caused by the request's data rather than by the server (review finding 7).
+# 22021 character_not_in_repertoire and 22P05 untranslatable_character (NUL in text);
+# 23505 unique_violation (a concurrent insert won).
+_NUL = (422, "validation", "Text must not contain NUL characters.")
+_SQLSTATE = {"22021": _NUL, "22P05": _NUL, "23505": (409, "conflict", "The record already exists.")}
+
+
+async def _database_error(request: Request, exc: Exception) -> JSONResponse:
+    from sqlalchemy.exc import DBAPIError
+
+    assert isinstance(exc, DBAPIError)  # noqa: S101
+    known = _SQLSTATE.get(str(getattr(exc.orig, "sqlstate", "")))
+    if known is None:
+        return await _unhandled(request, exc)
+    status, slug, detail = known
+    _log.info("database_input_error", sqlstate=getattr(exc.orig, "sqlstate", None))
+    return problem_response(request, status, slug, detail=detail)
+
+
 async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
     _log.exception("unhandled_error", exc_type=type(exc).__name__)
     return problem_response(request, 500, "internal")
@@ -191,4 +210,7 @@ def install_problem_handlers(app: FastAPI, routes: Iterable[tuple[str, BaseRoute
     app.add_exception_handler(ProblemError, _problem_error)
     app.add_exception_handler(StarletteHTTPException, _http_error)
     app.add_exception_handler(RequestValidationError, _validation_error)
+    from sqlalchemy.exc import DBAPIError
+
+    app.add_exception_handler(DBAPIError, _database_error)
     app.add_exception_handler(Exception, _unhandled)

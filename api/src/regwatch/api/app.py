@@ -11,7 +11,7 @@ from starlette.routing import BaseRoute
 
 from regwatch.admin.router import router as admin_router
 from regwatch.api import services
-from regwatch.api.middleware import RequestContextMiddleware
+from regwatch.api.middleware import BodySizeLimitMiddleware, RequestContextMiddleware
 from regwatch.api.openapi import install_openapi
 from regwatch.api.router import router as system_router
 from regwatch.capture.router import router as capture_router
@@ -84,6 +84,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.db = session_factory(engine)
     app.dependency_overrides[get_settings] = lambda: settings
+    # Last added runs first: request ids are bound before the body limit can answer 413.
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
     for router in MODULE_ROUTERS:
         app.include_router(router, prefix=API_PREFIX)

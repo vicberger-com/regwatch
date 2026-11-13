@@ -44,8 +44,10 @@ def async_url(url: str) -> str:
 def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
     """Create an async engine; ``poolclass_null`` suits one-shot commands (migrate, seed)."""
     if poolclass_null:
-        return create_async_engine(async_url(url), poolclass=NullPool)
-    return create_async_engine(async_url(url), pool_pre_ping=True)
+        return create_async_engine(async_url(url), poolclass=NullPool, hide_parameters=True)
+    # hide_parameters keeps bound values (emails, password hashes) out of error messages and
+    # therefore out of logs (8.2; review finding 7).
+    return create_async_engine(async_url(url), pool_pre_ping=True, hide_parameters=True)
 
 
 def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

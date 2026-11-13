@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
-from regwatch.core.schemas import UNSET, Email
+from regwatch.core.schemas import UNSET, Email, EmailIn, max_items, max_len
+
+Secret = Annotated[str, AfterValidator(max_len(1024))]
+RoleKeys = Annotated[list[str], AfterValidator(max_items(50))]
 
 
 class UserStatus(StrEnum):
@@ -53,14 +56,14 @@ class Me(User):
 
 
 class UserCreate(BaseModel):
-    email: Email
-    display_name: str = Field(max_length=120)
-    roles: list[str]
+    email: EmailIn
+    display_name: Annotated[str, AfterValidator(max_len(120, min_len=1))] = Field(max_length=120)
+    roles: RoleKeys
 
 
 class UserUpdate(BaseModel):
     display_name: str = UNSET
-    roles: list[str] = UNSET
+    roles: RoleKeys = UNSET
     status: UserStatus = UNSET
 
 
@@ -69,13 +72,13 @@ class TemporaryPassword(BaseModel):
 
 
 class Login(BaseModel):
-    email: Email
-    password: str
+    email: EmailIn
+    password: Secret
     remember_me: bool = False
 
 
 class PasswordChange(BaseModel):
-    current_password: str
+    current_password: Secret
     new_password: str = Field(min_length=12)
 
 
@@ -89,8 +92,8 @@ class Role(BaseModel):
 
 class RoleWrite(BaseModel):
     key: str = Field(default=UNSET, pattern=r"^[a-z][a-z0-9_]{1,40}$")
-    label: str = UNSET
-    permissions: list[str] = UNSET
+    label: Annotated[str, AfterValidator(max_len(120, min_len=1))] = UNSET
+    permissions: Annotated[list[str], AfterValidator(max_items(200))] = UNSET
 
 
 class Permission(BaseModel):

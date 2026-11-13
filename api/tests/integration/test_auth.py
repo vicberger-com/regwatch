@@ -229,3 +229,21 @@ def test_admin_cli_rejects_short_password_and_duplicates(
     monkeypatch.setattr("sys.stdin", io.StringIO(ADMIN_PW + "\n"))
     assert admin_cli.main([*args[:-1], "--role", "nosuch", "--password-stdin"]) == 1
     assert "unknown roles" in capsys.readouterr().err
+
+
+async def test_nul_in_login_email_is_422_and_not_logged(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review finding 7: database input errors are 422, and bound values stay out of logs."""
+    resp = await _login(client, "vic\u0000tim@example.org", "whatever password")
+    assert resp.status_code == 422
+    assert "tim@example.org" not in caplog.text
+
+
+def test_admin_cli_rejects_invalid_email(
+    db_url: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.stdin", io.StringIO(ADMIN_PW + "\n"))
+    args = ["create-user", "--email", "nope", "--name", "N", "--password-stdin"]
+    assert admin_cli.main(args) == 1
+    assert "email" in capsys.readouterr().err

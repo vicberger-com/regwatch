@@ -15,6 +15,7 @@ import sys
 from collections.abc import Sequence
 
 from regwatch.core.db import create_engine, session_factory
+from regwatch.core.schemas import check_email
 from regwatch.core.security import MAX_PASSWORD_LENGTH
 from regwatch.identity import services
 
@@ -33,6 +34,7 @@ async def _create(url: str, email: str, name: str, password: str, roles: list[st
     engine = create_engine(url, poolclass_null=True)
     try:
         async with session_factory(engine)() as db:
+            email = check_email(email)
             minimum = max(12, (await services.auth_settings(db))["auth.password_min_length"])
             if not minimum <= len(password) <= MAX_PASSWORD_LENGTH:
                 raise ValueError(
