@@ -9,7 +9,7 @@ from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, Field
 
-from regwatch.core.schemas import UNSET, Email, EmailIn, max_items, max_len
+from regwatch.core.schemas import UNSET, Email, EmailIn, max_items, max_len, single_line
 
 Secret = Annotated[str, AfterValidator(max_len(1024))]
 RoleKeys = Annotated[list[str], AfterValidator(max_items(50))]
@@ -57,12 +57,12 @@ class Me(User):
 
 class UserCreate(BaseModel):
     email: EmailIn
-    display_name: Annotated[str, AfterValidator(max_len(120, min_len=1))] = Field(max_length=120)
+    display_name: Annotated[str, AfterValidator(single_line(120))] = Field(max_length=120)
     roles: RoleKeys
 
 
 class UserUpdate(BaseModel):
-    display_name: str = UNSET
+    display_name: Annotated[str, AfterValidator(single_line(120))] = UNSET
     roles: RoleKeys = UNSET
     status: UserStatus = UNSET
 
@@ -92,7 +92,7 @@ class Role(BaseModel):
 
 class RoleWrite(BaseModel):
     key: str = Field(default=UNSET, pattern=r"^[a-z][a-z0-9_]{1,40}$")
-    label: Annotated[str, AfterValidator(max_len(120, min_len=1))] = UNSET
+    label: Annotated[str, AfterValidator(single_line(120))] = UNSET
     permissions: Annotated[list[str], AfterValidator(max_items(200))] = UNSET
 
 

@@ -149,9 +149,9 @@ jobs:
         run: |
           source .github/ci/app-env.sh
           cd api
-          uv run alembic upgrade head
-          uv run alembic downgrade base
-          uv run alembic upgrade head
+          REGWATCH_MIGRATION_DATABASE_URL="$CI_OWNER_DATABASE_URL" uv run alembic upgrade head
+          REGWATCH_MIGRATION_DATABASE_URL="$CI_OWNER_DATABASE_URL" uv run alembic downgrade base
+          REGWATCH_MIGRATION_DATABASE_URL="$CI_OWNER_DATABASE_URL" uv run alembic upgrade head
 
   openapi:
     runs-on: ubuntu-24.04
@@ -206,7 +206,9 @@ jobs:
           .github/ci/postgres.sh
           source .github/ci/app-env.sh
           cd api
-          if [ -f alembic.ini ]; then uv run alembic upgrade head; fi
+          if [ -f alembic.ini ]; then
+            REGWATCH_MIGRATION_DATABASE_URL="$CI_OWNER_DATABASE_URL" uv run alembic upgrade head
+          fi
           nohup uv run regwatch-api --host 127.0.0.1 --port 8000 > ../api.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/api/v1/health >/dev/null && exit 0

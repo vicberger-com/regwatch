@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Security
+- Final M1 review follow-ups: the start-up check also refuses a login that owns the `public` schema; user display names and role labels are single-line with no control characters; bidirectional override characters count as control characters; CI passes the owner URL to migration steps only (#31, #32, REQ-16)
 - The `regwatch` Compose network reserves `10.89.0.128/25` for automatic addresses, so no container can take the proxy address first, and the code and contract default `REGWATCH_TRUSTED_PROXIES` is exactly `10.89.0.2/32` (CP-06); the branding and legal routes refuse control characters, C1 included (#31, #32, REQ-16, BL-73, re-review 5a, 5b, N3b)
 - The Compose `regwatch` network is pinned to `10.89.0.0/24` with `proxy` at `10.89.0.2`, and `make env` trusts `X-Forwarded-For` from that address only, so login limits and audit rows see client addresses behind Caddy; the development proxy publishes ports 80 and 443 on 127.0.0.1 only (owner decision on BL-73, review finding 5)
 - Owner database credentials move to `deploy/db.env`, read only by the `db` container and a new one-off `migrate` container (profile `tools`, used by `make migrate`); in production the API refuses to start when it holds the owner URL, when its login can alter `audit_log` through any role it can use, at table or column level, or when the check cannot run (#31, REQ-16, BL-61, re-review 6a, 6b, 6c)

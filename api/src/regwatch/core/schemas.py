@@ -22,7 +22,9 @@ Email = Annotated[str, Field(json_schema_extra={"format": "email"})]
 # it), so the live document stays equal to the contract (review finding 10).
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_EMAIL = 254
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # C0, DEL and C1 (re-review N3b)
+# C0, DEL and C1 controls (re-review N3b), and the bidirectional overrides and isolates that
+# can make displayed text read differently from what is stored (final review L3).
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
 
 
 def has_control(value: str, *, allow_newlines: bool = False) -> bool:
@@ -54,6 +56,18 @@ def max_items(limit: int) -> Callable[[list[str]], list[str]]:
         if len(value) > limit or any(len(v) > 200 for v in value):
             raise ValueError(f"must have at most {limit} entries of up to 200 characters")
         return value
+
+    return check
+
+
+def single_line(limit: int) -> Callable[[str], str]:
+    """1 to ``limit`` characters after trimming, with no control characters (final review L2)."""
+    length = max_len(limit, min_len=1)
+
+    def check(value: str) -> str:
+        if has_control(value):
+            raise ValueError("must not contain control characters")
+        return length(value)
 
     return check
 

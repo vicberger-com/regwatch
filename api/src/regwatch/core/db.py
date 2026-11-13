@@ -52,8 +52,8 @@ def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
 
 # Privileges that would let the login rewrite history (8.1: the app role cannot alter audit).
 # Checked for every role the login is a member of, whether or not it inherits (a NOINHERIT
-# member can still SET ROLE), at table and at column level (re-review 6c). Superusers and the
-# table owner hold every privilege, so they fail the check too.
+# member can still SET ROLE), at table and at column level (re-review 6c). Superusers, the
+# table owner and the schema owner can alter or drop it, so they fail the check too.
 _AUDIT_CAN_MUTATE = """
 SELECT EXISTS (
   SELECT 1 FROM pg_roles r
@@ -64,7 +64,10 @@ SELECT EXISTS (
          OR has_table_privilege(r.oid, 'audit_log', 'TRUNCATE')
          OR has_any_column_privilege(r.oid, 'audit_log', 'UPDATE')
          OR pg_has_role(r.oid, (SELECT relowner FROM pg_class
-                                WHERE oid = 'public.audit_log'::regclass), 'MEMBER'))
+                                WHERE oid = 'public.audit_log'::regclass), 'MEMBER')
+         -- the schema owner can drop the table (final review L1)
+         OR pg_has_role(r.oid, (SELECT nspowner FROM pg_namespace
+                                WHERE nspname = 'public'), 'MEMBER'))
 )
 """
 

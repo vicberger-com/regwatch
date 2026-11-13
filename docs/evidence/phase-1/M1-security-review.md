@@ -123,3 +123,27 @@ Fixed after the second re-verification, covered by tests, not yet re-verified:
 - 6b: in production the start-up check fails closed when it cannot run; `test_start_up_fails_closed_in_production_and_warns_elsewhere`.
 - 6c: the check covers every role the login can use (NOINHERIT included), column grants, superusers and owner membership; `test_check_sees_noinherit_members_and_column_grants` (fails against the earlier check).
 - N3b: `PUT /admin/branding` and `PUT /admin/legal` refuse control characters (newlines only in multi-line fields), and C1 controls count as control characters; `test_branding_route_refuses_control_characters`.
+
+## Final verification (M1 independent review, 2026-11-13)
+Against `sec/M1-trusted-proxy` at the "Author follow-up 2" fixes: unit 399 passed, database 43 passed.
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| 5a | fixed | plain Docker with `--ip-range 10.89.0.128/25`: unpinned containers got .129 to .132, the proxy got and regained 10.89.0.2; a container asking for .2 while the proxy runs is refused |
+| 5b | fixed | code default, contract default and `make env` are all exactly `10.89.0.2/32`; nothing widens it |
+| 6a | fixed | `deploy/.env` holds only the `regwatch_api` URL; only `db` and `migrate` read `deploy/db.env` (mode 600); production refuses an owner URL |
+| 6b | fixed | an unmigrated database stops a production start |
+| 6c | fixed | refused: NOINHERIT member of a writer role, column grant, `pg_write_all_data` member, ADMIN option on a writer role, DELETE granted to PUBLIC; query 11 to 13 ms |
+| N3b | fixed | branding and legal routes refuse CRLF, BEL, ESC and NEL; plain newlines still allowed in multi-line fields |
+
+New at final verification: **L1 (low)** a login owning schema `public` passed the check and could drop `audit_log`; **L2 (low)** user display names and role labels accepted control characters; **L3 (info)** bidirectional overrides were accepted in titles; **(info)** CI exported the owner URL into the shell that starts the API; **(info)** a deployment without Compose must set `REGWATCH_TRUSTED_PROXIES` to its proxy (documented in `env.example`).
+
+**Sign-off:** no high or critical open; no medium open; low open: L1, L2; info: L3, CI owner URL, non-Compose trust default · M1 independent review · 2026-11-13
+
+## Author follow-up 3 (M1 session, 2026-11-13)
+Closed after the final verification, covered by tests, not re-verified:
+- L1: the check also fails for members of the `public` schema owner (`test_check_sees_noinherit_members_and_column_grants[rw_schema_owner]`).
+- L2: user display names (create and update) and role labels are single-line: 1 to 120 characters, no control characters (`test_names_and_labels_are_single_line`).
+- L3: bidirectional overrides and isolates (U+202A to U+202E, U+2066 to U+2069) count as control characters (same test).
+- CI: `app-env.sh` no longer exports the owner URL; migration steps pass it as `REGWATCH_MIGRATION_DATABASE_URL` for that command only.
+- Non-Compose deployments: unchanged by design; `env.example` says to set the variable to the proxy's address.

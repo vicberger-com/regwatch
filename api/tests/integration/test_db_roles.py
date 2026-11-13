@@ -96,6 +96,8 @@ async def test_owner_url_in_the_api_environment_stops_production(
                           "GRANT UPDATE ON audit_log TO rw_writer",
                           "CREATE ROLE rw_noinherit LOGIN NOINHERIT PASSWORD 'p' "
                           "IN ROLE rw_writer"]),
+        ("rw_schema_owner", ["CREATE ROLE rw_schema_owner LOGIN PASSWORD 'p' IN ROLE regwatch_app",
+                             "ALTER SCHEMA public OWNER TO rw_schema_owner"]),
         ("rw_column", ["CREATE ROLE rw_column LOGIN PASSWORD 'p' IN ROLE regwatch_app",
                        "GRANT UPDATE (action) ON audit_log TO rw_column"]),
     ],
@@ -112,6 +114,8 @@ async def test_check_sees_noinherit_members_and_column_grants(
     finally:
         await engine.dispose()
         cleanup = [f"DROP OWNED BY {name}", f"DROP ROLE {name}"]
+        if name == "rw_schema_owner":
+            cleanup.insert(0, "ALTER SCHEMA public OWNER TO pg_database_owner")
         if name == "rw_noinherit":
             cleanup += ["DROP OWNED BY rw_writer", "DROP ROLE rw_writer"]
         postgres.psql(migrated, ";\n".join(cleanup) + ";")

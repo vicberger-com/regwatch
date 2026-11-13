@@ -277,7 +277,9 @@ async def test_input_limits_and_no_store(
         assert (await admin.post(_api("/admin/users"), json=bad)).status_code == 422, bad
     nul = {"email": "n@example.org", "display_name": "a\u0000b", "roles": []}
     resp = await admin.post(_api("/admin/users"), json=nul)
-    assert resp.status_code == 422 and "NUL" in resp.json()["detail"]
+    # Refused at input validation now (final review L2); the database mapping for NUL is
+    # covered by test_database_input_errors_map_to_problems.
+    assert resp.status_code == 422
     assert "n@example.org" not in caplog.text and "$argon2id$" not in caplog.text
 
     plain = {"email": "c@example.org", "display_name": "C", "roles": []}
@@ -334,3 +336,20 @@ async def test_branding_route_refuses_control_characters(admin: httpx.AsyncClien
     assert (
         await admin.put(_api("/admin/legal"), json={"page_markdown": "a\nb"})
     ).status_code == 204
+
+
+async def test_names_and_labels_are_single_line(admin: httpx.AsyncClient) -> None:
+    """Final review L2 and L3: display names, role labels and titles hold no control or
+    bidirectional-override characters."""
+    bad = {"email": "eve@example.org", "display_name": "Eve\r\nAdmin\x1b[31m", "roles": []}
+    assert (await admin.post(_api("/admin/users"), json=bad)).status_code == 422
+    ok = {"email": "eve@example.org", "display_name": "Eve", "roles": []}
+    user = (await admin.post(_api("/admin/users"), json=ok)).json()
+    patch = await admin.patch(_api(f"/admin/users/{user['id']}"), json={"display_name": "a\r\nb"})
+    assert patch.status_code == 422
+    role = {"key": "ctl_role", "label": "L\r\n\x1b", "permissions": []}
+    assert (await admin.post(_api("/admin/roles"), json=role)).status_code == 422
+    title = {"value": "Policy ‮hctaW"}
+    assert (
+        await admin.put(_api("/admin/settings/general.site_title"), json=title)
+    ).status_code == 400
