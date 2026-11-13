@@ -1,6 +1,6 @@
 """Settings, feature flags, branding, legal page and audit routes; mounted under /api/v1.
 
-Stubs answer 501 until M1 implements them.
+``GET /admin/audit`` is implemented (#32); the other stubs answer 501 until #32 lands.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
+from regwatch.admin import services
 from regwatch.admin.schemas import (
     AuditEntry,
     Branding,
@@ -22,6 +23,7 @@ from regwatch.admin.schemas import (
     Setting,
     SettingWrite,
 )
+from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, Tags, not_implemented, raw_body, spec
 from regwatch.core.schemas import Page
 
@@ -98,15 +100,20 @@ async def put_legal(body: LegalWrite) -> NoReturn:
 
 
 @router.get(
-    "/admin/audit", tags=ADMIN, **spec(Page[AuditEntry], desc="Audit rows", perm="audit.read")
-)
+    "/admin/audit", tags=ADMIN,
+    **spec(Page[AuditEntry], desc="Audit rows", perm="audit.read", stub=False),
+)  # fmt: skip
 async def list_audit(
     paging: Paging,
+    db: DbSession,
     actor: UUID | None = None,
     action: str | None = None,
     entity_type: str | None = None,
     entity_id: str | None = None,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: datetime | None = None,
-) -> NoReturn:
-    not_implemented()
+) -> Page[AuditEntry]:
+    return await services.list_audit(
+        db, paging.page, paging.page_size, actor=actor, action=action,
+        entity_type=entity_type, entity_id=entity_id, from_=from_, to=to,
+    )  # fmt: skip

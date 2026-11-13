@@ -13,6 +13,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- Audit viewer `GET /admin/audit` with actor, action, entity and time filters, newest first, with the actor's email (#32, REQ-16)
 - User administration: list with search and status filter, create with a one-time temporary password, update name, roles and status (admin unlock), reset password ending the user's sessions; no change may leave the deployment without an active user holding `users.manage`; role changes apply on the next request (#32, REQ-16)
 - `POST /auth/password` (policy from `auth.password_min_length`; ends every other session and rotates the current one) and `GET`/`DELETE /me/sessions` (#31, REQ-14, REQ-16)
 - `POST /auth/login` and `POST /auth/logout`: `HttpOnly; Secure; SameSite=Lax` cookie rotated on login, 5 attempts per minute per IP and per account, lockout after `auth.lockout_threshold` failures in 15 minutes for `auth.lockout_minutes` with identical answers for unknown accounts, audit rows for login, failure, lock and logout (#31, REQ-14, REQ-16, BL-50)

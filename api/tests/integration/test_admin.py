@@ -64,6 +64,26 @@ async def test_admin_creates_user_who_must_change_password(admin: httpx.AsyncCli
     assert (await admin.get(_api("/admin/users"), params={"q": "%"})).json()["total"] == 0
 
 
+async def test_audit_viewer_filters_and_pages(admin: httpx.AsyncClient) -> None:
+    body = {"email": "bo@example.org", "display_name": "Bo", "roles": ["viewer"]}
+    user = (await admin.post(_api("/admin/users"), json=body)).json()
+    await admin.patch(_api(f"/admin/users/{user['id']}"), json={"display_name": "Bo B"})
+    query = {"entity_type": "user", "entity_id": user["id"], "action": "user.update"}
+    page = (await admin.get(_api("/admin/audit"), params=query)).json()
+    assert page["total"] == 1
+    row = page["items"][0]
+    assert row["before"]["display_name"] == "Bo" and row["after"]["display_name"] == "Bo B"
+    assert row["actor_email"] == "admin@example.org" and row["request_id"]
+    everything = (await admin.get(_api("/admin/audit"), params={"page_size": 1})).json()
+    assert everything["total"] > 1 and len(everything["items"]) == 1
+    future = {"from": "2999-01-01T00:00:00Z"}
+    assert (await admin.get(_api("/admin/audit"), params=future)).json()["total"] == 0
+    me = (await admin.get(_api("/auth/me"))).json()
+    by_me = {"actor": me["id"], "to": "2999-01-01T00:00:00Z"}
+    mine = (await admin.get(_api("/admin/audit"), params=by_me)).json()
+    assert mine["total"] >= 3
+
+
 async def test_last_manager_cannot_be_removed(admin: httpx.AsyncClient) -> None:
     me = (await admin.get(_api("/auth/me"))).json()
     resp = await admin.patch(_api(f"/admin/users/{me['id']}"), json={"roles": ["viewer"]})
