@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute
+from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.routing import BaseRoute
 
 from regwatch.admin.router import router as admin_router
@@ -15,7 +17,7 @@ from regwatch.api.middleware import BodySizeLimitMiddleware, RequestContextMiddl
 from regwatch.api.openapi import install_openapi
 from regwatch.api.router import router as system_router
 from regwatch.capture.router import router as capture_router
-from regwatch.core.db import create_engine, session_factory
+from regwatch.core.db import audit_log_is_append_only, create_engine, session_factory
 from regwatch.core.errors import install_problem_handlers
 from regwatch.core.logging_setup import configure_logging
 from regwatch.core.settings import Settings, get_settings
@@ -57,6 +59,25 @@ def _operation_id(route: APIRoute) -> str:
     return route.name
 
 
+async def check_database_login(engine: AsyncEngine, settings: Settings) -> None:
+    """Refuse to serve in production if the API's login could change audit rows (BL-61);
+    elsewhere, warn. An unreachable database is left to the health check."""
+    log = structlog.get_logger("regwatch.startup")
+    try:
+        append_only = await audit_log_is_append_only(engine)
+    except Exception as exc:  # noqa: BLE001 - start-up probe; /health reports the database
+        log.warning("database_login_unchecked", error=type(exc).__name__)
+        return
+    if append_only:
+        return
+    if settings.env == "production":
+        raise RuntimeError(
+            "REGWATCH_DATABASE_URL logs in with UPDATE or DELETE on audit_log; use a member of "
+            "regwatch_app, and the owner only in REGWATCH_MIGRATION_DATABASE_URL (BL-61)"
+        )
+    log.warning("database_login_can_alter_audit_log", hint="see BL-61 and deploy/README.md")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app. Reads settings first, so a missing required variable stops start-up."""
     settings = settings or get_settings()
@@ -66,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await check_database_login(engine, settings)
         yield
         await engine.dispose()
 

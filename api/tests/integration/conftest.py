@@ -20,6 +20,7 @@ from alembic.config import Config
 API_DIR = Path(__file__).resolve().parents[2]
 PG_IMAGE = "postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a"
 PASSWORD = "it-only"  # noqa: S105 - throwaway container bound to 127.0.0.1
+APP_PASSWORD = "it-app-only"  # noqa: S105 - regwatch_api, as deploy/db-init creates it
 
 
 def _docker(*args: str, stdin: str | None = None) -> str:
@@ -41,7 +42,12 @@ class Postgres:
     port: int
 
     def url(self, database: str) -> str:
+        """The superuser, standing in for the owner login migrations use."""
         return f"postgresql://postgres:{PASSWORD}@127.0.0.1:{self.port}/{database}"
+
+    def app_url(self, database: str) -> str:
+        """``regwatch_api``, the API's least-privilege login (BL-61)."""
+        return f"postgresql://regwatch_api:{APP_PASSWORD}@127.0.0.1:{self.port}/{database}"
 
     def psql(self, database: str, sql: str) -> str:
         return _docker(
@@ -80,6 +86,9 @@ def postgres() -> Iterator[Postgres]:
                 if time.monotonic() > deadline:
                     raise
                 time.sleep(0.5)
+        # The same roles deploy/db-init/10-api-login.sh creates in the Compose stack.
+        login = f"CREATE ROLE regwatch_api LOGIN PASSWORD '{APP_PASSWORD}' IN ROLE regwatch_app;"
+        pg.psql("postgres", "CREATE ROLE regwatch_app NOLOGIN;\n" + login)
         yield pg
     finally:
         _remove = ["docker", "rm", "-f", name]

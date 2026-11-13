@@ -50,6 +50,21 @@ def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
     return create_async_engine(async_url(url), pool_pre_ping=True, hide_parameters=True)
 
 
+# Privileges that would let the login rewrite history (8.1: the app role cannot alter audit).
+_AUDIT_MUTATION = "UPDATE", "DELETE", "TRUNCATE"
+
+
+async def audit_log_is_append_only(engine: AsyncEngine) -> bool:
+    """True when the engine's login can only read and insert ``audit_log`` (BL-61)."""
+    from sqlalchemy import text
+
+    checks = " OR ".join(f"has_table_privilege(current_user, 'audit_log', '{p}')"
+                         for p in _AUDIT_MUTATION)  # fmt: skip
+    async with engine.connect() as conn:
+        can_mutate = await conn.scalar(text(f"SELECT {checks}"))  # noqa: S608 - constants only
+    return not can_mutate
+
+
 def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
 

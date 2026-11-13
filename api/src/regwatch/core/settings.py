@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     secret_key: SecretStr
     secret_key_previous: SecretStr | None = None
     database_url: SecretStr
+    # Owner login for Alembic only; the API runs as a member of regwatch_app (BL-61).
+    migration_database_url: SecretStr | None = None
     queue_url: SecretStr
     object_store_path: str = "/data/objectstore"
     base_url: AnyHttpUrl
@@ -86,10 +88,12 @@ class Settings(BaseSettings):
             raise ValueError("must be 64 hexadecimal characters")
         return value
 
-    @field_validator("database_url")
+    @field_validator("database_url", "migration_database_url")
     @classmethod
-    def _database_is_postgresql(cls, value: SecretStr) -> SecretStr:
-        if not value.get_secret_value().startswith(("postgresql://", "postgresql+psycopg://")):
+    def _database_is_postgresql(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().startswith(
+            ("postgresql://", "postgresql+psycopg://")
+        ):
             raise ValueError("must be a postgresql:// or postgresql+psycopg:// URL")
         return value
 

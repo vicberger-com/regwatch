@@ -1,8 +1,9 @@
 """Alembic environment: online migrations over asyncpg.
 
 The URL comes from ``config.attributes["database_url"]`` when a caller (tests) sets it, else
-from ``REGWATCH_DATABASE_URL``. Offline (``--sql``) mode is not supported: revision 0001 runs a
-multi-statement script through the driver's simple-query protocol.
+from ``REGWATCH_MIGRATION_DATABASE_URL`` (the owner login), else ``REGWATCH_DATABASE_URL``.
+Offline (``--sql``) mode is not supported: revision 0001 runs a multi-statement script through
+the driver's simple-query protocol.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ def _database_url() -> str:
         return str(url)
     from regwatch.core.settings import get_settings
 
-    return get_settings().database_url.get_secret_value()
+    settings = get_settings()
+    return (settings.migration_database_url or settings.database_url).get_secret_value()
 
 
 def _migrate(connection: Connection) -> None:

@@ -40,9 +40,11 @@ def clear_limits() -> Iterator[None]:
 def db_url(
     postgres: Postgres, empty_db: str, valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> str:
-    url = postgres.url(empty_db)
-    upgrade(url)
-    asyncio.run(seed.run(SEED_DIR, url))
+    owner = postgres.url(empty_db)
+    upgrade(owner)
+    asyncio.run(seed.run(SEED_DIR, owner))
+    # The API and the CLI run as regwatch_api, a member of regwatch_app (BL-61).
+    url = postgres.app_url(empty_db)
     monkeypatch.setenv("REGWATCH_DATABASE_URL", url)
     get_settings.cache_clear()
     for args, pw in (

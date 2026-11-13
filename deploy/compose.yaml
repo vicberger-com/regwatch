@@ -90,8 +90,11 @@ services:
       POSTGRES_USER: regwatch
       POSTGRES_DB: regwatch
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/dev-env.sh to create deploy/.env}
+      # Password of regwatch_api, the API's login (member of regwatch_app), made by db-init.
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?run scripts/dev-env.sh --force to add it}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
     networks: [regwatch]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "regwatch", "-d", "regwatch"]

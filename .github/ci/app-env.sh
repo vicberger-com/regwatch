@@ -2,6 +2,7 @@
 # required settings (docs/contracts/env.example); the secret key is generated per run.
 export REGWATCH_ENV=test
 export REGWATCH_SECRET_KEY="$(openssl rand -hex 32)"
-export REGWATCH_DATABASE_URL="postgresql+psycopg://regwatch:${CI_DB_PASSWORD:-ci-only}@127.0.0.1:5432/regwatch"
+export REGWATCH_DATABASE_URL="postgresql+psycopg://regwatch_api:${CI_APP_DB_PASSWORD:-ci-app-only}@127.0.0.1:5432/regwatch"
+export REGWATCH_MIGRATION_DATABASE_URL="postgresql+psycopg://regwatch:${CI_DB_PASSWORD:-ci-only}@127.0.0.1:5432/regwatch"
 export REGWATCH_QUEUE_URL="valkey://127.0.0.1:6379/0"
 export REGWATCH_BASE_URL="http://localhost"
