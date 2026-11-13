@@ -1,7 +1,7 @@
 """Facet, term and jurisdiction routes; mounted under /api/v1.
 
-Facets, terms and view dimensions are implemented (M2); the other stubs answer 501 until M2
-lands.
+Facets, terms, merge, the rule test and view dimensions are implemented (M2); the other stubs
+answer 501 until M2 lands.
 """
 
 from __future__ import annotations
@@ -112,16 +112,25 @@ async def delete_term(
     return Response(status_code=204)
 
 
-@router.post("/taxonomy/terms/{id}/merge", **spec(MergeResult, desc="Items re-tagged", perm=MANAGE))
-async def merge_term(id: UUID, body: TermMerge) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/taxonomy/terms/{id}/merge",
+    **spec(MergeResult, desc="Items re-tagged", perm=MANAGE, stub=False),
+)  # fmt: skip
+async def merge_term(
+    id: UUID, body: TermMerge, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> MergeResult:
+    moved = await services.merge_term(
+        db, id, body.into_term_id, principal.user.id, client_ip(request)
+    )
+    return MergeResult(items_moved=moved)
 
 
 @router.post(
-    "/taxonomy/terms/{id}/test-rules", **spec(RuleTestResult, desc="Rule evaluation", perm=MANAGE)
+    "/taxonomy/terms/{id}/test-rules",
+    **spec(RuleTestResult, desc="Rule evaluation", perm=MANAGE, stub=False),
 )
-async def test_rules(id: UUID, body: RuleTest) -> NoReturn:
-    not_implemented()
+async def test_rules(id: UUID, body: RuleTest, db: DbSession) -> RuleTestResult:
+    return await services.run_rule_test(db, id, body.text, body.language)
 
 
 @router.get(

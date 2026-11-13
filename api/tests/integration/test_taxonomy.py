@@ -93,7 +93,7 @@ WITH s AS (INSERT INTO source (name, kind) VALUES ('fixture', 'manual') RETURNIN
            SELECT id, 'https://example.org/' || gen_random_uuid(), gen_random_uuid()::text,
                   'Item', 'h' FROM s RETURNING id)
 INSERT INTO item_term (item_id, term_id, assigned_by) SELECT id, '{term}', 'user' FROM i;
-""",  # noqa: S608
+""",
     )
 
 
@@ -160,3 +160,64 @@ async def test_terms_tree_flat_rules_and_soft_delete(
     assert {"term.create", "term.update", "term.deactivate", "term.delete"} <= {
         r["action"] for r in audit["items"]
     }
+
+
+async def test_merge_moves_every_reference(
+    admin: httpx.AsyncClient, postgres: Postgres, db_url: str
+) -> None:
+    """M2 acceptance 3: merging re-tags all items and leaves no dangling references."""
+    terms = _api("/taxonomy/facets/topic/terms")
+    old_ai = {"key": "old-ai", "label": "Old AI", "synonyms": ["Artificial intelligence"]}
+    old = (await admin.post(terms, json=old_ai)).json()
+    new = (await admin.post(terms, json={"key": "new-ai", "label": "New AI"})).json()
+    child = (await admin.post(terms, json={"key": "ai-sub", "label": "Sub",
+                                           "parent_id": old["id"]})).json()  # fmt: skip
+    _tag_item(postgres, db_url, old["id"])
+    _tag_item(postgres, db_url, old["id"])
+    database = db_url.rsplit("/", 1)[1]
+    o, n = uuid.UUID(old["id"]), uuid.UUID(new["id"])
+    postgres.psql(
+        database,
+        f"""
+INSERT INTO item_term (item_id, term_id, assigned_by, confidence)
+  SELECT item_id, '{n}', 'rule', 0.4 FROM item_term WHERE term_id = '{o}' LIMIT 1;
+UPDATE item SET attributes = '{{"topic": ["old-ai", "new-ai", "other"]}}';
+UPDATE source SET default_term_ids = ARRAY['{o}'::uuid, '{n}'::uuid];
+""",
+    )
+
+    merge = _api(f"/taxonomy/terms/{old['id']}/merge")
+    assert (await admin.post(merge, json={"into_term_id": old["id"]})).status_code == 422
+    assert (await admin.post(merge, json={"into_term_id": child["id"]})).status_code == 422
+    resp = await admin.post(merge, json={"into_term_id": new["id"]})
+    assert resp.status_code == 200 and resp.json() == {"items_moved": 2}
+
+    left = postgres.psql(
+        database,
+        f"""
+SELECT (SELECT count(*) FROM item_term WHERE term_id = '{o}'),
+       (SELECT count(*) FROM item_term WHERE term_id = '{n}'),
+       (SELECT max(confidence) FROM item_term WHERE term_id = '{n}'),
+       (SELECT count(*) FROM item WHERE attributes::text LIKE '%old-ai%'),
+       (SELECT string_agg(DISTINCT array_to_string(default_term_ids, ','), ';') FROM source),
+       (SELECT count(*) FROM term WHERE id = '{o}');
+""",
+    ).strip()
+    dangling, tagged, confidence, attrs, defaults, gone = left.split("|")
+    assert (dangling, tagged, attrs, gone) == ("0", "2", "0", "0")
+    assert float(confidence) == 1.0 and defaults == str(n)
+    flat = {t["key"]: t for t in (await admin.get(terms, params={"flat": True})).json()}
+    assert flat["ai-sub"]["parent_id"] == new["id"]
+    assert {"Old AI", "Artificial intelligence"} <= set(flat["new-ai"]["synonyms"])
+
+
+async def test_rule_test_endpoint(admin: httpx.AsyncClient) -> None:
+    terms = _api("/taxonomy/facets/topic/terms")
+    rules = {"keywords": ["ransomware", "incident reporting"]}
+    term = (await admin.post(terms, json={"key": "ir", "label": "Incident reporting",
+                                          "match_rules": rules})).json()  # fmt: skip
+    test = _api(f"/taxonomy/terms/{term['id']}/test-rules")
+    hit = (await admin.post(test, json={"text": "Ransomware incident reporting rules"})).json()
+    assert hit["matched"] is True and hit["confidence"] == 0.7 and hit["evidence"]
+    miss = (await admin.post(test, json={"text": "Nothing relevant"})).json()
+    assert miss == {"matched": False, "confidence": 0.0, "evidence": []}

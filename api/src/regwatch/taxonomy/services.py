@@ -1,9 +1,10 @@
 """Service layer; other modules call this module only through here (ADR-0001).
 
-Facets and terms (M2): CRUD, the view-selector dimensions, and the ``taxonomy.version`` setting,
-bumped in the same transaction as every facet or term change so workers can drop cached
-attribute validation (M2 design notes). Reads go to the database each time, so a new facet is
-visible in filters and the view selector on the next request (M2 acceptance 1).
+Facets and terms (M2): CRUD, merge, the rule test, the view-selector dimensions, and the
+``taxonomy.version`` setting, bumped in the same transaction as every facet or term change so
+workers can drop cached attribute validation (M2 design notes). Reads go to the database each
+time, so a new facet is visible in filters and the view selector on the next request (M2
+acceptance 1).
 """
 
 from __future__ import annotations
@@ -21,9 +22,10 @@ from regwatch.admin.models import Setting
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.schemas import has_control
 from regwatch.core.services import audit
+from regwatch.taxonomy import rules
 from regwatch.taxonomy.models import Facet, ItemTerm, Term
 from regwatch.taxonomy.schemas import Facet as FacetOut
-from regwatch.taxonomy.schemas import FacetWrite, ViewDimension
+from regwatch.taxonomy.schemas import FacetWrite, RuleTestResult, ViewDimension
 from regwatch.taxonomy.schemas import Term as TermOut
 
 VERSION_KEY = "taxonomy.version"
@@ -396,3 +398,72 @@ async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
     after = {"facet": facet.key, "items_tagged": used, "taxonomy_version": version}
     audit(db, action, "term", term_id, actor=actor, ip=ip, before=before, after=after)
     await db.commit()
+
+
+# --- Merge and rule test --------------------------------------------------------------------
+
+
+async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
+                     actor: uuid.UUID, ip: str | None) -> int:  # fmt: skip
+    """Move every reference from ``term_id`` to ``into_id`` and delete ``term_id``.
+
+    References: item tags (keeping the higher confidence when an item has both), term keys in
+    ``item.attributes``, ``source.default_term_ids`` and child terms (M2 acceptance 3).
+    Returns the number of items that carried the merged term.
+    """
+    source, facet = await _term_or_404(db, term_id)
+    target, target_facet = await _term_or_404(db, into_id)
+    if source.id == target.id:
+        raise validation("into_term_id", "a term cannot be merged into itself")
+    if target_facet.id != facet.id:
+        raise validation("into_term_id", "both terms must belong to the same facet")
+    await _check_parent(db, source, facet, target.id)  # the target is not below the source
+    ids = {"src": source.id, "dst": target.id}
+    moved = int(await db.scalar(
+        select(func.count()).select_from(ItemTerm).where(ItemTerm.term_id == source.id)
+    ) or 0)  # fmt: skip
+    await db.execute(text(
+        "UPDATE item_term t SET confidence = GREATEST(t.confidence, s.confidence) "
+        "FROM item_term s WHERE s.term_id = :src AND t.term_id = :dst AND t.item_id = s.item_id"
+    ), ids)  # fmt: skip
+    await db.execute(text(
+        "DELETE FROM item_term s USING item_term t "
+        "WHERE s.term_id = :src AND t.term_id = :dst AND s.item_id = t.item_id"
+    ), ids)  # fmt: skip
+    await db.execute(text("UPDATE item_term SET term_id = :dst WHERE term_id = :src"), ids)
+    keys = {"fk": facet.key, "src": source.key, "dst": target.key}
+    await db.execute(text(
+        "UPDATE item SET attributes = jsonb_set(attributes, ARRAY[:fk], ("
+        "  SELECT to_jsonb(array_agg(DISTINCT CASE WHEN v = :src THEN :dst ELSE v END))"
+        "  FROM jsonb_array_elements_text(attributes -> :fk) AS v)) "
+        "WHERE jsonb_typeof(attributes -> :fk) = 'array' AND (attributes -> :fk) ? :src"
+    ), keys)  # fmt: skip
+    await db.execute(text(
+        "UPDATE item SET attributes = "
+        "  jsonb_set(attributes, ARRAY[:fk], to_jsonb(CAST(:dst AS text))) "
+        "WHERE attributes ->> :fk = :src"
+    ), keys)  # fmt: skip
+    await db.execute(text(
+        "UPDATE source SET default_term_ids = ARRAY(SELECT DISTINCT unnest("
+        "  array_replace(default_term_ids, CAST(:src AS uuid), CAST(:dst AS uuid)))) "
+        "WHERE CAST(:src AS uuid) = ANY(default_term_ids)"
+    ), ids)  # fmt: skip
+    await db.execute(update(Term).where(Term.parent_id == source.id).values(parent_id=target.id))
+    before = {"source": term_snapshot(source), "target": term_snapshot(target)}
+    target.synonyms = normalise_synonyms(
+        [*target.synonyms, source.label, *source.synonyms]
+    )  # the merged term's names keep finding the target
+    await db.delete(source)
+    version = await bump_version(db, actor)
+    after = {"target": term_snapshot(target), "items_moved": moved, "taxonomy_version": version}
+    audit(db, "term.merge", "term", term_id, actor=actor, ip=ip, before=before, after=after)
+    await db.commit()
+    return moved
+
+
+async def run_rule_test(db: AsyncSession, term_id: uuid.UUID, sample: str,
+                          language: str | None) -> RuleTestResult:  # fmt: skip
+    term, _ = await _term_or_404(db, term_id)
+    result = rules.evaluate(term.match_rules or {}, sample, language)
+    return RuleTestResult(matched=result.matched, confidence=result.confidence,
+                          evidence=result.evidence)  # fmt: skip

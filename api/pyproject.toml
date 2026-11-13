@@ -51,7 +51,7 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "B", "UP", "S", "N", "ASYNC"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+"tests/**" = ["S101", "S105", "S106", "S608"]  # S608: fixtures build SQL from parsed ids
 
 [tool.mypy]
 python_version = "3.12"
