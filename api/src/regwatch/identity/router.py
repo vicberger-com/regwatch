@@ -1,6 +1,7 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
-``GET /auth/me`` is implemented (#31); the other stubs answer 501 until #31 and #32 land.
+Login, logout and ``/auth/me`` are implemented (#31); the other stubs answer 501 until
+#31 and #32 land.
 """
 
 from __future__ import annotations
@@ -8,8 +9,9 @@ from __future__ import annotations
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
 
+from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, Tags, not_implemented, spec
 from regwatch.core.schemas import Page
 from regwatch.core.settings import Settings, get_settings
@@ -43,15 +45,26 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 @router.post(
     "/auth/login", tags=AUTH,
     **spec(Me, desc="Session cookie set", public=True, errors=(401, 423, 429),
-           error_desc={423: "Account locked"}),
+           error_desc={423: "Account locked"}, stub=False),
 )  # fmt: skip
-async def login(body: Login) -> NoReturn:
-    not_implemented()
+async def login(
+    body: Login, request: Request, response: Response, db: DbSession, settings: SettingsDep
+) -> Me:
+    return await services.login(
+        db, request, response, settings, body.email, body.password, body.remember_me
+    )
 
 
-@router.post("/auth/logout", tags=AUTH, **spec(status=204, desc="Session revoked"))
-async def logout() -> NoReturn:
-    not_implemented()
+@router.post(
+    "/auth/logout", tags=AUTH, **spec(status=204, desc="Session revoked", stub=False)
+)  # fmt: skip
+async def logout(
+    principal: CurrentPrincipal, request: Request, db: DbSession, settings: SettingsDep
+) -> Response:
+    await services.logout(db, principal, request)
+    response = Response(status_code=204)
+    services.clear_session_cookie(response, settings)
+    return response
 
 
 @router.get("/auth/me", tags=AUTH, **spec(Me, desc="Current user", stub=False))

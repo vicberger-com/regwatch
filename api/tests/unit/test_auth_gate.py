@@ -1,8 +1,9 @@
-"""The application-wide gate, without a database (#31, REQ-16)."""
+"""The application-wide gate and the login limits, without a database (#31, REQ-16)."""
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,6 +16,15 @@ from regwatch.core.errors import ProblemError
 from regwatch.core.settings import Settings
 from regwatch.identity import permissions, services
 from regwatch.identity.models import User
+
+
+@pytest.fixture(autouse=True)
+def clear_limits() -> Iterator[None]:
+    services.login_attempts.clear()
+    services.unknown_failures.clear()
+    yield
+    services.login_attempts.clear()
+    services.unknown_failures.clear()
 
 
 @pytest.fixture
@@ -114,12 +124,44 @@ def test_current_principal_without_gate_is_401() -> None:
     assert exc.value.status == 401
 
 
+def test_login_rate_limit_per_account_and_ip() -> None:
+    for _ in range(5):
+        services.check_login_rate("10.0.0.1", "a@example.org")
+    with pytest.raises(ProblemError) as exc:
+        services.check_login_rate("10.0.0.2", "A@Example.org ")
+    assert exc.value.status == 429
+    assert exc.value.headers is not None and int(exc.value.headers["Retry-After"]) >= 1
+    with pytest.raises(ProblemError):
+        services.check_login_rate("10.0.0.1", "b@example.org")
+    services.check_login_rate(None, "c@example.org")
+
+
+def test_sliding_window_expires_and_prunes(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(services.time, "monotonic", lambda: clock[0])
+    window = services.SlidingWindow(10)
+    assert window.hit("k") == 1 and window.hit("k") == 2
+    assert window.retry_after("k") == 11
+    clock[0] += 11
+    assert window.count("k") == 0 and window.retry_after("k") == 1
+    monkeypatch.setattr(services.SlidingWindow, "MAX_KEYS", 1)
+    window.hit("a")
+    window.hit("b")
+    clock[0] += 11
+    window.hit("c")
+    assert set(window._hits) == {"c"}
+
+
 @pytest.mark.parametrize(
     ("pref", "minutes"), [(None, 480), (30, 30), (10, 480), (900, 480), (True, 480)]
 )
 def test_idle_timeout_is_bounded_by_admin_maximum(pref: object, minutes: int) -> None:
     prefs = {} if pref is None else {"session_idle_timeout_minutes": pref}
     assert services._idle_minutes(_user(preferences=prefs), services.AUTH_DEFAULTS) == minutes
+
+
+def test_email_digest_normalises() -> None:
+    assert services.email_digest(" A@Example.org") == services.email_digest("a@example.org")
 
 
 async def test_gate_without_a_route_requires_a_session(

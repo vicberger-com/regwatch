@@ -13,6 +13,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- `POST /auth/login` and `POST /auth/logout`: `HttpOnly; Secure; SameSite=Lax` cookie rotated on login, 5 attempts per minute per IP and per account, lockout after `auth.lockout_threshold` failures in 15 minutes for `auth.lockout_minutes` with identical answers for unknown accounts, audit rows for login, failure, lock and logout (#31, REQ-14, REQ-16, BL-50)
 - `GET /auth/me`; sessions resolved from the `rw_session` cookie with an idle timeout from the user preference bounded by `sessions.idle_timeout_max_minutes` and an absolute lifetime of `sessions.absolute_lifetime_hours` (#31, REQ-16)
 - `regwatch-admin create-user` creates local accounts such as the first administrator; the password is read without echo or from standard input, never from an argument (#31, REQ-16)
 - M1 auth core: Argon2id password hashing (argon2-cffi), random session tokens stored as sha256, the CSRF origin check, SQLAlchemy models for users, sessions and the audit log, and an `audit()` helper; timestamps mapped as timestamptz (#31, REQ-16)
