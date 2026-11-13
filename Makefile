@@ -20,8 +20,8 @@ dev: env ## Start the development stack with hot reload (http://localhost)
 stop: ## Stop the development stack
 	$(COMPOSE) down
 
-migrate: env ## Apply database migrations (alembic upgrade head in the api container)
-	$(COMPOSE) run --rm --build api uv run --no-sync alembic upgrade head
+migrate: env ## Apply database migrations as the owner (one-off migrate container, BL-61)
+	$(COMPOSE) run --rm --build migrate
 
 seed: env ## Load seed data (idempotent; regwatch-seed in the api container)
 	$(COMPOSE) run --rm --build api regwatch-seed

@@ -84,14 +84,24 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # One-off migrations as the owner (make migrate). The only app container given db.env, so
+  # long-running api, worker and beat containers never hold owner credentials (BL-61).
+  migrate:
+    <<: *app
+    profiles: [tools]
+    env_file: [.env, db.env]
+    command: ["uv", "run", "--no-sync", "alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+
   db:
     image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
     environment:
       POSTGRES_USER: regwatch
       POSTGRES_DB: regwatch
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/dev-env.sh to create deploy/.env}
-      # Password of regwatch_api, the API's login (member of regwatch_app), made by db-init.
-      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?run scripts/dev-env.sh --force to add it}
+    # POSTGRES_PASSWORD (owner) and POSTGRES_APP_PASSWORD (regwatch_api, made by db-init).
+    env_file: db.env
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d:ro

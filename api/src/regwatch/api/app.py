@@ -60,20 +60,34 @@ def _operation_id(route: APIRoute) -> str:
 
 
 async def check_database_login(engine: AsyncEngine, settings: Settings) -> None:
-    """Refuse to serve in production if the API's login could change audit rows (BL-61);
-    elsewhere, warn. An unreachable database is left to the health check."""
+    """Refuse to serve in production unless the API's login provably cannot alter audit rows
+    and no owner URL is configured (BL-61); fail closed if that cannot be checked. Outside
+    production, warn."""
     log = structlog.get_logger("regwatch.startup")
+    production = settings.env == "production"
+    if settings.migration_database_url is not None:
+        if production:
+            raise RuntimeError(
+                "REGWATCH_MIGRATION_DATABASE_URL is set for the API; give the owner URL only to "
+                "the migrate container (BL-61)"
+            )
+        log.warning("owner_database_url_in_api_environment", hint="see BL-61")
     try:
         append_only = await audit_log_is_append_only(engine)
-    except Exception as exc:  # noqa: BLE001 - start-up probe; /health reports the database
+    except Exception as exc:
+        if production:
+            raise RuntimeError(
+                "cannot verify the database login (unreachable or unmigrated database); "
+                "run make migrate first (BL-61)"
+            ) from exc
         log.warning("database_login_unchecked", error=type(exc).__name__)
         return
     if append_only:
         return
-    if settings.env == "production":
+    if production:
         raise RuntimeError(
-            "REGWATCH_DATABASE_URL logs in with UPDATE or DELETE on audit_log; use a member of "
-            "regwatch_app, and the owner only in REGWATCH_MIGRATION_DATABASE_URL (BL-61)"
+            "REGWATCH_DATABASE_URL can alter audit_log; use a member of regwatch_app, and the "
+            "owner only in REGWATCH_MIGRATION_DATABASE_URL for the migrate container (BL-61)"
         )
     log.warning("database_login_can_alter_audit_log", hint="see BL-61 and deploy/README.md")
 

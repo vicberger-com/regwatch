@@ -14,8 +14,8 @@ make stop
 ## Database logins (BL-61)
 
 - The API, workers and `regwatch-seed` log in as `regwatch_api`, a member of `regwatch_app`. That role may read and write the application tables but only read and insert `audit_log`, so audit rows cannot be changed or deleted through the application's credentials.
-- Migrations (`make migrate`) use the owner, `regwatch`, through `REGWATCH_MIGRATION_DATABASE_URL`.
-- `deploy/db-init/10-api-login.sh` creates `regwatch_app` and `regwatch_api` (password `POSTGRES_APP_PASSWORD`) when the `db` container starts on an empty volume. A volume created before this change has no `regwatch_api`: run `scripts/dev-env.sh --force`, `docker volume rm regwatch_pgdata`, then `make dev`, `make migrate` and `make seed`.
+- Migrations (`make migrate`) use the owner, `regwatch`, through `REGWATCH_MIGRATION_DATABASE_URL`. That URL and both database passwords live in `deploy/db.env`, which only the `db` container and the one-off `migrate` container (profile `tools`) read; `deploy/.env`, read by the long-running containers, holds the `regwatch_api` login only.
+- `deploy/db-init/10-api-login.sh` creates `regwatch_app` and `regwatch_api` (password `POSTGRES_APP_PASSWORD`) when the `db` container starts on an empty volume. A volume created before this change has no `regwatch_api`: run `scripts/dev-env.sh --force` (which also writes `deploy/db.env`), `docker volume rm regwatch_pgdata`, then `make dev`, `make migrate` and `make seed`.
 - With `REGWATCH_ENV=production` the API refuses to start if its login holds UPDATE, DELETE or TRUNCATE on `audit_log`; in development it logs a warning.
 - Other deployments create the same two roles once, as a superuser or a role with CREATEROLE:
   ```sql

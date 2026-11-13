@@ -51,17 +51,33 @@ def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
 
 
 # Privileges that would let the login rewrite history (8.1: the app role cannot alter audit).
-_AUDIT_MUTATION = "UPDATE", "DELETE", "TRUNCATE"
+# Checked for every role the login is a member of, whether or not it inherits (a NOINHERIT
+# member can still SET ROLE), at table and at column level (re-review 6c). Superusers and the
+# table owner hold every privilege, so they fail the check too.
+_AUDIT_CAN_MUTATE = """
+SELECT EXISTS (
+  SELECT 1 FROM pg_roles r
+  WHERE pg_has_role(current_user, r.oid, 'MEMBER')
+    AND (r.rolsuper
+         OR has_table_privilege(r.oid, 'audit_log', 'UPDATE')
+         OR has_table_privilege(r.oid, 'audit_log', 'DELETE')
+         OR has_table_privilege(r.oid, 'audit_log', 'TRUNCATE')
+         OR has_any_column_privilege(r.oid, 'audit_log', 'UPDATE')
+         OR pg_has_role(r.oid, (SELECT relowner FROM pg_class
+                                WHERE oid = 'public.audit_log'::regclass), 'MEMBER'))
+)
+"""
 
 
 async def audit_log_is_append_only(engine: AsyncEngine) -> bool:
-    """True when the engine's login can only read and insert ``audit_log`` (BL-61)."""
+    """True when no role the engine's login can use may alter ``audit_log`` (BL-61).
+
+    Raises if the table does not exist (an unmigrated database).
+    """
     from sqlalchemy import text
 
-    checks = " OR ".join(f"has_table_privilege(current_user, 'audit_log', '{p}')"
-                         for p in _AUDIT_MUTATION)  # fmt: skip
     async with engine.connect() as conn:
-        can_mutate = await conn.scalar(text(f"SELECT {checks}"))  # noqa: S608 - constants only
+        can_mutate = await conn.scalar(text(_AUDIT_CAN_MUTATE))
     return not can_mutate
 
 
