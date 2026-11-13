@@ -32,6 +32,7 @@ from regwatch.taxonomy.schemas import Region as RegionOut
 from regwatch.taxonomy.schemas import Term as TermOut
 
 VERSION_KEY = "taxonomy.version"
+KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")  # facet keys (schema.sql)
 # The view selector's own dimensions (screens.md, M6); facet keys may not reuse them.
 BUILTIN_DIMENSIONS = (("country", "Country"), ("region", "Region"), ("regulation", "Regulation"))
 RESERVED_KEYS = frozenset(k for k, _ in BUILTIN_DIMENSIONS)
@@ -58,6 +59,11 @@ async def bump_version(db: AsyncSession, actor: uuid.UUID | None) -> int:
     )  # fmt: skip
     result = await db.execute(stmt.returning(Setting.value))
     return int(result.scalar_one())
+
+
+async def current_version(db: AsyncSession) -> int:
+    value = await db.scalar(select(Setting.value).where(Setting.key == VERSION_KEY))
+    return int(value or 0)
 
 
 def facet_snapshot(facet: Facet) -> dict[str, Any]:
@@ -264,7 +270,7 @@ async def _term_or_404(db: AsyncSession, term_id: uuid.UUID) -> tuple[Term, Face
     return found[0], found[1]
 
 
-async def _check_parent(db: AsyncSession, term: Term | None, facet: Facet,
+async def check_parent(db: AsyncSession, term: Term | None, facet: Facet,
                         parent_id: uuid.UUID | None) -> None:  # fmt: skip
     """The parent must be in the same facet and not the term itself or one of its descendants."""
     seen: set[uuid.UUID] = set()
@@ -282,7 +288,7 @@ async def _check_parent(db: AsyncSession, term: Term | None, facet: Facet,
         current = row[1]
 
 
-def _apply(term: Term, changes: dict[str, Any]) -> None:
+def apply_term_changes(term: Term, changes: dict[str, Any]) -> None:
     if "label" in changes:
         label = (changes["label"] or "").strip()
         if not label or len(label) > 120 or has_control(label):
@@ -345,10 +351,10 @@ async def create_term(db: AsyncSession, facet_key: str, changes: dict[str, Any],
         raise validation("label", "label is required")
     if await db.scalar(select(Term.id).where(Term.facet_id == facet.id, Term.key == key)):
         raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
-    await _check_parent(db, None, facet, changes.get("parent_id"))
+    await check_parent(db, None, facet, changes.get("parent_id"))
     term = Term(facet_id=facet.id, key=key, label="", parent_id=changes.get("parent_id"),
                 synonyms=[], match_rules={}, active=True)  # fmt: skip
-    _apply(term, changes)
+    apply_term_changes(term, changes)
     db.add(term)
     await db.flush()
     version = await bump_version(db, actor)
@@ -370,9 +376,9 @@ async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, A
             raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
         term.key = key
     if "parent_id" in changes and changes["parent_id"] != term.parent_id:
-        await _check_parent(db, term, facet, changes["parent_id"])
+        await check_parent(db, term, facet, changes["parent_id"])
         term.parent_id = changes["parent_id"]
-    _apply(term, changes)
+    apply_term_changes(term, changes)
     after = term_snapshot(term)
     if after != before:
         version = await bump_version(db, actor)
@@ -420,7 +426,7 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
         raise validation("into_term_id", "a term cannot be merged into itself")
     if target_facet.id != facet.id:
         raise validation("into_term_id", "both terms must belong to the same facet")
-    await _check_parent(db, source, facet, target.id)  # the target is not below the source
+    await check_parent(db, source, facet, target.id)  # the target is not below the source
     ids = {"src": source.id, "dst": target.id}
     moved = int(await db.scalar(
         select(func.count()).select_from(ItemTerm).where(ItemTerm.term_id == source.id)

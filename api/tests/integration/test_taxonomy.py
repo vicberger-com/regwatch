@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
+import yaml
 
 from tests.integration.conftest import Postgres
 from tests.integration.test_admin import _api, _as_new_user, admin
@@ -262,3 +264,92 @@ async def test_jurisdictions_and_regions(admin: httpx.AsyncClient) -> None:
     assert {"DE", "DE-BY", "FR"} <= set(regions["155"]["jurisdiction_codes"])
     audit = (await admin.get(_api("/admin/audit"), params={"entity_type": "jurisdiction"})).json()
     assert {r["action"] for r in audit["items"]} == {"jurisdiction.create", "jurisdiction.update"}
+
+
+SEED = Path(__file__).resolve().parents[2] / "seed"
+YAML_HEADERS = {"content-type": "application/yaml"}
+
+
+async def _import(admin: httpx.AsyncClient, document: str | bytes) -> httpx.Response:
+    return await admin.post(_api("/taxonomy/import"), content=document, headers=YAML_HEADERS)
+
+
+async def test_importing_the_seed_twice_changes_nothing(admin: httpx.AsyncClient) -> None:
+    """M2 acceptance 2."""
+    for name in ("taxonomy.yaml", "control_framework.yaml"):
+        document = (SEED / name).read_bytes()
+        first = await _import(admin, document)
+        assert first.status_code == 200, first.text
+        assert first.json()["facets_created"] == 0 and first.json()["terms_created"] == 0
+        second = (await _import(admin, document)).json()
+        assert second == {"facets_created": 0, "facets_updated": 0, "terms_created": 0,
+                          "terms_updated": 0}, name  # fmt: skip
+
+
+async def test_export_round_trip_and_new_facets(admin: httpx.AsyncClient) -> None:
+    document = """
+schema_version: 1
+facets:
+  - key: enforcement_body
+    label: Enforcement body
+    show_in_view_selector: true
+    terms:
+      - { key: eu, label: EU bodies }
+      - { key: edpb, label: EDPB, parent: eu, synonyms: ["European Data Protection Board"] }
+      - { key: cnil, label: CNIL, match_rules: { keywords: [CNIL], min_hits: 1, weight: 1.0 } }
+"""
+    created = (await _import(admin, document)).json()
+    assert created == {"facets_created": 1, "facets_updated": 0, "terms_created": 3,
+                       "terms_updated": 0}  # fmt: skip
+    export = await admin.get(_api("/taxonomy/export"))
+    assert export.status_code == 200 and export.headers["content-type"].startswith(
+        "application/yaml"
+    )
+    assert "attachment" in export.headers["content-disposition"]
+    parsed = yaml.safe_load(export.text)
+    assert parsed["schema_version"] == 1
+    body = next(f for f in parsed["facets"] if f["key"] == "enforcement_body")
+    keys = [t["key"] for t in body["terms"]]
+    assert keys.index("eu") < keys.index("edpb")  # parents first
+    again = (await _import(admin, export.text)).json()
+    assert set(again.values()) == {0}
+    assert (await admin.get(_api("/taxonomy/export"))).text == export.text
+
+    tree = (await admin.get(_api("/taxonomy/facets/enforcement_body/terms"))).json()
+    eu = next(t for t in tree if t["key"] == "eu")
+    assert [c["key"] for c in eu["children"]] == ["edpb"]
+    renamed = document.replace("label: EDPB,", "label: European Data Protection Board,")
+    assert (await _import(admin, renamed)).json()["terms_updated"] == 1
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "facets: not-a-list",
+        "schema_version: 2\nfacets: []",
+        "facets: []\nextra: 1",
+        "facets:\n  - {key: topic, value_type: text}",
+        "facets:\n  - {key: new_one, terms: [{key: a, label: A, parent: missing}]}",
+        "facets:\n  - {key: new_one, terms: [{key: a, label: A, match_rules: {regex: ['(a+)+']}}]}",
+        "facets:\n  - {key: new_one, terms: [{key: 'Bad Key', label: A}]}",
+        "facets:\n  - {key: new_one, colour: red}",
+        "facets:\n  - {key: new_one, sort_order: true}",
+        "facets:\n  - {key: region}",
+        "a: &x [1]\nfacets: *x",
+        "facets: [\x00]",
+        b"\xff\xfe",
+    ],
+)  # fmt: skip
+async def test_bad_imports_change_nothing(admin: httpx.AsyncClient, document: str | bytes) -> None:
+    before = (await admin.get(_api("/taxonomy/export"))).text
+    resp = await _import(admin, document)
+    assert resp.status_code == 422, (document, resp.text)
+    assert (await admin.get(_api("/taxonomy/export"))).text == before
+
+
+async def test_viewers_export_but_do_not_import(admin: httpx.AsyncClient) -> None:
+    viewer = await _as_new_user(admin, "tx@example.org", ["viewer"])
+    assert (await viewer.get(_api("/taxonomy/export"))).status_code == 200
+    resp = await viewer.post(_api("/taxonomy/import"), content="facets: []", headers=YAML_HEADERS)
+    assert resp.status_code == 403
+    await viewer.aclose()

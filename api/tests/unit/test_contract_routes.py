@@ -15,7 +15,9 @@ from fastapi.routing import APIRoute
 from regwatch.api.app import API_PREFIX, api_routes, create_app
 from regwatch.core.routing import PERMISSION_KEY
 from regwatch.core.settings import Settings
-from regwatch.identity.permissions import authorize
+from regwatch.identity.models import User
+from regwatch.identity.permissions import authorize, current_principal
+from regwatch.identity.services import Principal
 
 from ..openapi_semantic import ACCEPTED, compare, load, operations
 
@@ -118,8 +120,14 @@ async def test_stubs_answer_501_problem(app: FastAPI) -> None:
         assert resp.headers["content-type"] == "application/problem+json"
         resp = await client.post(f"{API_PREFIX}/admin/branding/logo", content=b"x")
         assert resp.status_code == 501
-        resp = await client.post(f"{API_PREFIX}/taxonomy/import", content=b"facets: []")
-        assert resp.status_code == 501
+        # A raw (non-JSON) body reaches its handler: the YAML import, implemented in M2,
+        # rejects a malformed document before touching the database.
+        app.dependency_overrides[current_principal] = lambda: Principal(
+            User(id=uuid4()), uuid4(), ("admin",), frozenset({"taxonomy.manage"})
+        )
+        resp = await client.post(f"{API_PREFIX}/taxonomy/import", content=b"facets: nope")
+        assert resp.status_code == 422
+        assert resp.headers["content-type"] == "application/problem+json"
         resp = await client.request("OPTIONS", f"{API_PREFIX}/jurisdictions/regions")
         assert resp.headers["allow"] == "GET"  # not PATCH of /jurisdictions/{code}
         resp = await client.put(f"{API_PREFIX}/admin/users")

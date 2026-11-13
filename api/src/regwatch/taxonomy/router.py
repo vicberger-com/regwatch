@@ -1,21 +1,20 @@
 """Facet, term and jurisdiction routes; mounted under /api/v1.
 
-Facets, terms, merge, the rule test, view dimensions, jurisdictions and regions are implemented
-(M2); import and export answer 501 until M2 lands.
+Every route is implemented (M2).
 """
 
 from __future__ import annotations
 
-from typing import Literal, NoReturn
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
 from regwatch.core.db import DbSession
-from regwatch.core.routing import not_implemented, raw_body, spec
+from regwatch.core.routing import raw_body, spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.taxonomy import services
+from regwatch.taxonomy import services, transfer
 from regwatch.taxonomy.schemas import (
     Facet,
     FacetWrite,
@@ -144,15 +143,22 @@ async def list_view_dimensions(db: DbSession) -> list[ViewDimension]:
 @router.post(
     "/taxonomy/import",
     **spec(ImportSummary, desc="Import summary", perm=MANAGE,
-           body=raw_body(YAML, {"type": "string"})),
+           body=raw_body(YAML, {"type": "string"}), stub=False),
 )  # fmt: skip
-async def import_taxonomy() -> NoReturn:
-    not_implemented()
+async def import_taxonomy(
+    request: Request, principal: CurrentPrincipal, db: DbSession
+) -> ImportSummary:
+    document = await request.body()  # 2 MB at most (BodySizeLimitMiddleware)
+    return await transfer.import_taxonomy(db, document, principal.user.id, client_ip(request))
 
 
-@router.get("/taxonomy/export", **spec(desc="YAML export", perm=READ, content=YAML))
-async def export_taxonomy() -> NoReturn:
-    not_implemented()
+@router.get(
+    "/taxonomy/export", **spec(desc="YAML export", perm=READ, content=YAML, stub=False)
+)  # fmt: skip
+async def export_taxonomy(db: DbSession) -> Response:
+    body = await transfer.export_taxonomy(db)
+    return Response(body, media_type=YAML, headers={
+        "Content-Disposition": 'attachment; filename="regwatch-taxonomy.yaml"'})  # fmt: skip
 
 
 @router.get(
