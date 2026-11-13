@@ -32,6 +32,7 @@ VIEWER_PW = "viewer password 1234"
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
     services.unknown_failures.clear()
+    services.unknown_locks.clear()
     yield
 
 
@@ -135,6 +136,53 @@ async def test_ten_failures_lock_without_revealing_the_email(
     failed = await _audit(db_url, "auth.login_failed")
     assert len(failed) == 20
     assert "nobody@example.org" not in json.dumps([f["after"] for f in failed])
+
+
+async def test_concurrent_bursts_still_lock(client: httpx.AsyncClient) -> None:
+    """Review finding 1: parallel wrong passwords each count toward the lockout."""
+    codes: list[int] = []
+    for _ in range(2):
+        services.login_attempts.clear()
+        burst = [_login(client, "admin@example.org", "wrong password!!") for _ in range(5)]
+        codes += [r.status_code for r in await asyncio.gather(*burst)]
+    assert codes.count(423) == 1 and codes.count(401) == 9
+    services.login_attempts.clear()
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 423
+
+
+async def test_locked_answers_cost_the_same_and_last_as_long(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding 4: real and unknown locks run Argon2 and both last lockout_minutes."""
+    for _ in range(10):
+        services.login_attempts.clear()
+        await _login(client, "admin@example.org", "wrong password!!")
+        await _login(client, "nobody@example.org", "wrong password!!")
+    calls: list[str | None] = []
+    real_verify = services.security.verify_password_async
+
+    async def counting(stored: str | None, password: str) -> bool:
+        calls.append(stored)
+        return await real_verify(stored, password)
+
+    monkeypatch.setattr(services.security, "verify_password_async", counting)
+    later = services.time.monotonic() + 16 * 60  # past the 15-minute failure window
+    monkeypatch.setattr(services.time, "monotonic", lambda: later)
+    for email in ("admin@example.org", "nobody@example.org"):
+        services.login_attempts.clear()
+        assert (await _login(client, email, "wrong password!!")).status_code == 423
+    assert calls == [None, None]
+
+
+async def test_lock_ends_existing_sessions(client: httpx.AsyncClient) -> None:
+    """Review finding 12d: a locked account keeps no live session."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    token = client.cookies["rw_session"]
+    for _ in range(10):
+        services.login_attempts.clear()
+        await _login(client, "admin@example.org", "wrong password!!")
+    client.cookies = httpx.Cookies({"rw_session": token})
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401
 
 
 async def test_rate_limit_answers_429(client: httpx.AsyncClient) -> None:

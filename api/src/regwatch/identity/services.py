@@ -111,8 +111,36 @@ class SlidingWindow:
         self._hits.clear()
 
 
+class LockTable:
+    """In-process lock end times for unknown accounts, mirroring ``user.locked_until``."""
+
+    MAX_KEYS = 50_000
+
+    def __init__(self) -> None:
+        self._until: dict[str, float] = {}
+
+    def lock(self, key: str, seconds: float) -> None:
+        now = time.monotonic()
+        if len(self._until) > self.MAX_KEYS:
+            self._until = {k: t for k, t in self._until.items() if t > now}
+        self._until[key] = now + seconds
+
+    def locked(self, key: str) -> bool:
+        until = self._until.get(key)
+        if until is None:
+            return False
+        if until <= time.monotonic():
+            del self._until[key]
+            return False
+        return True
+
+    def clear(self) -> None:
+        self._until.clear()
+
+
 login_attempts = SlidingWindow(LOGIN_RATE[1])
 unknown_failures = SlidingWindow(LOCKOUT_WINDOW.total_seconds())
+unknown_locks = LockTable()
 
 
 def _key(kind: str, value: str) -> str:
@@ -299,20 +327,29 @@ async def login(
     cfg = await auth_settings(db)
     threshold = cfg["auth.lockout_threshold"]
     now = _now()
-    user = await db.scalar(select(User).where(User.email == email.strip()))
+    # The row lock serialises concurrent attempts on one account, so every failure counts
+    # (review finding 1); it is held for one Argon2 verify at most.
+    user = await db.scalar(select(User).where(User.email == email.strip()).with_for_update())
 
     if user is None or user.password_hash is None or user.status == "disabled":
+        key = _key("acct", email)
         await security.verify_password_async(None, password)
+        if unknown_locks.locked(key):
+            raise account_locked()
         reason = {"reason": "unknown_or_disabled", "email_sha256": email_digest(email)}
         audit(db, "auth.login_failed", "user", user.id if user else None, ip=ip, after=reason)
         await db.commit()
-        # Unknown accounts lock like real ones, so 423 does not reveal which emails exist.
-        if unknown_failures.hit(_key("acct", email)) >= threshold:
+        # Unknown accounts lock like real ones, for as long, so 423 does not reveal which
+        # emails exist (M1 acceptance 3, review finding 4).
+        if unknown_failures.hit(key) >= threshold:
+            unknown_locks.lock(key, cfg["auth.lockout_minutes"] * 60.0)
             raise account_locked()
         raise invalid_credentials()
 
     if user.status == "locked":
         if user.locked_until is None or user.locked_until > now:
+            # Same Argon2 cost as every other answer, so timing does not tell accounts apart.
+            await security.verify_password_async(None, password)
             raise account_locked()
         user.status, user.locked_until, user.failed_logins = "active", None, 0
         audit(db, "auth.unlocked", "user", user.id, ip=ip, after={"reason": "lock_expired"})
@@ -327,6 +364,7 @@ async def login(
             locked = {"status": "locked", "locked_until": user.locked_until.isoformat()}
             audit(db, "auth.locked", "user", user.id, ip=ip,
                   before={"status": "active"}, after=locked)  # fmt: skip
+            await _revoke_all(db, user.id)  # a locked account keeps no live session
             await db.commit()
             raise account_locked()
         await db.commit()

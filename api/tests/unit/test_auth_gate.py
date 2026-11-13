@@ -22,9 +22,11 @@ from regwatch.identity.models import User
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
     services.unknown_failures.clear()
+    services.unknown_locks.clear()
     yield
     services.login_attempts.clear()
     services.unknown_failures.clear()
+    services.unknown_locks.clear()
 
 
 @pytest.fixture
@@ -150,6 +152,23 @@ def test_sliding_window_expires_and_prunes(monkeypatch: pytest.MonkeyPatch) -> N
     clock[0] += 11
     window.hit("c")
     assert set(window._hits) == {"c"}
+
+
+def test_lock_table_expires_and_prunes(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(services.time, "monotonic", lambda: clock[0])
+    table = services.LockTable()
+    assert not table.locked("k")
+    table.lock("k", 60)
+    assert table.locked("k")
+    clock[0] += 61
+    assert not table.locked("k")
+    monkeypatch.setattr(services.LockTable, "MAX_KEYS", 1)
+    table.lock("a", 10)
+    table.lock("b", 10)
+    clock[0] += 11
+    table.lock("c", 10)
+    assert set(table._until) == {"c"}
 
 
 @pytest.mark.parametrize(
