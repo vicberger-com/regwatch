@@ -3,6 +3,7 @@ acceptance 2 and 5; REQ-16)."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
@@ -193,3 +194,72 @@ async def test_branding_and_legal_text(admin: httpx.AsyncClient) -> None:
     page = (await admin.get(_api("/admin/audit"), params={"entity_type": "setting",
                                                           "page_size": 2})).json()  # fmt: skip
     assert page["total"] >= 4 and len(page["items"]) == 2
+
+
+async def _as_new_user(admin: httpx.AsyncClient, email: str, roles: list[str]) -> httpx.AsyncClient:
+    """A logged-in client for a new user whose temporary password has been changed."""
+    body = {"email": email, "display_name": email.split("@")[0], "roles": roles}
+    created = await admin.post(_api("/admin/users"), json=body)
+    assert created.status_code == 201, created.text
+    temporary = created.json()["temporary_password"]
+    client = httpx.AsyncClient(transport=admin._transport, base_url="https://localhost",
+                               headers=ORIGIN)  # fmt: skip
+    assert (await _login(client, email, temporary)).status_code == 200
+    change = {"current_password": temporary, "new_password": "a long new passphrase"}
+    assert (await client.post(_api("/auth/password"), json=change)).status_code == 204
+    return client
+
+
+async def test_delegated_admins_cannot_escalate(admin: httpx.AsyncClient) -> None:
+    """Review finding 2: nobody grants, or takes over holders of, permissions they lack."""
+    for key, perms in (("user_admin", ["users.manage"]), ("role_admin", ["roles.manage"])):
+        body = {"key": key, "label": key, "permissions": perms}
+        assert (await admin.post(_api("/admin/roles"), json=body)).status_code == 201
+    me = (await admin.get(_api("/auth/me"))).json()
+
+    ua = await _as_new_user(admin, "ua@example.org", ["user_admin"])
+    ua_id = (await ua.get(_api("/auth/me"))).json()["id"]
+    grab = await ua.patch(_api(f"/admin/users/{ua_id}"), json={"roles": ["user_admin", "admin"]})
+    assert grab.status_code == 403
+    assert (await ua.post(_api(f"/admin/users/{me['id']}/reset-password"))).status_code == 403
+    assert (await ua.patch(_api(f"/admin/users/{me['id']}"),
+                           json={"status": "disabled"})).status_code == 403  # fmt: skip
+    peer = {"email": "peer@example.org", "display_name": "Peer", "roles": ["user_admin"]}
+    assert (await ua.post(_api("/admin/users"), json=peer)).status_code == 201
+    viewer = {"email": "v2@example.org", "display_name": "V", "roles": ["viewer"]}
+    assert (await ua.post(_api("/admin/users"), json=viewer)).status_code == 403
+
+    ra = await _as_new_user(admin, "ra@example.org", ["role_admin"])
+    roles = {r["key"]: r for r in (await ra.get(_api("/admin/roles"))).json()}
+    own = roles["role_admin"]
+    widen = {"permissions": ["roles.manage", "users.manage", "audit.read"]}
+    assert (await ra.patch(_api(f"/admin/roles/{own['id']}"), json=widen)).status_code == 403
+    new = {"key": "x_admin", "label": "X", "permissions": ["settings.manage"]}
+    assert (await ra.post(_api("/admin/roles"), json=new)).status_code == 403
+    narrow = {"permissions": []}
+    viewer_role = roles["viewer"]
+    assert (
+        await ra.patch(_api(f"/admin/roles/{viewer_role['id']}"), json=narrow)
+    ).status_code == 200
+    for c in (ua, ra):
+        await c.aclose()
+
+
+async def test_admins_removing_each_other_leave_one_manager(admin: httpx.AsyncClient) -> None:
+    """Review finding 9: concurrent changes cannot remove the last users.manage holder."""
+    other = await _as_new_user(admin, "second@example.org", ["admin"])
+    me = (await admin.get(_api("/auth/me"))).json()
+    them = (await other.get(_api("/auth/me"))).json()
+    results = await asyncio.gather(
+        admin.patch(_api(f"/admin/users/{them['id']}"), json={"roles": ["viewer"]}),
+        other.patch(_api(f"/admin/users/{me['id']}"), json={"roles": ["viewer"]}),
+    )
+    assert sorted(r.status_code for r in results)[0] == 200
+    assert any(r.status_code in (403, 422) for r in results)
+    users = (
+        (await admin.get(_api("/admin/users"))).json()["items"]
+        if results[0].status_code == 200
+        else (await other.get(_api("/admin/users"))).json()["items"]
+    )
+    assert sum("admin" in u["roles"] for u in users) == 1
+    await other.aclose()

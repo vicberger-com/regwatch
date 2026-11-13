@@ -497,6 +497,7 @@ async def create_user(
     *,
     must_change_password: bool,
     actor: uuid.UUID | None = None,
+    ip: str | None = None,
 ) -> User:
     """Create a local account with ``roles`` (keys); used by ``regwatch-admin`` and M1 admin."""
     found = await db.execute(select(Role.key, Role.id).where(Role.key.in_(roles)))
@@ -516,7 +517,7 @@ async def create_user(
     db.add(user)
     await db.flush()
     db.add_all(UserRole(user_id=user.id, role_id=role_ids[r]) for r in sorted(set(roles)))
-    audit(db, "user.create", "user", user.id, actor=actor,
+    audit(db, "user.create", "user", user.id, actor=actor, ip=ip,
           after={"display_name": display_name, "roles": sorted(set(roles))})  # fmt: skip
     return user
 
@@ -600,13 +601,45 @@ async def _ensure_a_manager_remains(db: AsyncSession) -> None:
         raise validation("roles", "At least one active user must keep the users.manage permission.")
 
 
+# Any value works as long as no other code takes the same transaction-level advisory lock.
+ADMIN_CHANGE_LOCK = 0x7277_0001
+
+
+async def _serialise_admin_changes(db: AsyncSession) -> None:
+    """Run user and role changes one at a time, so the last-manager guard cannot be raced
+    (review finding 9). Released at commit or rollback."""
+    await db.execute(select(func.pg_advisory_xact_lock(ADMIN_CHANGE_LOCK)))
+
+
+async def _perms_of_roles(db: AsyncSession, role_keys: list[str]) -> set[str]:
+    rows = await db.scalars(
+        select(RolePermission.permission_key)
+        .join(Role, Role.id == RolePermission.role_id)
+        .where(Role.key.in_(role_keys))
+    )
+    return set(rows.all())
+
+
+def _require_held(actor: Principal, perms: set[str], what: str) -> None:
+    """An administrator can only hand out, or act on holders of, permissions they hold
+    themselves (review finding 2)."""
+    missing = sorted(perms - actor.permissions)
+    if missing:
+        raise ProblemError(
+            403, "forbidden",
+            f"You cannot {what} permissions you do not hold: {', '.join(missing)}.",
+        )  # fmt: skip
+
+
 async def admin_create_user(
-    db: AsyncSession, email: str, display_name: str, roles: list[str], actor: uuid.UUID
-) -> UserWithPasswordOut:
+    db: AsyncSession, email: str, display_name: str, roles: list[str], actor: Principal,
+    ip: str | None,
+) -> UserWithPasswordOut:  # fmt: skip
+    _require_held(actor, await _perms_of_roles(db, roles), "grant")
     temporary = security.new_temporary_password()
     try:
         user = await create_user(db, email, display_name, temporary, roles,
-                                 must_change_password=True, actor=actor)  # fmt: skip
+                                 must_change_password=True, actor=actor.user.id, ip=ip)  # fmt: skip
     except ValueError as exc:
         if "exists" in str(exc):
             raise ProblemError(409, "conflict", "A user with this email exists.") from exc
@@ -625,10 +658,12 @@ async def _revoke_all(db: AsyncSession, user_id: uuid.UUID) -> None:
 
 
 async def update_user(
-    db: AsyncSession, user_id: uuid.UUID, changes: dict[str, Any], actor: uuid.UUID,
+    db: AsyncSession, user_id: uuid.UUID, changes: dict[str, Any], actor: Principal,
     ip: str | None,
 ) -> UserOut:  # fmt: skip
+    await _serialise_admin_changes(db)
     user = await _user_or_404(db, user_id)
+    _require_held(actor, set((await roles_and_permissions(db, user.id))[1]), "manage holders of")
     before_roles = (await _role_keys_by_user(db, [user.id]))[user.id]
     before = {"display_name": user.display_name, "status": user.status, "roles": before_roles}
     if "display_name" in changes:
@@ -638,7 +673,7 @@ async def update_user(
         user.display_name = name
     if "status" in changes:
         status = str(changes["status"])
-        if user_id == actor and status != "active":
+        if user_id == actor.user.id and status != "active":
             raise validation("status", "You cannot disable or lock your own account.")
         if status != user.status:
             if status == "active":  # unlock by admin (M1 design notes)
@@ -654,6 +689,7 @@ async def update_user(
         missing = sorted(set(wanted) - set(ids))
         if missing:
             raise validation("roles", f"unknown roles: {', '.join(missing)}")
+        _require_held(actor, await _perms_of_roles(db, wanted), "grant")
         await db.execute(delete(UserRole).where(UserRole.user_id == user.id))
         db.add_all(UserRole(user_id=user.id, role_id=ids[k]) for k in wanted)
     user.updated_at = _now()
@@ -661,15 +697,17 @@ async def update_user(
     after_roles = (await _role_keys_by_user(db, [user.id]))[user.id]
     after = {"display_name": user.display_name, "status": user.status, "roles": after_roles}
     if after != before:
-        audit(db, "user.update", "user", user.id, actor=actor, ip=ip, before=before, after=after)
+        audit(db, "user.update", "user", user.id, actor=actor.user.id, ip=ip,
+              before=before, after=after)  # fmt: skip
     await db.commit()
     return user_out(user, after_roles)
 
 
 async def reset_password(
-    db: AsyncSession, user_id: uuid.UUID, actor: uuid.UUID, ip: str | None
+    db: AsyncSession, user_id: uuid.UUID, actor: Principal, ip: str | None
 ) -> str:
     user = await _user_or_404(db, user_id)
+    _require_held(actor, set((await roles_and_permissions(db, user.id))[1]), "manage holders of")
     temporary = security.new_temporary_password()
     user.password_hash = await security.hash_password_async(temporary)
     user.must_change_password = True
@@ -678,7 +716,7 @@ async def reset_password(
         user.status = "active"
     user.updated_at = _now()
     await _revoke_all(db, user.id)
-    audit(db, "user.reset_password", "user", user.id, actor=actor, ip=ip)
+    audit(db, "user.reset_password", "user", user.id, actor=actor.user.id, ip=ip)
     await db.commit()
     return temporary
 
@@ -717,7 +755,7 @@ async def _check_permissions(db: AsyncSession, keys: list[str]) -> list[str]:
 
 async def create_role(
     db: AsyncSession, key: str | None, label: str | None, permissions: list[str] | None,
-    actor: uuid.UUID, ip: str | None,
+    actor: Principal, ip: str | None,
 ) -> RoleOut:  # fmt: skip
     if not key:
         raise validation("key", "A role key is required.")
@@ -726,11 +764,12 @@ async def create_role(
     if await db.scalar(select(Role.id).where(Role.key == key)) is not None:
         raise validation("key", "A role with this key exists.")
     perms = await _check_permissions(db, permissions or [])
+    _require_held(actor, set(perms), "grant")
     role = Role(key=key, label=label.strip()[:120], system=False)
     db.add(role)
     await db.flush()
     db.add_all(RolePermission(role_id=role.id, permission_key=p) for p in perms)
-    audit(db, "role.create", "role", role.id, actor=actor, ip=ip,
+    audit(db, "role.create", "role", role.id, actor=actor.user.id, ip=ip,
           after={"key": key, "label": role.label, "permissions": perms})  # fmt: skip
     await db.commit()
     return role_out(role, perms)
@@ -744,9 +783,10 @@ async def _role_or_404(db: AsyncSession, role_id: uuid.UUID) -> Role:
 
 
 async def update_role(
-    db: AsyncSession, role_id: uuid.UUID, changes: dict[str, Any], actor: uuid.UUID,
+    db: AsyncSession, role_id: uuid.UUID, changes: dict[str, Any], actor: Principal,
     ip: str | None,
 ) -> RoleOut:  # fmt: skip
+    await _serialise_admin_changes(db)
     role = await _role_or_404(db, role_id)
     perms_before = (await _perms_by_role(db)).get(role.id, [])
     before = {"key": role.key, "label": role.label, "permissions": perms_before}
@@ -764,6 +804,7 @@ async def update_role(
     perms = perms_before
     if "permissions" in changes:
         perms = await _check_permissions(db, changes["permissions"] or [])
+        _require_held(actor, set(perms) - set(perms_before), "grant")
         if role.key == "admin" and role.system and perms != perms_before:
             raise validation("permissions", "The admin role always holds every permission.")
         await db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
@@ -772,13 +813,14 @@ async def update_role(
     await _ensure_a_manager_remains(db)
     after = {"key": role.key, "label": role.label, "permissions": perms}
     if after != before:
-        audit(db, "role.update", "role", role.id, actor=actor, ip=ip, before=before, after=after)
+        audit(db, "role.update", "role", role.id, actor=actor.user.id, ip=ip,
+              before=before, after=after)  # fmt: skip
     await db.commit()
     return role_out(role, perms)
 
 
 async def delete_role(
-    db: AsyncSession, role_id: uuid.UUID, actor: uuid.UUID, ip: str | None
+    db: AsyncSession, role_id: uuid.UUID, actor: Principal, ip: str | None
 ) -> None:
     role = await _role_or_404(db, role_id)
     if role.system:
@@ -788,7 +830,7 @@ async def delete_role(
     if holders:
         raise ProblemError(409, "conflict", f"The role is assigned to {holders} user(s).")
     perms = (await _perms_by_role(db)).get(role.id, [])
-    audit(db, "role.delete", "role", role.id, actor=actor, ip=ip,
+    audit(db, "role.delete", "role", role.id, actor=actor.user.id, ip=ip,
           before={"key": role.key, "label": role.label, "permissions": perms})  # fmt: skip
     await db.delete(role)
     await db.commit()

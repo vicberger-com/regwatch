@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Security
+- Administrators can only grant permissions they hold, and can only update or reset users whose permissions they hold, so a delegated user or role manager cannot escalate; user and role changes take a transaction advisory lock so the last-manager guard cannot be raced; `user.create` audit rows carry the actor IP (#32, REQ-16, review findings 2, 9, 12a)
 - Lockout fixes from the M1 review: concurrent wrong passwords on one account are serialised by a row lock so each one counts; locked accounts run the same Argon2 verify as every other answer; unknown accounts stay locked for `auth.lockout_minutes` like real ones; locking an account ends its sessions (#31, REQ-16, review findings 1, 4, 12d)
 - Session gate on every API route: `identity.permissions.authorize` is an app-wide dependency that checks `Origin` on mutating requests (CSRF), requires a live `rw_session` on every route not marked public (deny by default), blocks all but `/auth/me`, `/auth/logout` and `/auth/password` while a temporary password is in force, and enforces each route's `x-permission`; the live OpenAPI document lists the gate's 401 and 403 problem responses; `/api/v1/openapi.json` is no longer served in production (#31, REQ-16)
 

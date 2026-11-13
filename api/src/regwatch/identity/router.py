@@ -107,7 +107,7 @@ async def create_user(
     body: UserCreate, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> UserWithPassword:
     out = await services.admin_create_user(
-        db, body.email, body.display_name, body.roles, principal.user.id
+        db, body.email, body.display_name, body.roles, principal, services.client_ip(request)
     )
     return out
 
@@ -125,7 +125,7 @@ async def update_user(
     id: UUID, body: UserUpdate, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> User:
     return await services.update_user(
-        db, id, body.model_dump(exclude_unset=True), principal.user.id,
+        db, id, body.model_dump(exclude_unset=True), principal,
         services.client_ip(request),
     )  # fmt: skip
 
@@ -137,9 +137,7 @@ async def update_user(
 async def reset_password(
     id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> TemporaryPassword:
-    temporary = await services.reset_password(
-        db, id, principal.user.id, services.client_ip(request)
-    )
+    temporary = await services.reset_password(db, id, principal, services.client_ip(request))
     return TemporaryPassword(temporary_password=temporary)
 
 
@@ -158,7 +156,7 @@ async def create_role(
     body: RoleWrite, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Role:
     return await services.create_role(
-        db, body.key, body.label, body.permissions, principal.user.id,
+        db, body.key, body.label, body.permissions, principal,
         services.client_ip(request),
     )  # fmt: skip
 
@@ -170,7 +168,7 @@ async def update_role(
     id: UUID, body: RoleWrite, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Role:
     return await services.update_role(
-        db, id, body.model_dump(exclude_unset=True), principal.user.id,
+        db, id, body.model_dump(exclude_unset=True), principal,
         services.client_ip(request),
     )  # fmt: skip
 
@@ -182,7 +180,7 @@ async def update_role(
 async def delete_role(
     id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Response:
-    await services.delete_role(db, id, principal.user.id, services.client_ip(request))
+    await services.delete_role(db, id, principal, services.client_ip(request))
     return Response(status_code=204)
 
 
