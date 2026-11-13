@@ -22,9 +22,14 @@ Email = Annotated[str, Field(json_schema_extra={"format": "email"})]
 # it), so the live document stays equal to the contract (review finding 10).
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_EMAIL = 254
-# C0, DEL and C1 controls (re-review N3b), and the bidirectional overrides and isolates that
-# can make displayed text read differently from what is stored (final review L3).
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+# C0, DEL and C1 controls (re-review N3b); bidirectional marks, overrides and isolates that make
+# displayed text read differently from what is stored (final review L3); line and paragraph
+# separators; zero-width space and byte-order mark; and lone surrogates, which PostgreSQL cannot
+# store (M2 review finding 9). Zero-width joiners stay allowed: Persian and Indic text need them.
+_CONTROL = re.compile(
+    "[\x00-\x1f\x7f-\x9f\u061c\u200b\u200e\u200f\u2028\u2029\u202a-\u202e"
+    "\u2066-\u2069\ufeff\ud800-\udfff]"
+)
 
 
 def has_control(value: str, *, allow_newlines: bool = False) -> bool:

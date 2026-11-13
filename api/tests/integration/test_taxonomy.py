@@ -384,3 +384,130 @@ async def test_validator_follows_taxonomy_changes(admin: httpx.AsyncClient, db_u
             }
     finally:
         await engine.dispose()
+
+
+# --- M2 review fixes ------------------------------------------------------------------------
+
+
+BAD_TERMS = [
+    "{key: a, label: A, match_rules: {regex: fine}}",
+    "{key: a, label: A, match_rules: {languages: en}}",
+    "{key: a, label: A, match_rules: {min_hits: true}}",
+    "{key: a, label: A, match_rules: {min_hits: '2'}}",
+    "{key: a, label: A, match_rules: {weight: x}}",
+    "{key: a, label: A, match_rules: {extra: {deep: 1}}}",
+    "{key: a, label: 123}",
+    "{key: a, label: A, color_token: 5}",
+    "{key: a, label: A, active: 'yes'}",
+    "{key: a, label: A, parent: 7}",
+    "{key: a, label: A, synonyms: [1]}",
+    '{key: "a\\n", label: A}',
+]
+
+
+@pytest.mark.parametrize("term", BAD_TERMS)
+async def test_typed_import_fields_are_422_and_reads_keep_working(
+    admin: httpx.AsyncClient, term: str
+) -> None:
+    """Review finding 2: a badly typed import is refused and cannot break reads."""
+    resp = await _import(admin, f"facets:\n  - {{key: topic, terms: [{term}]}}")
+    assert resp.status_code == 422, resp.text
+    assert (await admin.get(_api("/taxonomy/facets"))).status_code == 200
+    assert (await admin.get(_api("/taxonomy/facets/topic/terms"))).status_code == 200
+
+
+async def test_facet_fields_are_bounded(admin: httpx.AsyncClient) -> None:
+    """Review findings 7 and 8."""
+    post = lambda body: admin.post(_api("/taxonomy/facets"), json=body)  # noqa: E731
+    base = {"key": "bounded", "value_type": "term"}
+    assert (await post({**base, "label": "x\x1b[31m"})).status_code == 422
+    assert (await post({**base, "label": "x" * 121})).status_code == 422
+    assert (await post({**base, "label": "B", "sort_order": 99_999_999_999})).status_code == 422
+    assert (await post({**base, "key": "bounded\n", "label": "B"})).status_code == 422
+    big = "facets:\n  - {key: bounded, label: B, sort_order: 99999999999}"
+    assert (await _import(admin, big)).status_code == 422
+    jur = lambda body: admin.post(_api("/jurisdictions"), json=body)  # noqa: E731
+    assert (await jur({"code": "XQ\n", "name": "X", "kind": "country"})).status_code == 422
+    assert (await jur({"code": "XQ", "name": "X", "kind": "country",
+                       "geometry_ref": "XQ\n"})).status_code == 422  # fmt: skip
+    assert (await jur({"code": "XQ", "name": "   ", "kind": "country"})).status_code == 422
+
+
+async def test_references_outside_tags_block_deletes_and_follow_renames(
+    admin: httpx.AsyncClient, postgres: Postgres, db_url: str
+) -> None:
+    """Review finding 3: attributes and source defaults count as references."""
+    terms = _api("/taxonomy/facets/topic/terms")
+    kept = (await admin.post(terms, json={"key": "kept", "label": "Kept"})).json()
+    renamed = (await admin.post(terms, json={"key": "renam", "label": "Renamed"})).json()
+    await admin.post(_api("/taxonomy/facets"), json={"key": "notes", "label": "Notes",
+                                                     "value_type": "text"})  # fmt: skip
+    database = db_url.rsplit("/", 1)[1]
+    _tag_item(postgres, db_url, renamed["id"])
+    k = uuid.UUID(kept["id"])
+    postgres.psql(
+        database,
+        f"""
+UPDATE item SET attributes = '{{"topic": ["kept", "renam"], "notes": "free text"}}';
+UPDATE source SET default_term_ids = ARRAY['{k}'::uuid];
+""",
+    )
+    assert (await admin.delete(_api(f"/taxonomy/terms/{kept['id']}"))).status_code == 204
+    everything = {t["key"]: t for t in (await admin.get(
+        terms, params={"flat": True, "include_inactive": True})).json()}  # fmt: skip
+    assert everything["kept"]["active"] is False  # deactivated, not deleted
+    resp = await admin.patch(_api(f"/taxonomy/terms/{renamed['id']}"), json={"key": "renamed"})
+    assert resp.status_code == 200
+    attributes = postgres.psql(database, "SELECT attributes::text FROM item;").strip()
+    assert '"renamed"' in attributes and '"renam"' not in attributes
+    assert (await admin.delete(_api("/taxonomy/facets/notes"))).status_code == 409
+    retype = await admin.patch(_api("/taxonomy/facets/notes"), json={"value_type": "number"})
+    assert retype.status_code == 422
+
+
+async def test_concurrent_merge_and_delete_keep_every_tag(
+    admin: httpx.AsyncClient, postgres: Postgres, db_url: str
+) -> None:
+    """Review finding 4: a delete racing a merge sees the moved tags and only deactivates."""
+    import asyncio
+
+    terms = _api("/taxonomy/facets/topic/terms")
+    src = (await admin.post(terms, json={"key": "race-src", "label": "Src"})).json()
+    dst = (await admin.post(terms, json={"key": "race-dst", "label": "Dst"})).json()
+    for _ in range(3):
+        _tag_item(postgres, db_url, src["id"])
+    await asyncio.gather(
+        admin.post(_api(f"/taxonomy/terms/{src['id']}/merge"), json={"into_term_id": dst["id"]}),
+        admin.delete(_api(f"/taxonomy/terms/{dst['id']}")),
+    )
+    database = db_url.rsplit("/", 1)[1]
+    tags = postgres.psql(database, "SELECT count(*) FROM item_term;").strip()
+    assert tags == "3"
+
+
+async def test_concurrent_parent_changes_cannot_form_a_cycle(admin: httpx.AsyncClient) -> None:
+    """Review finding 6."""
+    import asyncio
+
+    terms = _api("/taxonomy/facets/topic/terms")
+    a = (await admin.post(terms, json={"key": "cyc-a", "label": "A"})).json()
+    b = (await admin.post(terms, json={"key": "cyc-b", "label": "B"})).json()
+    results = await asyncio.gather(
+        admin.patch(_api(f"/taxonomy/terms/{a['id']}"), json={"parent_id": b["id"]}),
+        admin.patch(_api(f"/taxonomy/terms/{b['id']}"), json={"parent_id": a["id"]}),
+    )
+    assert sorted(r.status_code for r in results) == [200, 422]
+
+
+async def test_merge_into_an_inactive_term_is_refused(admin: httpx.AsyncClient) -> None:
+    terms = _api("/taxonomy/facets/topic/terms")
+    src = (await admin.post(terms, json={"key": "m-src", "label": "Src"})).json()
+    dst = (await admin.post(terms, json={"key": "m-dst", "label": "Dst", "active": False})).json()
+    merge = await admin.post(_api(f"/taxonomy/terms/{src['id']}/merge"),
+                             json={"into_term_id": dst["id"]})  # fmt: skip
+    assert merge.status_code == 422
+
+
+async def test_seeding_bumped_the_taxonomy_version(admin: httpx.AsyncClient) -> None:
+    """Review 12c: the seed's facets and terms count as a taxonomy change."""
+    assert await _version(admin) >= 1

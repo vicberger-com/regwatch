@@ -123,8 +123,9 @@ async def import_taxonomy(db: AsyncSession, document: bytes, actor: uuid.UUID,
 async def _import_facet(db: AsyncSession, raw: dict[str, Any], counts: dict[str, int]) -> Facet:
     facet = await db.scalar(select(Facet).where(Facet.key == raw["key"]))
     given = {k: raw[k] for k in FACET_TYPES if k in raw}
+    services.check_facet_fields(given)
     if facet is None:
-        if raw["key"] in services.RESERVED_KEYS or not services.KEY_RE.match(raw["key"]):
+        if raw["key"] in services.RESERVED_KEYS or not services.KEY_RE.fullmatch(raw["key"]):
             raise _bad("key", "not a valid facet key")
         defaults = {"label": raw["key"].replace("_", " ").capitalize(), "value_type": "term",
                     "multi": True, "required": False, "show_in_view_selector": False,
@@ -150,9 +151,12 @@ async def _import_facet(db: AsyncSession, raw: dict[str, Any], counts: dict[str,
 
 async def _import_term(db: AsyncSession, facet: Facet, raw: dict[str, Any],
                        counts: dict[str, int]) -> None:  # fmt: skip
+    await services.lock_facet(db, facet.id)  # hierarchy changes are serialised per facet
     if facet.value_type != "term":
         raise _bad("terms", f"facet {facet.key!r} holds {facet.value_type} values, not terms")
     parent_id = None
+    if "parent" in raw and raw["parent"] is not None and not isinstance(raw["parent"], str):
+        raise _bad("parent", "must be the key of a term in the same facet")
     if raw.get("parent"):
         parent_id = await db.scalar(select(Term.id).where(Term.facet_id == facet.id,
                                                           Term.key == raw["parent"]))  # fmt: skip
@@ -162,7 +166,7 @@ async def _import_term(db: AsyncSession, facet: Facet, raw: dict[str, Any],
     fields = ("label", "synonyms", "match_rules", "color_token", "active")
     changes: dict[str, Any] = {k: raw[k] for k in fields if k in raw}
     if term is None:
-        if not services.TERM_KEY.match(raw["key"]):
+        if not services.TERM_KEY.fullmatch(raw["key"]):
             raise _bad("key", "a key of lower-case letters, digits, '-' and '_'")
         term = Term(facet_id=facet.id, key=raw["key"], label=raw["key"], parent_id=parent_id,
                     synonyms=[], match_rules={}, active=True)  # fmt: skip

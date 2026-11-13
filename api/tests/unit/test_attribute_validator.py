@@ -101,3 +101,18 @@ def test_random_documents_never_crash(
         assert exc.status == 422 and exc.errors
     else:
         assert set(out.values) <= {r.key for r in rules}
+
+
+@pytest.mark.parametrize("text", ["a\ud800b", "a b", "a​b", "a﻿b", "a؜b"])
+def test_invisible_and_unstorable_characters_are_refused(text: str) -> None:
+    """Review finding 9: PostgreSQL cannot store lone surrogates; the others are invisible."""
+    assert list(_fields({"notes": text})) == ["attributes.notes"]
+
+
+def test_int64_bounds_and_bounded_errors() -> None:
+    assert VALIDATOR.validate({"fine_eur": 2**63 - 1}).values["fine_eur"] == 2**63 - 1
+    assert list(_fields({"fine_eur": 2**63})) == ["attributes.fine_eur"]
+    errors = _fields({"k" * 1_000_000: 1})
+    assert all(len(f) < 100 for f in errors)
+    many = _fields({f"key{i}": 1 for i in range(80)})
+    assert len(many) == 51 and many["attributes"] == "and 30 more"

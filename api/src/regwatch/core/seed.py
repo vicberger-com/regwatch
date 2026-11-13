@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from sqlalchemy import Table, select
+from sqlalchemy import Table, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -205,6 +205,12 @@ async def apply(conn: AsyncConnection, data: SeedData) -> dict[str, int]:
     counts["term"] = 0
     for facet_key, terms in data.terms.items():
         counts["term"] += await _apply_terms(conn, facet_ids[facet_key], terms)
+    if counts["facet"] or counts["term"]:
+        # New facets or terms: workers drop cached attribute validation (M2 review 12c).
+        await conn.execute(text(
+            "UPDATE setting SET value = to_jsonb(COALESCE((value #>> '{}')::integer, 0) + 1), "
+            "updated_at = now() WHERE key = 'taxonomy.version'"
+        ))  # fmt: skip
     return counts
 
 

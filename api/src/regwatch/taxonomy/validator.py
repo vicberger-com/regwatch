@@ -25,6 +25,16 @@ from regwatch.taxonomy.models import Facet, Term
 
 MAX_TEXT = 2000
 MAX_TERMS_PER_FACET = 50
+MAX_ERRORS = 50
+INT64 = (-(2**63), 2**63 - 1)
+
+
+def _field(key: object) -> str:
+    """A field name for the problem body, bounded: keys come from hostile documents."""
+    text = key if isinstance(key, str) else repr(key)
+    return "attributes." + (text if len(text) <= 64 else text[:61] + "...")
+
+
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$", re.ASCII)
 
 
@@ -61,18 +71,22 @@ class AttributeValidator:
         for key, value in attributes.items():
             rule = self.facets.get(key) if isinstance(key, str) else None
             if rule is None:
-                errors.append(ProblemFieldError(field=f"attributes.{key}", message="unknown facet"))
+                errors.append(ProblemFieldError(field=_field(key), message="unknown facet"))
                 continue
             try:
                 out[key] = _check(rule, value)
             except ValueError as exc:
-                errors.append(ProblemFieldError(field=f"attributes.{key}", message=str(exc)))
+                errors.append(ProblemFieldError(field=_field(key), message=str(exc)[:200]))
         if require_all:
             for rule in self.facets.values():
                 if rule.required and rule.key not in attributes:
                     errors.append(ProblemFieldError(field=f"attributes.{rule.key}",
                                                     message="required"))  # fmt: skip
         if errors:
+            if len(errors) > MAX_ERRORS:
+                more = len(errors) - MAX_ERRORS
+                rest = ProblemFieldError(field="attributes", message=f"and {more} more")
+                errors = [*errors[:MAX_ERRORS], rest]
             raise _problem(errors)
         return ValidatedAttributes(out)
 
@@ -91,7 +105,8 @@ def _check(rule: FacetRule, value: Any) -> Any:  # noqa: ANN401 - any JSON
                 raise ValueError(f"needs 1 to {MAX_TERMS_PER_FACET} term keys")
             unknown = [k for k in keys if not isinstance(k, str) or k not in rule.terms]
             if unknown:
-                raise ValueError(f"not an active term of {rule.key}: {unknown[:5]!r}")
+                shown = [k[:40] if isinstance(k, str) else type(k).__name__ for k in unknown[:5]]
+                raise ValueError(f"not an active term of {rule.key}: {shown!r}")
             return sorted(set(keys)) if rule.multi else keys[0]
         case "text":
             if (
@@ -107,7 +122,7 @@ def _check(rule: FacetRule, value: Any) -> Any:  # noqa: ANN401 - any JSON
                 raise ValueError("must be a finite number")
             if isinstance(value, float) and not math.isfinite(value):
                 raise ValueError("must be a finite number")
-            if isinstance(value, int) and abs(value) > 2**63:
+            if isinstance(value, int) and not INT64[0] <= value <= INT64[1]:
                 raise ValueError("must be a number within 64-bit range")
             return value
         case "date":

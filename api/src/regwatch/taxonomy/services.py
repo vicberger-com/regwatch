@@ -34,7 +34,7 @@ from regwatch.taxonomy.schemas import Region as RegionOut
 from regwatch.taxonomy.schemas import Term as TermOut
 
 VERSION_KEY = "taxonomy.version"
-KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")  # facet keys (schema.sql)
+KEY_RE = re.compile(r"[a-z][a-z0-9_]{1,40}")  # facet keys (schema.sql); always fullmatch
 # The view selector's own dimensions (screens.md, M6); facet keys may not reuse them.
 BUILTIN_DIMENSIONS = (("country", "Country"), ("region", "Region"), ("regulation", "Regulation"))
 RESERVED_KEYS = frozenset(k for k, _ in BUILTIN_DIMENSIONS)
@@ -66,6 +66,71 @@ async def bump_version(db: AsyncSession, actor: uuid.UUID | None) -> int:
 async def current_version(db: AsyncSession) -> int:
     value = await db.scalar(select(Setting.value).where(Setting.key == VERSION_KEY))
     return int(value or 0)
+
+
+SORT_RANGE = (-1_000_000, 1_000_000)
+
+
+def check_facet_fields(values: dict[str, Any]) -> None:
+    """Types and bounds for facet fields from the API or an import (review findings 2, 8)."""
+    if "label" in values:
+        label = values["label"]
+        if (
+            not isinstance(label, str)
+            or not label.strip()
+            or len(label) > 120
+            or has_control(label)
+        ):
+            raise validation("label", "a label is one line of 1 to 120 characters")
+        values["label"] = label.strip()
+    for flag in ("multi", "required", "show_in_view_selector", "show_in_filters", "hidden"):
+        if flag in values and not isinstance(values[flag], bool):
+            raise validation(flag, "must be true or false")
+    if "sort_order" in values:
+        order = values["sort_order"]
+        if (
+            isinstance(order, bool)
+            or not isinstance(order, int)
+            or not (SORT_RANGE[0] <= order <= SORT_RANGE[1])
+        ):
+            raise validation("sort_order", f"an integer from {SORT_RANGE[0]} to {SORT_RANGE[1]}")
+
+
+async def lock_facet(db: AsyncSession, facet_id: uuid.UUID) -> None:
+    """Serialise hierarchy and delete changes within one facet (review findings 4, 6)."""
+    await db.execute(select(Facet.id).where(Facet.id == facet_id).with_for_update())
+
+
+async def facet_key_in_attributes(db: AsyncSession, facet_key: str) -> int:
+    return int(await db.scalar(text(
+        "SELECT count(*) FROM item WHERE attributes ? :fk"), {"fk": facet_key}) or 0)  # fmt: skip
+
+
+async def term_references(db: AsyncSession, facet_key: str, term: Term) -> int:
+    """Items and sources that name ``term`` outside ``item_term`` (review finding 3)."""
+    in_attributes = await db.scalar(text(
+        "SELECT count(*) FROM item WHERE attributes -> :fk ? :key "
+        "OR attributes ->> :fk = :key"), {"fk": facet_key, "key": term.key})  # fmt: skip
+    in_sources = await db.scalar(text(
+        "SELECT count(*) FROM source WHERE CAST(:id AS uuid) = ANY(default_term_ids)"),
+        {"id": term.id})  # fmt: skip
+    return int(in_attributes or 0) + int(in_sources or 0)
+
+
+async def rewrite_attribute_key(db: AsyncSession, facet_key: str, old: str, new: str) -> None:
+    """Replace term key ``old`` with ``new`` in ``item.attributes`` (lists and single values)."""
+    keys = {"fk": facet_key, "src": old, "dst": new}
+    await db.execute(text(
+        "UPDATE item SET attributes = jsonb_set(attributes, ARRAY[:fk], ("
+        "  SELECT to_jsonb(array_agg(DISTINCT CASE WHEN v = :src THEN :dst ELSE v END))"
+        "  FROM jsonb_array_elements_text(attributes -> :fk) AS v)) "
+        "WHERE jsonb_typeof(attributes -> :fk) = 'array' AND (attributes -> :fk) ? :src"
+    ), keys)  # fmt: skip
+    await db.execute(text(
+        "UPDATE item SET attributes = "
+        "  jsonb_set(attributes, ARRAY[:fk], to_jsonb(CAST(:dst AS text))) "
+        "WHERE attributes ->> :fk = :src"
+    ), keys)  # fmt: skip
 
 
 def facet_snapshot(facet: Facet) -> dict[str, Any]:
@@ -131,6 +196,7 @@ async def create_facet(
             raise validation(required, f"{required} is required")
     if given["key"] in RESERVED_KEYS:
         raise validation("key", "this key is reserved for a built-in view dimension")
+    check_facet_fields(given)
     if await db.scalar(select(Facet.id).where(Facet.key == given["key"])) is not None:
         raise ProblemError(409, "conflict", "A facet with this key exists.")
     defaults = {"multi": True, "required": False, "show_in_view_selector": False,
@@ -153,12 +219,13 @@ async def update_facet(
     changes = body.model_dump(exclude_unset=True)
     if "key" in changes and changes["key"] != facet.key:
         raise validation("key", "a facet keeps its key; create a new facet instead")
+    check_facet_fields(changes)
     if "value_type" in changes and changes["value_type"] != facet.value_type:
         in_use = await db.scalar(select(func.count()).select_from(Term)
                                  .where(Term.facet_id == facet.id))  # fmt: skip
-        if facet.system or in_use:
-            raise validation("value_type", "the value type of a system facet or one with terms "
-                             "cannot change")  # fmt: skip
+        if facet.system or in_use or await facet_key_in_attributes(db, facet.key):
+            raise validation("value_type", "the value type of a system facet, or of one with "
+                             "terms or item values, cannot change")  # fmt: skip
     for field in FACET_FIELDS:
         if field in changes:
             if changes[field] is None:
@@ -179,13 +246,20 @@ async def delete_facet(db: AsyncSession, key: str, actor: uuid.UUID, ip: str | N
     facet = await facet_by_key(db, key)
     if facet.system:
         raise ProblemError(409, "conflict", "System facets cannot be deleted; hide them instead.")
+    # Lock the facet and its terms, so no tag can arrive between the count and the delete.
+    await lock_facet(db, facet.id)
+    await db.execute(select(Term.id).where(Term.facet_id == facet.id).with_for_update())
     tagged = await db.scalar(
         select(func.count()).select_from(ItemTerm)
         .join(Term, Term.id == ItemTerm.term_id).where(Term.facet_id == facet.id)
     )  # fmt: skip
-    if tagged:
-        raise ProblemError(409, "conflict",
-                           f"{tagged} item tag(s) use this facet; hide it instead.")  # fmt: skip
+    tagged = int(tagged or 0) + await facet_key_in_attributes(db, facet.key)
+    defaults = await db.scalar(text(
+        "SELECT count(*) FROM source s JOIN term t ON t.id = ANY(s.default_term_ids) "
+        "WHERE t.facet_id = :fid"), {"fid": facet.id})  # fmt: skip
+    if tagged or defaults:
+        raise ProblemError(409, "conflict", "Items or source defaults use this facet; hide it "
+                           "instead.")  # fmt: skip
     before = facet_snapshot(facet)
     # Terms go with the facet (ON DELETE CASCADE); child-first order is not needed for that,
     # but parent links inside the facet must not block it.
@@ -208,7 +282,7 @@ async def view_dimensions(db: AsyncSession) -> list[ViewDimension]:
 
 # --- Terms ---------------------------------------------------------------------------------
 
-TERM_KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,60}$")
+TERM_KEY = re.compile(r"[a-z0-9][a-z0-9_-]{0,60}")  # fullmatch: "$" would allow a newline
 MAX_SYNONYMS, MAX_RULE_ITEMS, MAX_PATTERN = 50, 100, 200
 
 
@@ -228,9 +302,20 @@ def normalise_synonyms(values: list[str]) -> list[str]:
     return out
 
 
+RULE_KEYS = {"keywords", "regex", "languages", "min_hits", "weight"}
+
+
 def check_match_rules(rules: dict[str, Any]) -> dict[str, Any]:
+    """Strict shape, so stored rules always read back as ``MatchRules`` (review finding 2)."""
+    if not isinstance(rules, dict):
+        raise validation("match_rules", "must be an object")
+    unknown = sorted(str(k)[:40] for k in set(rules) - RULE_KEYS)
+    if unknown:
+        raise validation("match_rules", f"unknown keys: {unknown[:5]}")
     for field in ("keywords", "regex", "languages"):
         items = rules.get(field) or []
+        if not isinstance(items, list) or not all(isinstance(i, str) for i in items):
+            raise validation(f"match_rules.{field}", "must be a list of strings")
         if len(items) > MAX_RULE_ITEMS or any(len(i) > MAX_PATTERN for i in items):
             limit = f"at most {MAX_RULE_ITEMS} entries of up to {MAX_PATTERN} characters"
             raise validation(f"match_rules.{field}", limit)
@@ -239,10 +324,11 @@ def check_match_rules(rules: dict[str, Any]) -> dict[str, Any]:
             compile_pattern(pattern)  # RE2: linear time (review finding 1, BL-74)
         except PatternError as exc:
             raise validation("match_rules.regex", f"{pattern!r}: {exc}") from exc
-    if rules.get("min_hits", 1) < 1:
-        raise validation("match_rules.min_hits", "must be at least 1")
+    min_hits = rules.get("min_hits", 1)
+    if isinstance(min_hits, bool) or not isinstance(min_hits, int) or not 1 <= min_hits <= 100:
+        raise validation("match_rules.min_hits", "must be an integer from 1 to 100")
     weight = rules.get("weight", 1.0)
-    if not 0 < weight <= 10:
+    if isinstance(weight, bool) or not isinstance(weight, int | float) or not 0 < weight <= 10:
         raise validation("match_rules.weight", "must be greater than 0 and at most 10")
     return rules
 
@@ -283,24 +369,28 @@ async def check_parent(db: AsyncSession, term: Term | None, facet: Facet,
 
 def apply_term_changes(term: Term, changes: dict[str, Any]) -> None:
     if "label" in changes:
-        label = (changes["label"] or "").strip()
+        label = changes["label"].strip() if isinstance(changes["label"], str) else ""
         if not label or len(label) > 120 or has_control(label):
             raise validation("label", "a label is one line of 1 to 120 characters")
         term.label = label
     if "synonyms" in changes:
-        term.synonyms = normalise_synonyms(changes["synonyms"] or [])
+        synonyms = changes["synonyms"] or []
+        if not isinstance(synonyms, list) or not all(isinstance(v, str) for v in synonyms):
+            raise validation("synonyms", "must be a list of strings")
+        term.synonyms = normalise_synonyms(synonyms)
     if "match_rules" in changes:
         term.match_rules = check_match_rules(
             {k: v for k, v in (changes["match_rules"] or {}).items() if v is not None}
         )
     if "color_token" in changes:
         token = changes["color_token"]
-        if token is not None and not re.fullmatch(r"[a-z][a-z0-9-]{0,40}", token):
+        if token is not None and (not isinstance(token, str)
+                                  or not re.fullmatch(r"[a-z][a-z0-9-]{0,40}", token)):  # fmt: skip
             raise validation("color_token", "a design token name such as category-3")
         term.color_token = token
     if "active" in changes:
-        if changes["active"] is None:
-            raise validation("active", "active cannot be null")
+        if not isinstance(changes["active"], bool):
+            raise validation("active", "must be true or false")
         term.active = changes["active"]
 
 
@@ -338,7 +428,7 @@ async def create_term(db: AsyncSession, facet_key: str, changes: dict[str, Any],
     if facet.value_type != "term":
         raise validation("facet", f"facet {facet.key!r} holds {facet.value_type} values, not terms")
     key = changes.get("key")
-    if not key or not TERM_KEY.match(key):
+    if not key or not TERM_KEY.fullmatch(key):
         raise validation("key", "a key of lower-case letters, digits, '-' and '_'")
     if not changes.get("label"):
         raise validation("label", "label is required")
@@ -363,12 +453,14 @@ async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, A
     before = term_snapshot(term)
     if "key" in changes and changes["key"] != term.key:
         key = changes["key"]
-        if not key or not TERM_KEY.match(key):
+        if not key or not TERM_KEY.fullmatch(key):
             raise validation("key", "a key of lower-case letters, digits, '-' and '_'")
         if await db.scalar(select(Term.id).where(Term.facet_id == facet.id, Term.key == key)):
             raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
+        await rewrite_attribute_key(db, facet.key, term.key, key)  # review finding 3
         term.key = key
     if "parent_id" in changes and changes["parent_id"] != term.parent_id:
+        await lock_facet(db, facet.id)  # concurrent parent changes cannot form a cycle
         await check_parent(db, term, facet, changes["parent_id"])
         term.parent_id = changes["parent_id"]
     apply_term_changes(term, changes)
@@ -385,8 +477,12 @@ async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
                       ip: str | None) -> None:  # fmt: skip
     """Delete a term no item uses; deactivate one that items use (M2 design notes)."""
     term, facet = await _term_or_404(db, term_id)
+    await lock_facet(db, facet.id)
+    # The row lock makes a concurrent tag insert wait, so the count below stays true.
+    await db.execute(select(Term.id).where(Term.id == term.id).with_for_update())
     before = term_snapshot(term)
     used = (await _item_counts(db, [term.id])).get(term.id, 0)
+    used += await term_references(db, facet.key, term)  # attributes and source defaults
     if used:
         term.active = False
         action = "term.deactivate"
@@ -419,6 +515,15 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
         raise validation("into_term_id", "a term cannot be merged into itself")
     if target_facet.id != facet.id:
         raise validation("into_term_id", "both terms must belong to the same facet")
+    if not target.active:
+        raise validation("into_term_id", "the target term is inactive")
+    # Facet lock, then both term rows in a fixed order: a concurrent delete or merge waits and
+    # then sees the moved tags (review finding 4).
+    await lock_facet(db, facet.id)
+    for locked in sorted((source.id, target.id)):
+        await db.execute(select(Term.id).where(Term.id == locked).with_for_update())
+    await db.refresh(source)
+    await db.refresh(target)
     await check_parent(db, source, facet, target.id)  # the target is not below the source
     ids = {"src": source.id, "dst": target.id}
     moved = int(await db.scalar(
@@ -433,18 +538,7 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
         "WHERE s.term_id = :src AND t.term_id = :dst AND s.item_id = t.item_id"
     ), ids)  # fmt: skip
     await db.execute(text("UPDATE item_term SET term_id = :dst WHERE term_id = :src"), ids)
-    keys = {"fk": facet.key, "src": source.key, "dst": target.key}
-    await db.execute(text(
-        "UPDATE item SET attributes = jsonb_set(attributes, ARRAY[:fk], ("
-        "  SELECT to_jsonb(array_agg(DISTINCT CASE WHEN v = :src THEN :dst ELSE v END))"
-        "  FROM jsonb_array_elements_text(attributes -> :fk) AS v)) "
-        "WHERE jsonb_typeof(attributes -> :fk) = 'array' AND (attributes -> :fk) ? :src"
-    ), keys)  # fmt: skip
-    await db.execute(text(
-        "UPDATE item SET attributes = "
-        "  jsonb_set(attributes, ARRAY[:fk], to_jsonb(CAST(:dst AS text))) "
-        "WHERE attributes ->> :fk = :src"
-    ), keys)  # fmt: skip
+    await rewrite_attribute_key(db, facet.key, source.key, target.key)
     await db.execute(text(
         "UPDATE source SET default_term_ids = ARRAY(SELECT DISTINCT unnest("
         "  array_replace(default_term_ids, CAST(:src AS uuid), CAST(:dst AS uuid)))) "
@@ -485,11 +579,11 @@ M49_REGIONS: dict[str, str] = {
     "061": "Polynesia",
 }  # fmt: skip
 CODE_PATTERNS = {
-    "country": re.compile(r"^[A-Z]{2}$"),  # ISO 3166-1 alpha-2 (XK user-assigned)
-    "subdivision": re.compile(r"^[A-Z]{2}-[A-Z0-9]{1,3}$"),  # ISO 3166-2
-    "supranational": re.compile(r"^[A-Z][A-Z0-9_]{1,15}$"),  # EU, COE, OECD, ...
+    "country": re.compile(r"[A-Z]{2}"),  # ISO 3166-1 alpha-2 (XK user-assigned)
+    "subdivision": re.compile(r"[A-Z]{2}-[A-Z0-9]{1,3}"),  # ISO 3166-2
+    "supranational": re.compile(r"[A-Z][A-Z0-9_]{1,15}"),  # EU, COE, OECD, ...
 }
-GEOMETRY_REF = re.compile(r"^[A-Z0-9_-]{1,20}$")
+GEOMETRY_REF = re.compile(r"[A-Z0-9_-]{1,20}")  # every pattern here is used with fullmatch
 JURISDICTION_FIELDS = ("name", "kind", "region_code", "geometry_ref", "active")
 
 
@@ -529,13 +623,15 @@ async def get_jurisdiction(db: AsyncSession, code: str) -> JurisdictionOut:
 
 def _check_jurisdiction(values: dict[str, Any]) -> None:
     name = values.get("name")
-    if not name or len(name.strip()) > 120 or has_control(name):
+    if not isinstance(name, str) or not name.strip():
+        raise validation("name", "a name is one line of 1 to 120 characters")
+    if len(name.strip()) > 120 or has_control(name):
         raise validation("name", "a name is one line of 1 to 120 characters")
     region = values.get("region_code")
     if region is not None and region not in M49_REGIONS:
         raise validation("region_code", "an M49 sub-region code, such as 155")
     geometry = values.get("geometry_ref")
-    if geometry is not None and not GEOMETRY_REF.match(geometry):
+    if geometry is not None and not GEOMETRY_REF.fullmatch(geometry):
         raise validation("geometry_ref", "a Natural Earth feature id, such as DEU")
 
 
@@ -562,7 +658,7 @@ async def create_jurisdiction(db: AsyncSession, values: dict[str, Any], actor: u
     kind = values.get("kind")
     if kind not in CODE_PATTERNS:
         raise validation("kind", "country, subdivision or supranational")
-    if not CODE_PATTERNS[kind].match(code):
+    if not CODE_PATTERNS[kind].fullmatch(code):
         raise validation("code", f"not a valid {kind} code")
     _check_jurisdiction(values)
     if await db.scalar(select(Jurisdiction.id).where(Jurisdiction.code == code)) is not None:
