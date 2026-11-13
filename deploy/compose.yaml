@@ -15,13 +15,18 @@ x-app: &app
 services:
   proxy:
     image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+    # Published on loopback only: the development stack is not reachable from other machines.
+    # From elsewhere, use an SSH tunnel (ssh -L 8080:127.0.0.1:80 host), never a wider bind.
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
-    networks: [regwatch, edge]
+    networks:
+      # A fixed address, so REGWATCH_TRUSTED_PROXIES can name exactly the proxy (BL-73).
+      regwatch: { ipv4_address: 10.89.0.2 }
+      edge: {}
     depends_on:
       api: { condition: service_healthy }
       web: { condition: service_healthy }
@@ -177,6 +182,11 @@ services:
 networks:
   regwatch:
     internal: true
+    # Pinned so the proxy address above is stable; inside the contract default trusted range
+    # 10.0.0.0/8. Change both (and REGWATCH_TRUSTED_PROXIES) if it collides with a host network.
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
   edge: {}
 
 volumes:
