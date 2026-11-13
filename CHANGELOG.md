@@ -13,6 +13,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- M1 independent security review record `docs/evidence/phase-1/M1-security-review.md` (6 medium, 5 low, 1 info finding; sign-off pending fixes) and the M1 assumptions in `docs/decisions/ASSUMPTIONS.md` (#31, #32, REQ-16, REQ-25)
 - `GET /branding`, `PUT /admin/branding` and `PUT /admin/legal` (stored text; the rendered `/legal` page and the logo upload follow BL-68) (#32, REQ-17, BL-10)
 - Runtime settings typed and bounded by the registry, with the 8.4 data-processing-basis rule for a hosted translation provider, and feature flags with the same precondition (#32, REQ-16)
 - The registries contract ships in the package as `regwatch/core/registries.yaml`, read by `regwatch.core.registry` (setting definitions, permission keys); a unit test holds it byte-identical to `docs/contracts/registries.yaml` (#32, REQ-16)
