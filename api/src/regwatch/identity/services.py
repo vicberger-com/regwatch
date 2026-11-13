@@ -33,8 +33,10 @@ from regwatch.core.models import AuditLog
 from regwatch.core.schemas import Page
 from regwatch.core.services import audit
 from regwatch.core.settings import Settings
-from regwatch.identity.models import Role, RolePermission, User, UserRole, UserSession
+from regwatch.identity.models import Permission, Role, RolePermission, User, UserRole, UserSession
 from regwatch.identity.schemas import Me, Preferences, SessionInfo
+from regwatch.identity.schemas import Permission as PermissionOut
+from regwatch.identity.schemas import Role as RoleOut
 from regwatch.identity.schemas import User as UserOut
 from regwatch.identity.schemas import UserWithPassword as UserWithPasswordOut
 
@@ -641,3 +643,120 @@ async def reset_password(
     audit(db, "user.reset_password", "user", user.id, actor=actor, ip=ip)
     await db.commit()
     return temporary
+
+
+async def _perms_by_role(db: AsyncSession) -> dict[uuid.UUID, list[str]]:
+    out: dict[uuid.UUID, list[str]] = {}
+    rows = await db.execute(
+        select(RolePermission.role_id, RolePermission.permission_key).order_by(
+            RolePermission.permission_key
+        )
+    )
+    for rid, key in rows.tuples().all():
+        out.setdefault(rid, []).append(key)
+    return out
+
+
+def role_out(role: Role, perms: list[str]) -> RoleOut:
+    return RoleOut(id=role.id, key=role.key, label=role.label, permissions=perms,
+                   system=role.system)  # fmt: skip
+
+
+async def list_roles(db: AsyncSession) -> list[RoleOut]:
+    perms = await _perms_by_role(db)
+    roles = (await db.scalars(select(Role).order_by(Role.key))).all()
+    return [role_out(r, perms.get(r.id, [])) for r in roles]
+
+
+async def _check_permissions(db: AsyncSession, keys: list[str]) -> list[str]:
+    wanted = sorted(set(keys))
+    known = set((await db.scalars(select(Permission.key).where(Permission.key.in_(wanted)))).all())
+    missing = sorted(set(wanted) - known)
+    if missing:
+        raise validation("permissions", f"unknown permissions: {', '.join(missing)}")
+    return wanted
+
+
+async def create_role(
+    db: AsyncSession, key: str | None, label: str | None, permissions: list[str] | None,
+    actor: uuid.UUID, ip: str | None,
+) -> RoleOut:  # fmt: skip
+    if not key:
+        raise validation("key", "A role key is required.")
+    if not label or not label.strip():
+        raise validation("label", "A label is required.")
+    if await db.scalar(select(Role.id).where(Role.key == key)) is not None:
+        raise validation("key", "A role with this key exists.")
+    perms = await _check_permissions(db, permissions or [])
+    role = Role(key=key, label=label.strip()[:120], system=False)
+    db.add(role)
+    await db.flush()
+    db.add_all(RolePermission(role_id=role.id, permission_key=p) for p in perms)
+    audit(db, "role.create", "role", role.id, actor=actor, ip=ip,
+          after={"key": key, "label": role.label, "permissions": perms})  # fmt: skip
+    await db.commit()
+    return role_out(role, perms)
+
+
+async def _role_or_404(db: AsyncSession, role_id: uuid.UUID) -> Role:
+    role = await db.get(Role, role_id)
+    if role is None:
+        raise ProblemError(404, "not-found", "No such role.")
+    return role
+
+
+async def update_role(
+    db: AsyncSession, role_id: uuid.UUID, changes: dict[str, Any], actor: uuid.UUID,
+    ip: str | None,
+) -> RoleOut:  # fmt: skip
+    role = await _role_or_404(db, role_id)
+    perms_before = (await _perms_by_role(db)).get(role.id, [])
+    before = {"key": role.key, "label": role.label, "permissions": perms_before}
+    if "key" in changes and changes["key"] != role.key:
+        if role.system:
+            raise validation("key", "A system role keeps its key.")
+        if await db.scalar(select(Role.id).where(Role.key == changes["key"])) is not None:
+            raise validation("key", "A role with this key exists.")
+        role.key = changes["key"]
+    if "label" in changes:
+        label = (changes["label"] or "").strip()
+        if not label:
+            raise validation("label", "A label is required.")
+        role.label = label[:120]
+    perms = perms_before
+    if "permissions" in changes:
+        perms = await _check_permissions(db, changes["permissions"] or [])
+        if role.key == "admin" and role.system and perms != perms_before:
+            raise validation("permissions", "The admin role always holds every permission.")
+        await db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
+        db.add_all(RolePermission(role_id=role.id, permission_key=p) for p in perms)
+    role.updated_at = _now()
+    await _ensure_a_manager_remains(db)
+    after = {"key": role.key, "label": role.label, "permissions": perms}
+    if after != before:
+        audit(db, "role.update", "role", role.id, actor=actor, ip=ip, before=before, after=after)
+    await db.commit()
+    return role_out(role, perms)
+
+
+async def delete_role(
+    db: AsyncSession, role_id: uuid.UUID, actor: uuid.UUID, ip: str | None
+) -> None:
+    role = await _role_or_404(db, role_id)
+    if role.system:
+        raise ProblemError(409, "conflict", "System roles cannot be deleted.")
+    holders = await db.scalar(select(func.count()).select_from(UserRole)
+                              .where(UserRole.role_id == role.id))  # fmt: skip
+    if holders:
+        raise ProblemError(409, "conflict", f"The role is assigned to {holders} user(s).")
+    perms = (await _perms_by_role(db)).get(role.id, [])
+    audit(db, "role.delete", "role", role.id, actor=actor, ip=ip,
+          before={"key": role.key, "label": role.label, "permissions": perms})  # fmt: skip
+    await db.delete(role)
+    await db.commit()
+
+
+async def list_permissions(db: AsyncSession) -> list[PermissionOut]:
+    rows = await db.scalars(select(Permission).order_by(Permission.key))
+    return [PermissionOut(key=p.key, description=p.description, module=p.module)
+            for p in rows.all()]  # fmt: skip

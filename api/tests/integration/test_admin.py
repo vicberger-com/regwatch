@@ -84,6 +84,45 @@ async def test_audit_viewer_filters_and_pages(admin: httpx.AsyncClient) -> None:
     assert mine["total"] >= 3
 
 
+async def test_role_change_is_audited_with_before_and_after(admin: httpx.AsyncClient) -> None:
+    roles = {r["key"]: r for r in (await admin.get(_api("/admin/roles"))).json()}
+    viewer = roles["viewer"]
+    perms = sorted({*viewer["permissions"], "outputs.csv"})
+    resp = await admin.patch(_api(f"/admin/roles/{viewer['id']}"), json={"permissions": perms})
+    assert resp.status_code == 200 and resp.json()["permissions"] == perms
+    query = {"entity_type": "role", "action": "role.update"}
+    audit = (await admin.get(_api("/admin/audit"), params=query)).json()
+    assert audit["total"] == 1
+    row = audit["items"][0]
+    assert "outputs.csv" not in row["before"]["permissions"]
+    assert "outputs.csv" in row["after"]["permissions"]
+    assert row["actor_email"] == "admin@example.org"
+
+
+async def test_role_lifecycle_and_guards(admin: httpx.AsyncClient) -> None:
+    auditor = {"key": "auditor", "label": "Auditor", "permissions": ["audit.read"]}
+    created = await admin.post(_api("/admin/roles"), json=auditor)
+    assert created.status_code == 201
+    role_id = created.json()["id"]
+    dup = await admin.post(_api("/admin/roles"), json={"key": "auditor", "label": "Again"})
+    assert dup.status_code == 422
+    bad_perm = {"key": "x_role", "label": "X", "permissions": ["no.such"]}
+    unknown = await admin.post(_api("/admin/roles"), json=bad_perm)
+    assert unknown.status_code == 422
+    body = {"email": "aud@example.org", "display_name": "Aud", "roles": ["auditor"]}
+    user = (await admin.post(_api("/admin/users"), json=body)).json()
+    assert (await admin.delete(_api(f"/admin/roles/{role_id}"))).status_code == 409
+    await admin.patch(_api(f"/admin/users/{user['id']}"), json={"roles": []})
+    assert (await admin.delete(_api(f"/admin/roles/{role_id}"))).status_code == 204
+    roles = {r["key"]: r for r in (await admin.get(_api("/admin/roles"))).json()}
+    assert (await admin.delete(_api(f"/admin/roles/{roles['viewer']['id']}"))).status_code == 409
+    strip = await admin.patch(_api(f"/admin/roles/{roles['admin']['id']}"),
+                              json={"permissions": ["items.read"]})  # fmt: skip
+    assert strip.status_code == 422
+    perms = (await admin.get(_api("/admin/permissions"))).json()
+    assert len(perms) == 23 and perms[0]["key"] == "audit.read"
+
+
 async def test_last_manager_cannot_be_removed(admin: httpx.AsyncClient) -> None:
     me = (await admin.get(_api("/auth/me"))).json()
     resp = await admin.patch(_api(f"/admin/users/{me['id']}"), json={"roles": ["viewer"]})

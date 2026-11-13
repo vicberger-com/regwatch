@@ -1,7 +1,7 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
-Auth, ``/me/sessions`` (#31) and user administration (#32) are implemented; role
-administration answers 501 until it lands, ``/me/preferences`` until M9.
+Auth and ``/me/sessions`` (#31) and user and role administration (#32) are implemented;
+``/me/preferences`` answers 501 until M9.
 """
 
 from __future__ import annotations
@@ -143,34 +143,56 @@ async def reset_password(
     return TemporaryPassword(temporary_password=temporary)
 
 
-@router.get("/admin/roles", tags=ADMIN, **spec(list[Role], desc="Roles", perm=ROLES))
-async def list_roles() -> NoReturn:
-    not_implemented()
+@router.get(
+    "/admin/roles", tags=ADMIN, **spec(list[Role], desc="Roles", perm=ROLES, stub=False)
+)  # fmt: skip
+async def list_roles(db: DbSession) -> list[Role]:
+    return await services.list_roles(db)
 
 
-@router.post("/admin/roles", tags=ADMIN, **spec(Role, status=201, desc="Created", perm=ROLES))
-async def create_role(body: RoleWrite) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/admin/roles", tags=ADMIN,
+    **spec(Role, status=201, desc="Created", perm=ROLES, stub=False),
+)  # fmt: skip
+async def create_role(
+    body: RoleWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Role:
+    return await services.create_role(
+        db, body.key, body.label, body.permissions, principal.user.id,
+        services.client_ip(request),
+    )  # fmt: skip
 
 
-@router.patch("/admin/roles/{id}", tags=ADMIN, **spec(Role, desc="Updated", perm=ROLES))
-async def update_role(id: UUID, body: RoleWrite) -> NoReturn:
-    not_implemented()
+@router.patch(
+    "/admin/roles/{id}", tags=ADMIN, **spec(Role, desc="Updated", perm=ROLES, stub=False)
+)  # fmt: skip
+async def update_role(
+    id: UUID, body: RoleWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Role:
+    return await services.update_role(
+        db, id, body.model_dump(exclude_unset=True), principal.user.id,
+        services.client_ip(request),
+    )  # fmt: skip
 
 
 @router.delete(
-    "/admin/roles/{id}", tags=ADMIN, **spec(status=204, desc="Deleted", perm=ROLES, errors=(409,))
-)
-async def delete_role(id: UUID) -> NoReturn:
-    not_implemented()
+    "/admin/roles/{id}", tags=ADMIN,
+    **spec(status=204, desc="Deleted", perm=ROLES, errors=(409,), stub=False),
+)  # fmt: skip
+async def delete_role(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.delete_role(db, id, principal.user.id, services.client_ip(request))
+    return Response(status_code=204)
 
 
 @router.get(
     "/admin/permissions", tags=ADMIN,
-    **spec(list[Permission], desc="Permission catalogue from registries.yaml", perm=ROLES),
+    **spec(list[Permission], desc="Permission catalogue from registries.yaml", perm=ROLES,
+           stub=False),
 )  # fmt: skip
-async def list_permissions() -> NoReturn:
-    not_implemented()
+async def list_permissions(db: DbSession) -> list[Permission]:
+    return await services.list_permissions(db)
 
 
 @router.get("/me/preferences", tags=ME, **spec(Preferences, desc="Preferences"))
