@@ -147,3 +147,21 @@ def test_seed_entrypoint_exits_with_main_status(monkeypatch: pytest.MonkeyPatch)
     with pytest.raises(SystemExit) as exc:
         entrypoints.seed()
     assert exc.value.code == 0
+
+
+def test_packaged_registry_matches_contract() -> None:
+    from importlib.resources import files
+
+    packaged = files("regwatch.core").joinpath("registries.yaml").read_bytes()
+    assert packaged == CONTRACT.read_bytes()
+
+
+def test_registry_setting_definitions() -> None:
+    from regwatch.core import registry
+
+    defs = registry.settings()
+    assert {d.type for d in defs.values()} <= registry.SETTING_TYPES
+    assert defs["map.projection"].values == ("equal-earth", "mercator")
+    assert defs["auth.lockout_threshold"].default == 10
+    assert defs["general.contact_email"].note == "used in the crawler User-Agent and footers"
+    assert "users.manage" in registry.permission_keys()
