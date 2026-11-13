@@ -13,6 +13,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- Runtime settings typed and bounded by the registry, with the 8.4 data-processing-basis rule for a hosted translation provider, and feature flags with the same precondition (#32, REQ-16)
 - The registries contract ships in the package as `regwatch/core/registries.yaml`, read by `regwatch.core.registry` (setting definitions, permission keys); a unit test holds it byte-identical to `docs/contracts/registries.yaml` (#32, REQ-16)
 - Role administration: create, update and delete with system-role and in-use guards (the admin role keeps every permission) and the permission catalogue; changes audited with before and after values (#32, REQ-16)
 - Audit viewer `GET /admin/audit` with actor, action, entity and time filters, newest first, with the actor's email (#32, REQ-16)

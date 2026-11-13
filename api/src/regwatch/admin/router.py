@@ -1,6 +1,7 @@
 """Settings, feature flags, branding, legal page and audit routes; mounted under /api/v1.
 
-``GET /admin/audit`` is implemented (#32); the other stubs answer 501 until #32 lands.
+Audit, settings and feature flags are implemented (#32); branding and legal answer 501
+until #32 lands, the logo upload and rendered ``/legal`` page until BL-68.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from datetime import datetime
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from regwatch.admin import services
 from regwatch.admin.schemas import (
@@ -26,6 +27,8 @@ from regwatch.admin.schemas import (
 from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, Tags, not_implemented, raw_body, spec
 from regwatch.core.schemas import Page
+from regwatch.identity.permissions import CurrentPrincipal
+from regwatch.identity.services import client_ip
 
 router = APIRouter()
 ADMIN: Tags = ["admin"]
@@ -49,35 +52,45 @@ async def get_legal() -> NoReturn:
 
 @router.get(
     "/admin/settings", tags=ADMIN,
-    **spec(list[Setting], desc="All settings with definitions", perm=SETTINGS),
+    **spec(list[Setting], desc="All settings with definitions", perm=SETTINGS, stub=False),
 )  # fmt: skip
-async def list_settings() -> NoReturn:
-    not_implemented()
+async def list_settings(db: DbSession) -> list[Setting]:
+    return await services.list_settings(db)
 
 
 @router.put(
     "/admin/settings/{key}",
     tags=ADMIN,
-    **spec(Setting, desc="Updated", perm=SETTINGS, errors=(400,)),
+    **spec(Setting, desc="Updated", perm=SETTINGS, errors=(400,), stub=False),
 )
-async def put_setting(key: str, body: SettingWrite) -> NoReturn:
-    not_implemented()
+async def put_setting(
+    key: str, body: SettingWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Setting:
+    return await services.put_setting(db, key, body.value, principal.user.id, client_ip(request))
 
 
 @router.get(
-    "/admin/feature-flags", tags=ADMIN, **spec(list[FeatureFlag], desc="Flags", perm=SETTINGS)
-)
-async def list_feature_flags() -> NoReturn:
-    not_implemented()
+    "/admin/feature-flags", tags=ADMIN,
+    **spec(list[FeatureFlag], desc="Flags", perm=SETTINGS, stub=False),
+)  # fmt: skip
+async def list_feature_flags(db: DbSession) -> list[FeatureFlag]:
+    return await services.list_flags(db)
 
 
 @router.patch(
     "/admin/feature-flags/{key}", tags=ADMIN,
     **spec(FeatureFlag, desc="Updated", perm=SETTINGS, errors=(409,), error_desc={
-        409: "Precondition unmet (for example hosted provider without data-processing basis)"}),
+        409: "Precondition unmet (for example hosted provider without data-processing basis)"},
+        stub=False),
 )  # fmt: skip
-async def update_feature_flag(key: str, body: FeatureFlagWrite) -> NoReturn:
-    not_implemented()
+async def update_feature_flag(
+    key: str,
+    body: FeatureFlagWrite,
+    principal: CurrentPrincipal,
+    request: Request,
+    db: DbSession,
+) -> FeatureFlag:
+    return await services.set_flag(db, key, body.enabled, principal.user.id, client_ip(request))
 
 
 @router.put("/admin/branding", tags=ADMIN, **spec(Branding, desc="Updated", perm=SETTINGS))

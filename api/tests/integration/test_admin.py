@@ -142,3 +142,36 @@ async def test_disable_and_unlock(admin: httpx.AsyncClient) -> None:
     assert (await admin.get(_api(f"/admin/users/{viewer_id}"))).status_code == 200
     missing = "01900000-0000-7000-8000-000000000000"
     assert (await admin.get(_api(f"/admin/users/{missing}"))).status_code == 404
+
+
+async def test_settings_validation_and_hosted_basis(admin: httpx.AsyncClient) -> None:
+    listed = {s["key"]: s for s in (await admin.get(_api("/admin/settings"))).json()}
+    assert listed["map.projection"]["values"] == ["equal-earth", "mercator"]
+    put = await admin.put(_api("/admin/settings/map.projection"), json={"value": "mercator"})
+    assert put.status_code == 200 and put.json()["value"] == "mercator"
+    for key, value in (("map.projection", "robinson"), ("auth.password_min_length", 8),
+                       ("auth.lockout_threshold", True), ("general.site_title", 5)):  # fmt: skip
+        resp = await admin.put(_api(f"/admin/settings/{key}"), json={"value": value})
+        assert resp.status_code == 400, key
+    assert (await admin.put(_api("/admin/settings/no.such"), json={"value": 1})).status_code == 404
+    hosted = await admin.put(_api("/admin/settings/translation.provider"), json={"value": "http"})
+    assert hosted.status_code == 400
+    basis = {"value": "Contract with provider, 2026-11"}
+    assert (await admin.put(_api("/admin/settings/translation.data_processing_basis"),
+                            json=basis)).status_code == 200  # fmt: skip
+    hosted = await admin.put(_api("/admin/settings/translation.provider"), json={"value": "http"})
+    assert hosted.status_code == 200
+    empty = await admin.put(_api("/admin/settings/translation.data_processing_basis"),
+                            json={"value": " "})  # fmt: skip
+    assert empty.status_code == 400
+
+
+async def test_feature_flags(admin: httpx.AsyncClient) -> None:
+    flags = {f["key"]: f for f in (await admin.get(_api("/admin/feature-flags"))).json()}
+    assert flags["reports.builder"]["enabled"] is True
+    resp = await admin.patch(_api("/admin/feature-flags/search.internet"), json={"enabled": True})
+    assert resp.status_code == 200 and resp.json()["enabled"] is True
+    missing = await admin.patch(_api("/admin/feature-flags/no.such"), json={"enabled": True})
+    assert missing.status_code == 404
+    audit = await admin.get(_api("/admin/audit"), params={"action": "feature_flag.update"})
+    assert audit.json()["items"][0]["after"] == {"enabled": True}
