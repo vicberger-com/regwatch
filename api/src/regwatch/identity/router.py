@@ -1,7 +1,7 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
-Login, logout and ``/auth/me`` are implemented (#31); the other stubs answer 501 until
-#31 and #32 land.
+Auth and ``/me/sessions`` are implemented (#31); the user and role admin stubs answer 501
+until #32.
 """
 
 from __future__ import annotations
@@ -72,9 +72,21 @@ async def auth_me(principal: CurrentPrincipal) -> Me:
     return services.to_me(principal.user, principal.roles, principal.permissions)
 
 
-@router.post("/auth/password", tags=AUTH, **spec(status=204, desc="Changed", errors=(400,)))
-async def change_password(body: PasswordChange) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/auth/password", tags=AUTH, **spec(status=204, desc="Changed", errors=(400,), stub=False)
+)  # fmt: skip
+async def change_password(
+    body: PasswordChange,
+    principal: CurrentPrincipal,
+    request: Request,
+    db: DbSession,
+    settings: SettingsDep,
+) -> Response:
+    response = Response(status_code=204)
+    await services.change_password(
+        db, principal, request, response, settings, body.current_password, body.new_password
+    )
+    return response
 
 
 @router.get("/admin/users", tags=ADMIN, **spec(Page[User], desc="Users", perm=USERS))
@@ -151,11 +163,16 @@ async def update_preferences(body: Preferences) -> NoReturn:
     not_implemented()
 
 
-@router.get("/me/sessions", tags=ME, **spec(list[SessionInfo], desc="Active sessions"))
-async def list_sessions() -> NoReturn:
-    not_implemented()
+@router.get(
+    "/me/sessions", tags=ME, **spec(list[SessionInfo], desc="Active sessions", stub=False)
+)  # fmt: skip
+async def list_sessions(principal: CurrentPrincipal, db: DbSession) -> list[SessionInfo]:
+    return await services.list_sessions(db, principal)
 
 
-@router.delete("/me/sessions/{id}", tags=ME, **spec(status=204, desc="Revoked"))
-async def revoke_session(id: UUID) -> NoReturn:
-    not_implemented()
+@router.delete("/me/sessions/{id}", tags=ME, **spec(status=204, desc="Revoked", stub=False))
+async def revoke_session(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.revoke_own_session(db, principal, id, request)
+    return Response(status_code=204)

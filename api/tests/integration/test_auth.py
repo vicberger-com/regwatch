@@ -93,6 +93,31 @@ async def test_admin_login_cookie_and_me(client: httpx.AsyncClient, db_url: str)
     assert len(await _audit(db_url, "auth.login")) == 1
 
 
+async def test_temporary_password_then_viewer_is_denied_admin(client: httpx.AsyncClient) -> None:
+    assert (await _login(client, "viewer@example.org", VIEWER_PW)).status_code == 200
+    resp = await client.get(f"{API_PREFIX}/jurisdictions")
+    assert resp.json()["type"].endswith("/password-change-required")
+    change = f"{API_PREFIX}/auth/password"
+    same = {"current_password": VIEWER_PW, "new_password": VIEWER_PW}
+    bad = await client.post(change, headers=ORIGIN, json=same)
+    assert bad.status_code == 400
+    old_cookie = client.cookies["rw_session"]
+    new = {"current_password": VIEWER_PW, "new_password": "a new pass 5678"}
+    ok = await client.post(change, headers=ORIGIN, json=new)
+    assert ok.status_code == 204
+    assert client.cookies["rw_session"] != old_cookie  # rotated
+    assert (await client.get(f"{API_PREFIX}/jurisdictions")).status_code == 501
+    # Acceptance 1: a viewer gets 403 on every admin route, even with a crafted request.
+    admin_routes = [("GET", "/admin/users"), ("GET", "/admin/audit"), ("GET", "/admin/settings"),
+                    ("PATCH", "/admin/feature-flags/auth.oidc")]  # fmt: skip
+    for method, path in admin_routes:
+        resp = await client.request(method, API_PREFIX + path, headers=ORIGIN, json={})
+        assert resp.status_code == 403, (method, path)
+    stale = httpx.Cookies({"rw_session": old_cookie})
+    client.cookies = stale
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401
+
+
 async def test_ten_failures_lock_without_revealing_the_email(
     client: httpx.AsyncClient, db_url: str
 ) -> None:
@@ -126,6 +151,22 @@ async def test_logout_revokes_and_replay_is_401(client: httpx.AsyncClient, db_ur
     client.cookies = httpx.Cookies({"rw_session": token})
     assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401
     assert len(await _audit(db_url, "auth.logout")) == 1
+
+
+async def test_sessions_list_and_revoke(client: httpx.AsyncClient, db_url: str) -> None:
+    await _login(client, "admin@example.org", ADMIN_PW)
+    first = client.cookies["rw_session"]
+    client.cookies = httpx.Cookies()
+    await _login(client, "admin@example.org", ADMIN_PW)
+    sessions = (await client.get(f"{API_PREFIX}/me/sessions")).json()
+    assert len(sessions) == 2 and sum(s["current"] for s in sessions) == 1
+    other = next(s["id"] for s in sessions if not s["current"])
+    resp = await client.delete(f"{API_PREFIX}/me/sessions/{other}", headers=ORIGIN)
+    assert resp.status_code == 204
+    again = await client.delete(f"{API_PREFIX}/me/sessions/{other}", headers=ORIGIN)
+    assert again.status_code == 404
+    client.cookies = httpx.Cookies({"rw_session": first})
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401
 
 
 def test_admin_cli_rejects_short_password_and_duplicates(

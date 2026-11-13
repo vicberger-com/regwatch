@@ -32,7 +32,7 @@ from regwatch.core.models import AuditLog
 from regwatch.core.services import audit
 from regwatch.core.settings import Settings
 from regwatch.identity.models import Role, RolePermission, User, UserRole, UserSession
-from regwatch.identity.schemas import Me, Preferences
+from regwatch.identity.schemas import Me, Preferences, SessionInfo
 
 LOCKOUT_WINDOW = timedelta(minutes=15)  # M1 spec; no settings key yet (BL-50)
 LOGIN_RATE = (5, 60.0)  # attempts per seconds, per IP and per account (8.2)
@@ -346,6 +346,100 @@ async def logout(db: AsyncSession, principal: Principal, request: Request) -> No
         update(UserSession).where(UserSession.id == principal.session_id).values(revoked_at=_now())
     )
     audit(db, "auth.logout", "session", principal.session_id, actor=principal.user.id,
+          ip=client_ip(request))  # fmt: skip
+    await db.commit()
+
+
+def password_problem(message: str) -> ProblemError:
+    return ProblemError(400, "password-policy", message)
+
+
+async def change_password(
+    db: AsyncSession,
+    principal: Principal,
+    request: Request,
+    response: Response,
+    settings: Settings,
+    current: str,
+    new: str,
+) -> None:
+    ip = client_ip(request)
+    check_login_rate(ip, principal.user.email)
+    cfg = await auth_settings(db)
+    user = await db.get(User, principal.user.id)
+    if user is None:
+        raise unauthenticated()
+    if not await security.verify_password_async(user.password_hash, current):
+        audit(db, "auth.password_change_failed", "user", user.id, actor=user.id, ip=ip)
+        await db.commit()
+        raise password_problem("The current password is incorrect.")
+    minimum = max(12, cfg["auth.password_min_length"])
+    if len(new) < minimum:
+        raise password_problem(f"The new password must have at least {minimum} characters.")
+    if len(new) > security.MAX_PASSWORD_LENGTH:
+        raise password_problem(
+            f"The new password must have at most {security.MAX_PASSWORD_LENGTH} characters."
+        )
+    if new == current:
+        raise password_problem("The new password must differ from the current one.")
+    user.password_hash = await security.hash_password_async(new)
+    was_temporary = user.must_change_password
+    user.must_change_password = False
+    user.updated_at = _now()
+    # Every session of the user ends, including this one, which is replaced by a new one.
+    await db.execute(
+        update(UserSession)
+        .where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+        .values(revoked_at=_now())
+    )
+    token, sess = await create_session(db, user, request, cfg)
+    audit(db, "auth.password_change", "user", user.id, actor=user.id, ip=ip,
+          after={"was_temporary": was_temporary, "session_id": str(sess.id)})  # fmt: skip
+    await db.commit()
+    set_session_cookie(response, settings, token, None)
+
+
+async def list_sessions(db: AsyncSession, principal: Principal) -> list[SessionInfo]:
+    now = _now()
+    rows = await db.scalars(
+        select(UserSession)
+        .where(
+            UserSession.user_id == principal.user.id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .order_by(UserSession.last_seen_at.desc())
+    )
+    return [
+        SessionInfo(
+            id=s.id,
+            created_at=s.created_at,
+            last_seen_at=s.last_seen_at,
+            expires_at=s.expires_at,
+            ip=str(s.ip) if s.ip else None,
+            user_agent=s.user_agent,
+            current=s.id == principal.session_id,
+        )  # fmt: skip
+        for s in rows.all()
+    ]
+
+
+async def revoke_own_session(
+    db: AsyncSession, principal: Principal, session_id: uuid.UUID, request: Request
+) -> None:
+    result = await db.execute(
+        update(UserSession)
+        .where(
+            UserSession.id == session_id,
+            UserSession.user_id == principal.user.id,
+            UserSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=_now())
+        .returning(UserSession.id)
+    )
+    if result.first() is None:
+        raise ProblemError(404, "not-found", "No such session.")
+    audit(db, "session.revoke", "session", session_id, actor=principal.user.id,
           ip=client_ip(request))  # fmt: skip
     await db.commit()
 
