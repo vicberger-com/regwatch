@@ -7,8 +7,18 @@
 
 from __future__ import annotations
 
-from sqlalchemy import MetaData
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from collections.abc import AsyncIterator
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import Depends, Request
+from sqlalchemy import DateTime, MetaData
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
@@ -19,6 +29,8 @@ class Base(DeclarativeBase):
     """Declarative base for every module's models; tables are created by Alembic, never here."""
 
     metadata = MetaData()
+    # Every timestamp column in schema.sql is timestamptz.
+    type_annotation_map = {datetime: DateTime(timezone=True)}
 
 
 def async_url(url: str) -> str:
@@ -34,3 +46,17 @@ def create_engine(url: str, *, poolclass_null: bool = False) -> AsyncEngine:
     if poolclass_null:
         return create_async_engine(async_url(url), poolclass=NullPool)
     return create_async_engine(async_url(url), pool_pre_ping=True)
+
+
+def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: one session per request from the app's factory."""
+    factory: async_sessionmaker[AsyncSession] = request.app.state.db
+    async with factory() as session:
+        yield session
+
+
+DbSession = Annotated[AsyncSession, Depends(get_db)]
