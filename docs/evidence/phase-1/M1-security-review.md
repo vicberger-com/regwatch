@@ -100,3 +100,26 @@ Fixed after the re-verification and covered by tests, not yet re-verified by the
 - N2: changing a role needs every added or removed permission held, and deleting one needs all its permissions held (`test_review_followups_for_roles_and_settings`; `test_delegated_admins_cannot_escalate` now expects 403 for removal).
 - N3: string settings refuse control characters (newlines allowed only in `legal.page_markdown`, `legal.required_markings` and `branding.company_address`), list entries included; `general.contact_email` must be an email address or empty; emails refuse control characters (`test_review_followups_for_roles_and_settings`).
 - Password-change guessing: a wrong current password is a counted failure (`auth.login_failed` with reason `password_change`), locks at the threshold and ends the sessions (`test_wrong_current_password_counts_toward_lockout`).
+
+## Second re-verification (M1 independent review, 2026-11-13)
+Against `sec/M1-review-followups`, `sec/M1-db-roles` and `sec/M1-trusted-proxy` (before the fixes below): unit 396 passed, database 39 passed.
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| N1 | fixed | with `lockout_minutes=5`, real and unknown accounts both answer 401 six minutes after locking; 423 latency 54 to 62 ms against 54 to 69 ms |
+| N2 | fixed | a `roles.manage`-only user gets 403 removing or deleting permissions it lacks; earlier escalations still 403 |
+| N3 | partly fixed | the settings API refuses control characters; the dedicated branding route did not (N3b); C1 controls passed |
+| Password-change lockout | fixed | ten wrong current passwords end the session and the next login answers 423 |
+| 5 | partly fixed | addresses and trust agree, but Docker could give 10.89.0.2 to another container first (5a, medium); the contract default 10.0.0.0/8 still trusted every container on the network (5b, low) |
+| 6 | partly fixed | `regwatch_api` cannot UPDATE, DELETE or disable triggers; but `deploy/.env` gave the owner URL and password to api, worker and beat (6a, medium); the start-up check failed open on errors (6b, low) and missed NOINHERIT membership and column grants (6c, low) |
+
+**Sign-off at second re-verification:** no high or critical open; medium open: 5a, 6a; low open: N3b, 5b, 6b, 6c · M1 independent review · 2026-11-13
+
+## Author follow-up 2 (M1 session, 2026-11-13)
+Fixed after the second re-verification, covered by tests, not yet re-verified:
+- 5a: the `regwatch` network gets `ip_range: 10.89.0.128/25`, so Docker assigns other containers addresses from .128 up and 10.89.0.2 stays free for the proxy (plain Docker: three unpinned containers got .129 to .131, then `--ip 10.89.0.2` succeeded); `test_dynamic_addresses_cannot_take_the_proxy_address`.
+- 5b: the code and contract default `REGWATCH_TRUSTED_PROXIES` is exactly `10.89.0.2/32` (CP-06); `test_contract_and_code_defaults_are_exactly_the_proxy`.
+- 6a: `deploy/db.env` holds the owner and `regwatch_api` passwords and the owner URL; only `db` and the one-off `migrate` container read it; in production the API refuses to start if the owner URL is set; `test_only_db_and_migrate_read_db_env`, `test_dev_env_writes_owner_credentials_to_db_env_only`, `test_owner_url_in_the_api_environment_stops_production`.
+- 6b: in production the start-up check fails closed when it cannot run; `test_start_up_fails_closed_in_production_and_warns_elsewhere`.
+- 6c: the check covers every role the login can use (NOINHERIT included), column grants, superusers and owner membership; `test_check_sees_noinherit_members_and_column_grants` (fails against the earlier check).
+- N3b: `PUT /admin/branding` and `PUT /admin/legal` refuse control characters (newlines only in multi-line fields), and C1 controls count as control characters; `test_branding_route_refuses_control_characters`.

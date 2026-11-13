@@ -237,7 +237,10 @@ async def put_branding(
 ) -> Branding:
     for field in body.model_fields_set:
         value = getattr(body, field)
-        await _write(db, BRANDING_KEYS[field], "" if value is None else value, actor, ip,
+        key = BRANDING_KEYS[field]
+        if isinstance(value, str) and has_control(value, allow_newlines=key in MULTILINE):
+            raise invalid(field, "must not contain control characters")  # re-review N3b
+        await _write(db, key, "" if value is None else value, actor, ip,
                      action="branding.update")  # fmt: skip
     await db.commit()
     return await branding(db)
@@ -248,6 +251,8 @@ async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: st
         value = getattr(body, field)
         if value is None:
             raise invalid(field, "must be a string", status=422)
+        if has_control(value, allow_newlines=True):
+            raise invalid(field, "must not contain control characters")
         await _write(db, LEGAL_KEYS[field], value, actor, ip, action="legal.update")
     await db.commit()
 

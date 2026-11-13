@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     env: Literal["development", "production", "test"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     trusted_proxies: Annotated[tuple[IPNetwork, ...], NoDecode] = (
-        ipaddress.IPv4Network("10.0.0.0/8"),
+        # Exactly the proxy in deploy/compose.yaml, so no other container may set X-Forwarded-*
+        # (BL-73, re-review 5b).
+        ipaddress.IPv4Network("10.89.0.2/32"),
     )
     session_cookie_name: str = Field(default="rw_session", pattern=r"^[A-Za-z0-9_-]{1,64}$")
     object_store_s3_endpoint: AnyHttpUrl | None = None

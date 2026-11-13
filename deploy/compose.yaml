@@ -182,11 +182,14 @@ services:
 networks:
   regwatch:
     internal: true
-    # Pinned so the proxy address above is stable; inside the contract default trusted range
-    # 10.0.0.0/8. Change both (and REGWATCH_TRUSTED_PROXIES) if it collides with a host network.
+    # Pinned so the proxy address above is stable. Docker assigns other containers addresses
+    # from ip_range only, so none can take 10.89.0.2 first (re-review 5a). The contract default
+    # REGWATCH_TRUSTED_PROXIES is exactly 10.89.0.2/32; change the subnet, the range, the proxy
+    # address and that variable together if the subnet collides with a host network.
     ipam:
       config:
         - subnet: 10.89.0.0/24
+          ip_range: 10.89.0.128/25
   edge: {}
 
 volumes:

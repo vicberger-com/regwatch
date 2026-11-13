@@ -319,3 +319,18 @@ async def test_review_followups_for_roles_and_settings(admin: httpx.AsyncClient)
     assert (await put("legal.page_markdown", "# Notices\n\nLine two")).status_code == 200
     bad = {"email": "ctl\u0001x@example.org", "display_name": "C", "roles": []}
     assert (await admin.post(_api("/admin/users"), json=bad)).status_code == 422
+
+
+async def test_branding_route_refuses_control_characters(admin: httpx.AsyncClient) -> None:
+    """Re-review N3b: the dedicated branding and legal routes apply the same rule."""
+    branding = _api("/admin/branding")
+    assert (await admin.put(branding, json={"site_title": "x\r\nBcc: evil@x"})).status_code == 400
+    assert (await admin.put(branding, json={"company_name": "a\x07b\x1b[31m"})).status_code == 400
+    assert (await admin.put(branding, json={"company_address": "1 Road\nTown"})).status_code == 200
+    put = lambda key, value: admin.put(_api(f"/admin/settings/{key}"), json={"value": value})  # noqa: E731
+    assert (await put("capture.user_agent", "ua\x85next")).status_code == 400
+    legal = {"required_markings": "INTERNAL\x1b[0m"}
+    assert (await admin.put(_api("/admin/legal"), json=legal)).status_code == 400
+    assert (
+        await admin.put(_api("/admin/legal"), json={"page_markdown": "a\nb"})
+    ).status_code == 204

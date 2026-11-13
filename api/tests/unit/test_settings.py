@@ -32,7 +32,7 @@ def test_valid_environment_loads(valid_env: dict[str, str]) -> None:
     assert str(s.base_url) == "http://localhost/"
     assert s.env == "development"
     assert s.object_store_path == "/data/objectstore"
-    assert s.trusted_proxies == (ipaddress.ip_network("10.0.0.0/8"),)
+    assert s.trusted_proxies == (ipaddress.ip_network("10.89.0.2/32"),)
     assert s.session_cookie_name == "rw_session"
     assert s.smtp_port == 1025 and s.smtp_starttls is False
     assert str(s.pdf_url) == "http://pdf:3000/"

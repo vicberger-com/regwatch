@@ -32,7 +32,7 @@ def test_api_main_passes_trusted_proxies(
     monkeypatch.setattr(api_main.uvicorn, "run", lambda *a, **kw: seen.update(kw))
     api_main.main(["--host", "127.0.0.2", "--reload"])
     assert seen["factory"] is True and seen["reload"] is True
-    assert seen["forwarded_allow_ips"] == "10.0.0.0/8"
+    assert seen["forwarded_allow_ips"] == "10.89.0.2/32"
 
 
 def test_api_main_fails_fast_without_settings() -> None:

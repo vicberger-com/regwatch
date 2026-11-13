@@ -37,11 +37,25 @@ def test_dev_env_trusts_exactly_the_proxy() -> None:
     assert nets == [ipaddress.ip_network(f"{_proxy_address()}/32")]
 
 
-def test_contract_default_covers_the_proxy() -> None:
+def test_contract_and_code_defaults_are_exactly_the_proxy() -> None:
     lines = (ROOT / "docs" / "contracts" / "env.example").read_text().splitlines()
     line = next(line for line in lines if line.startswith("REGWATCH_TRUSTED_PROXIES="))
     default = line.split("=", 1)[1].split("#", 1)[0]
-    assert any(_proxy_address() in net for net in _networks(default))
+    assert _networks(default) == [ipaddress.ip_network(f"{_proxy_address()}/32")]
+    from regwatch.core.settings import Settings
+
+    assert Settings.model_fields["trusted_proxies"].default == tuple(_networks(default))
+
+
+def test_dynamic_addresses_cannot_take_the_proxy_address() -> None:
+    ipam = COMPOSE["networks"]["regwatch"]["ipam"]["config"][0]
+    dynamic = ipaddress.ip_network(ipam["ip_range"])
+    assert dynamic.subnet_of(ipaddress.ip_network(ipam["subnet"]))  # type: ignore[arg-type]
+    assert _proxy_address() not in dynamic
+    pinned = [svc["networks"]["regwatch"]["ipv4_address"] for svc in COMPOSE["services"].values()
+              if isinstance(svc.get("networks"), dict) and "regwatch" in svc["networks"]
+              and (svc["networks"]["regwatch"] or {}).get("ipv4_address")]  # fmt: skip
+    assert pinned == [str(_proxy_address())]
 
 
 def test_published_ports_are_loopback_only() -> None:
