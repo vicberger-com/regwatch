@@ -80,6 +80,9 @@ markers = [
 ]
 
 [tool.coverage.run]
+# SQLAlchemy's asyncio layer runs on greenlets; without this, lines after a database call
+# are not recorded.
+concurrency = ["thread", "greenlet"]
 source = ["regwatch"]
 branch = true
 

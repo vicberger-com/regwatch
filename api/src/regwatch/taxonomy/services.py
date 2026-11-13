@@ -1,6 +1,6 @@
 """Service layer; other modules call this module only through here (ADR-0001).
 
-Facets (M2): CRUD, the view-selector dimensions, and the ``taxonomy.version`` setting,
+Facets and terms (M2): CRUD, the view-selector dimensions, and the ``taxonomy.version`` setting,
 bumped in the same transaction as every facet or term change so workers can drop cached
 attribute validation (M2 design notes). Reads go to the database each time, so a new facet is
 visible in filters and the view selector on the next request (M2 acceptance 1).
@@ -8,6 +8,8 @@ visible in filters and the view selector on the next request (M2 acceptance 1).
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from typing import Any
 
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.models import Setting
 from regwatch.core.errors import ProblemError, ProblemFieldError
+from regwatch.core.schemas import has_control
 from regwatch.core.services import audit
 from regwatch.taxonomy.models import Facet, ItemTerm, Term
 from regwatch.taxonomy.schemas import Facet as FacetOut
@@ -188,3 +191,208 @@ async def view_dimensions(db: AsyncSession) -> list[ViewDimension]:
     )).all()  # fmt: skip
     builtin = [ViewDimension(key=k, label=label, kind="builtin") for k, label in BUILTIN_DIMENSIONS]
     return builtin + [ViewDimension(key=f.key, label=f.label, kind="facet") for f in facets]
+
+
+# --- Terms ---------------------------------------------------------------------------------
+
+TERM_KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,60}$")
+MAX_SYNONYMS, MAX_RULE_ITEMS, MAX_PATTERN = 50, 100, 200
+# A quantified group that contains a quantifier or an alternation, such as (a+)+, (\w*)* or
+# (a|aa){2,}: the shapes behind catastrophic backtracking. Patterns are entered by
+# administrators and run by M4 over captured text, so they are refused here (M2 design notes;
+# BL-74 for a linear-time engine, which would make this check unnecessary).
+_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*[+*}|](?:[^()\\]|\\.)*\)\s*[+*{]")
+
+
+def normalise_synonyms(values: list[str]) -> list[str]:
+    """NFC, trimmed, inner whitespace collapsed, case-insensitive duplicates and blanks dropped."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        value = " ".join(unicodedata.normalize("NFC", raw).split())
+        if value and value.casefold() not in seen:
+            if len(value) > 200 or has_control(value):
+                raise validation("synonyms", "each synonym is one line of up to 200 characters")
+            seen.add(value.casefold())
+            out.append(value)
+    if len(out) > MAX_SYNONYMS:
+        raise validation("synonyms", f"at most {MAX_SYNONYMS} synonyms")
+    return out
+
+
+def check_match_rules(rules: dict[str, Any]) -> dict[str, Any]:
+    for field in ("keywords", "regex", "languages"):
+        items = rules.get(field) or []
+        if len(items) > MAX_RULE_ITEMS or any(len(i) > MAX_PATTERN for i in items):
+            limit = f"at most {MAX_RULE_ITEMS} entries of up to {MAX_PATTERN} characters"
+            raise validation(f"match_rules.{field}", limit)
+    for pattern in rules.get("regex") or []:
+        if _NESTED_QUANTIFIER.search(pattern):
+            raise validation(
+                "match_rules.regex", f"nested quantifier in {pattern!r} (backtracking)"
+            )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise validation("match_rules.regex", f"invalid pattern {pattern!r}: {exc}") from exc
+    if rules.get("min_hits", 1) < 1:
+        raise validation("match_rules.min_hits", "must be at least 1")
+    weight = rules.get("weight", 1.0)
+    if not 0 < weight <= 10:
+        raise validation("match_rules.weight", "must be greater than 0 and at most 10")
+    return rules
+
+
+def term_snapshot(term: Term) -> dict[str, Any]:
+    return {"key": term.key, "label": term.label,
+            "parent_id": str(term.parent_id) if term.parent_id else None,
+            "synonyms": list(term.synonyms or []), "match_rules": term.match_rules,
+            "color_token": term.color_token, "active": term.active}  # fmt: skip
+
+
+async def _term_or_404(db: AsyncSession, term_id: uuid.UUID) -> tuple[Term, Facet]:
+    found = (await db.execute(
+        select(Term, Facet).join(Facet, Facet.id == Term.facet_id).where(Term.id == term_id)
+    )).first()  # fmt: skip
+    if found is None:
+        raise not_found("term")
+    return found[0], found[1]
+
+
+async def _check_parent(db: AsyncSession, term: Term | None, facet: Facet,
+                        parent_id: uuid.UUID | None) -> None:  # fmt: skip
+    """The parent must be in the same facet and not the term itself or one of its descendants."""
+    seen: set[uuid.UUID] = set()
+    current = parent_id
+    while current is not None:
+        if term is not None and current == term.id:
+            raise validation("parent_id", "a term cannot be its own ancestor")
+        if current in seen:  # pragma: no cover - existing data already cyclic
+            raise validation("parent_id", "the hierarchy has a cycle")
+        seen.add(current)
+        row = (await db.execute(select(Term.facet_id, Term.parent_id)
+                                .where(Term.id == current))).first()  # fmt: skip
+        if row is None or row[0] != facet.id:
+            raise validation("parent_id", "the parent must be a term of the same facet")
+        current = row[1]
+
+
+def _apply(term: Term, changes: dict[str, Any]) -> None:
+    if "label" in changes:
+        label = (changes["label"] or "").strip()
+        if not label or len(label) > 120 or has_control(label):
+            raise validation("label", "a label is one line of 1 to 120 characters")
+        term.label = label
+    if "synonyms" in changes:
+        term.synonyms = normalise_synonyms(changes["synonyms"] or [])
+    if "match_rules" in changes:
+        term.match_rules = check_match_rules(
+            {k: v for k, v in (changes["match_rules"] or {}).items() if v is not None}
+        )
+    if "color_token" in changes:
+        token = changes["color_token"]
+        if token is not None and not re.fullmatch(r"[a-z][a-z0-9-]{0,40}", token):
+            raise validation("color_token", "a design token name such as category-3")
+        term.color_token = token
+    if "active" in changes:
+        if changes["active"] is None:
+            raise validation("active", "active cannot be null")
+        term.active = changes["active"]
+
+
+async def _item_counts(db: AsyncSession, term_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    rows = await db.execute(select(ItemTerm.term_id, func.count()).where(
+        ItemTerm.term_id.in_(term_ids)).group_by(ItemTerm.term_id))  # fmt: skip
+    return {tid: int(n) for tid, n in rows.tuples().all()}
+
+
+async def list_terms(db: AsyncSession, facet_key: str, *, flat: bool,
+                     include_inactive: bool) -> list[TermOut]:  # fmt: skip
+    facet = await facet_by_key(db, facet_key)
+    stmt = select(Term).where(Term.facet_id == facet.id).order_by(Term.label, Term.key)
+    if not include_inactive:
+        stmt = stmt.where(Term.active.is_(True))
+    terms = list((await db.scalars(stmt)).all())
+    counts = await _item_counts(db, [t.id for t in terms])
+    if flat:
+        outs = [term_out(t, facet.key) for t in terms]
+        for out, t in zip(outs, terms, strict=True):
+            out.item_count = counts.get(t.id, 0)
+        return outs
+    roots = term_tree(terms, facet.key)
+    stack = list(roots)
+    while stack:
+        node = stack.pop()
+        node.item_count = counts.get(node.id, 0)
+        stack.extend(node.children or [])
+    return roots
+
+
+async def create_term(db: AsyncSession, facet_key: str, changes: dict[str, Any],
+                      actor: uuid.UUID, ip: str | None) -> TermOut:  # fmt: skip
+    facet = await facet_by_key(db, facet_key)
+    if facet.value_type != "term":
+        raise validation("facet", f"facet {facet.key!r} holds {facet.value_type} values, not terms")
+    key = changes.get("key")
+    if not key or not TERM_KEY.match(key):
+        raise validation("key", "a key of lower-case letters, digits, '-' and '_'")
+    if not changes.get("label"):
+        raise validation("label", "label is required")
+    if await db.scalar(select(Term.id).where(Term.facet_id == facet.id, Term.key == key)):
+        raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
+    await _check_parent(db, None, facet, changes.get("parent_id"))
+    term = Term(facet_id=facet.id, key=key, label="", parent_id=changes.get("parent_id"),
+                synonyms=[], match_rules={}, active=True)  # fmt: skip
+    _apply(term, changes)
+    db.add(term)
+    await db.flush()
+    version = await bump_version(db, actor)
+    after = {**term_snapshot(term), "facet": facet.key, "taxonomy_version": version}
+    audit(db, "term.create", "term", term.id, actor=actor, ip=ip, after=after)
+    await db.commit()
+    return term_out(term, facet.key)
+
+
+async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, Any],
+                      actor: uuid.UUID, ip: str | None) -> TermOut:  # fmt: skip
+    term, facet = await _term_or_404(db, term_id)
+    before = term_snapshot(term)
+    if "key" in changes and changes["key"] != term.key:
+        key = changes["key"]
+        if not key or not TERM_KEY.match(key):
+            raise validation("key", "a key of lower-case letters, digits, '-' and '_'")
+        if await db.scalar(select(Term.id).where(Term.facet_id == facet.id, Term.key == key)):
+            raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
+        term.key = key
+    if "parent_id" in changes and changes["parent_id"] != term.parent_id:
+        await _check_parent(db, term, facet, changes["parent_id"])
+        term.parent_id = changes["parent_id"]
+    _apply(term, changes)
+    after = term_snapshot(term)
+    if after != before:
+        version = await bump_version(db, actor)
+        audit(db, "term.update", "term", term.id, actor=actor, ip=ip, before=before,
+              after={**after, "taxonomy_version": version})  # fmt: skip
+    await db.commit()
+    return term_out(term, facet.key)
+
+
+async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
+                      ip: str | None) -> None:  # fmt: skip
+    """Delete a term no item uses; deactivate one that items use (M2 design notes)."""
+    term, facet = await _term_or_404(db, term_id)
+    before = term_snapshot(term)
+    used = (await _item_counts(db, [term.id])).get(term.id, 0)
+    if used:
+        term.active = False
+        action = "term.deactivate"
+    else:
+        # Children move up to the deleted term's parent.
+        await db.execute(update(Term).where(Term.parent_id == term.id)
+                         .values(parent_id=term.parent_id))  # fmt: skip
+        await db.delete(term)
+        action = "term.delete"
+    version = await bump_version(db, actor)
+    after = {"facet": facet.key, "items_tagged": used, "taxonomy_version": version}
+    audit(db, action, "term", term_id, actor=actor, ip=ip, before=before, after=after)
+    await db.commit()

@@ -1,6 +1,7 @@
 """Facet, term and jurisdiction routes; mounted under /api/v1.
 
-Facets and view dimensions are implemented (M2); the other stubs answer 501 until M2 lands.
+Facets, terms and view dimensions are implemented (M2); the other stubs answer 501 until M2
+lands.
 """
 
 from __future__ import annotations
@@ -72,27 +73,43 @@ async def delete_facet(
     return Response(status_code=204)
 
 
-@router.get("/taxonomy/facets/{key}/terms", **spec(list[Term], desc="Terms", perm=READ))
-async def list_terms(key: str, flat: bool = False, include_inactive: bool = False) -> NoReturn:
-    not_implemented()
+@router.get(
+    "/taxonomy/facets/{key}/terms", **spec(list[Term], desc="Terms", perm=READ, stub=False)
+)  # fmt: skip
+async def list_terms(
+    key: str, db: DbSession, flat: bool = False, include_inactive: bool = False
+) -> list[Term]:
+    return await services.list_terms(db, key, flat=flat, include_inactive=include_inactive)
 
 
-@router.post("/taxonomy/facets/{key}/terms", **spec(Term, status=201, desc="Created", perm=MANAGE))
-async def create_term(key: str, body: TermWrite) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/taxonomy/facets/{key}/terms",
+    **spec(Term, status=201, desc="Created", perm=MANAGE, stub=False),
+)  # fmt: skip
+async def create_term(
+    key: str, body: TermWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Term:
+    changes = body.model_dump(exclude_unset=True)
+    return await services.create_term(db, key, changes, principal.user.id, client_ip(request))
 
 
-@router.patch("/taxonomy/terms/{id}", **spec(Term, desc="Updated", perm=MANAGE))
-async def update_term(id: UUID, body: TermWrite) -> NoReturn:
-    not_implemented()
+@router.patch("/taxonomy/terms/{id}", **spec(Term, desc="Updated", perm=MANAGE, stub=False))
+async def update_term(
+    id: UUID, body: TermWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Term:
+    changes = body.model_dump(exclude_unset=True)
+    return await services.update_term(db, id, changes, principal.user.id, client_ip(request))
 
 
 @router.delete(
     "/taxonomy/terms/{id}",
-    **spec(status=204, desc="Deleted or deactivated when referenced", perm=MANAGE),
+    **spec(status=204, desc="Deleted or deactivated when referenced", perm=MANAGE, stub=False),
 )
-async def delete_term(id: UUID) -> NoReturn:
-    not_implemented()
+async def delete_term(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.delete_term(db, id, principal.user.id, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.post("/taxonomy/terms/{id}/merge", **spec(MergeResult, desc="Items re-tagged", perm=MANAGE))

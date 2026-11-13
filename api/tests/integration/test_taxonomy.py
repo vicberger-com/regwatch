@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import uuid
+
 import httpx
 import pytest
 
+from tests.integration.conftest import Postgres
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
 
@@ -76,3 +79,84 @@ async def test_viewers_read_but_do_not_edit(admin: httpx.AsyncClient) -> None:
     body = {"key": "x_facet", "label": "X", "value_type": "term"}
     assert (await viewer.post(_api("/taxonomy/facets"), json=body)).status_code == 403
     await viewer.aclose()
+
+
+def _tag_item(postgres: Postgres, db_url: str, term_id: str) -> None:
+    """Insert a source, an item and one tag directly (capture and processing land in M3, M4)."""
+    database = db_url.rsplit("/", 1)[1]
+    term = uuid.UUID(term_id)  # validated, so the literal below is safe
+    postgres.psql(
+        database,
+        f"""
+WITH s AS (INSERT INTO source (name, kind) VALUES ('fixture', 'manual') RETURNING id),
+     i AS (INSERT INTO item (source_id, canonical_url, url_hash, title, content_hash)
+           SELECT id, 'https://example.org/' || gen_random_uuid(), gen_random_uuid()::text,
+                  'Item', 'h' FROM s RETURNING id)
+INSERT INTO item_term (item_id, term_id, assigned_by) SELECT id, '{term}', 'user' FROM i;
+""",  # noqa: S608
+    )
+
+
+async def test_terms_tree_flat_rules_and_soft_delete(
+    admin: httpx.AsyncClient, postgres: Postgres, db_url: str
+) -> None:
+    await admin.post(_api("/taxonomy/facets"),
+                     json={"key": "enforcement_body", "label": "Enforcement body",
+                           "value_type": "term"})  # fmt: skip
+    terms = _api("/taxonomy/facets/enforcement_body/terms")
+    root = (await admin.post(terms, json={"key": "eu", "label": "EU bodies"})).json()
+    synonyms = [" European  Data Protection Board ", "european data protection board", ""]
+    edpb = {"key": "edpb", "label": "EDPB", "parent_id": root["id"], "synonyms": synonyms}
+    child = await admin.post(terms, json=edpb)
+    assert child.status_code == 201, child.text
+    assert child.json()["synonyms"] == ["European Data Protection Board"]
+    third = (await admin.post(terms, json={"key": "cnil", "label": "CNIL"})).json()
+
+    tree = (await admin.get(terms)).json()
+    assert [t["key"] for t in tree] == ["cnil", "eu"]
+    eu = next(t for t in tree if t["key"] == "eu")
+    assert [c["key"] for c in eu["children"]] == ["edpb"]
+    assert len((await admin.get(terms, params={"flat": True})).json()) == 3
+
+    cycle = await admin.patch(_api(f"/taxonomy/terms/{root['id']}"),
+                              json={"parent_id": child.json()["id"]})  # fmt: skip
+    assert cycle.status_code == 422
+    topic = (await admin.get(_api("/taxonomy/facets/topic/terms"), params={"flat": True})).json()
+    other = await admin.patch(_api(f"/taxonomy/terms/{third['id']}"),
+                              json={"parent_id": topic[0]["id"]})  # fmt: skip
+    assert other.status_code == 422  # parent from another facet
+    for rules in ({"regex": ["(a+)+$"]}, {"regex": ["("]}, {"min_hits": 0}, {"weight": 0},
+                  {"keywords": ["x" * 201]}):  # fmt: skip
+        resp = await admin.patch(
+            _api(f"/taxonomy/terms/{third['id']}"), json={"match_rules": rules}
+        )
+        assert resp.status_code == 422, rules
+    ok = {"keywords": ["CNIL"], "regex": [r"\bdélibération\b"], "min_hits": 1, "weight": 1.5}
+    resp = await admin.patch(_api(f"/taxonomy/terms/{third['id']}"), json={"match_rules": ok})
+    assert resp.status_code == 200 and resp.json()["match_rules"]["weight"] == 1.5
+    assert (await admin.post(terms, json={"key": "cnil", "label": "Again"})).status_code == 409
+    assert (await admin.post(terms, json={"key": "Bad Key", "label": "X"})).status_code == 422
+
+    _tag_item(postgres, db_url, third["id"])
+    flat = {t["key"]: t for t in (await admin.get(terms, params={"flat": True})).json()}
+    assert flat["cnil"]["item_count"] == 1
+    assert (await admin.delete(_api(f"/taxonomy/terms/{third['id']}"))).status_code == 204
+    keys = [t["key"] for t in (await admin.get(terms, params={"flat": True})).json()]
+    assert "cnil" not in keys  # deactivated, still referenced
+    everything = (await admin.get(terms, params={"flat": True, "include_inactive": True})).json()
+    assert next(t for t in everything if t["key"] == "cnil")["active"] is False
+    assert (await admin.delete(_api("/taxonomy/facets/enforcement_body"))).status_code == 409
+
+    assert (await admin.delete(_api(f"/taxonomy/terms/{root['id']}"))).status_code == 204
+    tree = (await admin.get(terms)).json()
+    assert [t["key"] for t in tree] == ["edpb"]  # the child moved up
+    text_facet = {"key": "notes", "label": "Notes", "value_type": "text"}
+    await admin.post(_api("/taxonomy/facets"), json=text_facet)
+    no_terms = await admin.post(
+        _api("/taxonomy/facets/notes/terms"), json={"key": "a", "label": "A"}
+    )
+    assert no_terms.status_code == 422
+    audit = (await admin.get(_api("/admin/audit"), params={"entity_type": "term"})).json()
+    assert {"term.create", "term.update", "term.deactivate", "term.delete"} <= {
+        r["action"] for r in audit["items"]
+    }
