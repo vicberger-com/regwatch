@@ -42,6 +42,7 @@ settings:                       # runtime-editable, stored in the `setting` tabl
   branding.primary_color:       { type: string, default: "", module: M1, note: hex; empty means the design-system default }
   legal.page_markdown:          { type: string, default: "", module: M1, note: rendered at /legal and by the LegalMarkings report component }
   legal.required_markings:      { type: string, default: "", module: M1, note: short text inserted in report and email footers }
+  taxonomy.version:             { type: integer, default: 0, module: M2, note: bumped on every facet or term change so workers drop cached validation; set by the application only }
   map.default_period_days:      { type: integer, default: 30, module: M6 }
   map.default_encoding:         { type: enum, values: [recency, count, severity], default: recency, module: M6 }
   map.projection:               { type: enum, values: [equal-earth, mercator], default: equal-earth, module: M6 }

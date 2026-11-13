@@ -36,7 +36,7 @@ def test_registry_text_is_rejoined_where_yaml_split_it(data: seed.SeedData) -> N
 
 
 def test_registry_counts(data: seed.SeedData) -> None:
-    assert (len(data.permissions), len(data.roles), len(data.settings)) == (23, 4, 39)
+    assert (len(data.permissions), len(data.roles), len(data.settings)) == (23, 4, 40)
     assert data.roles["admin"] == ["*"]
     assert data.settings["map.default_period_days"] == 30
     assert data.settings["outputs.allowed_recipient_domains"] == []

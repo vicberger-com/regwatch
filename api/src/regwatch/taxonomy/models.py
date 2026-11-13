@@ -1,11 +1,10 @@
-"""SQLAlchemy models. Tables come from docs/contracts/schema.sql (migration 0001, #28).
-
-Only the columns the seed loader writes are mapped so far; M2 maps the rest.
-"""
+"""SQLAlchemy models. Tables come from docs/contracts/schema.sql (migration 0001, #28)."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ForeignKey, Text, text
@@ -19,18 +18,23 @@ class Jurisdiction(Base):
     __tablename__ = "jurisdiction"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     code: Mapped[str] = mapped_column(unique=True)
     name: Mapped[str]
     kind: Mapped[str]
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jurisdiction.id"))
     region_code: Mapped[str | None]
     geometry_ref: Mapped[str | None]
+    active: Mapped[bool] = mapped_column(server_default=text("true"))
 
 
 class Facet(Base):
     __tablename__ = "facet"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     key: Mapped[str] = mapped_column(unique=True)
     label: Mapped[str]
     value_type: Mapped[str]
@@ -40,15 +44,50 @@ class Facet(Base):
     show_in_filters: Mapped[bool]
     sort_order: Mapped[int]
     system: Mapped[bool]
+    hidden: Mapped[bool] = mapped_column(server_default=text("false"))
 
 
 class Term(Base):
     __tablename__ = "term"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     facet_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("facet.id", ondelete="CASCADE"))
     key: Mapped[str]
     label: Mapped[str]
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("term.id"))
     synonyms: Mapped[list[str]] = mapped_column(ARRAY(Text))
     match_rules: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    color_token: Mapped[str | None]
+    active: Mapped[bool] = mapped_column(server_default=text("true"))
+
+
+class ItemTerm(Base):
+    """Tags on items; M2 owns the table for merge and usage counts (M4 writes it)."""
+
+    __tablename__ = "item_term"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    term_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("term.id", ondelete="CASCADE"), primary_key=True
+    )
+    confidence: Mapped[Decimal] = mapped_column(server_default=text("1"))
+    assigned_by: Mapped[str]
+    assigned_user_id: Mapped[uuid.UUID | None]
+    evidence: Mapped[str | None]
+    feedback: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class ItemJurisdiction(Base):
+    __tablename__ = "item_jurisdiction"
+
+    item_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    jurisdiction_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("jurisdiction.id", ondelete="CASCADE"), primary_key=True
+    )
+    confidence: Mapped[Decimal] = mapped_column(server_default=text("1"))
+    assigned_by: Mapped[str]
+    assigned_user_id: Mapped[uuid.UUID | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))

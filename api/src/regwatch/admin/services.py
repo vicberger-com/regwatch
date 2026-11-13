@@ -132,6 +132,8 @@ def _check_owned_by_dedicated_route(key: str, value: Any) -> None:
             check_email(value)
         except ValueError as exc:
             raise invalid("value", str(exc)) from exc
+    if key == "taxonomy.version":
+        raise invalid("value", "maintained by the taxonomy service, not by the settings API")
     if key == "branding.logo_ref":
         raise invalid("value", "set by the logo upload, not by the settings API")
     if key in _DEDICATED:

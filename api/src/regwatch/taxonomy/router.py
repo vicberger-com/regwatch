@@ -1,13 +1,20 @@
-"""Facet, term and jurisdiction routes; mounted under /api/v1. Stubs answer 501 until M2."""
+"""Facet, term and jurisdiction routes; mounted under /api/v1.
+
+Facets and view dimensions are implemented (M2); the other stubs answer 501 until M2 lands.
+"""
 
 from __future__ import annotations
 
 from typing import Literal, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
+from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, raw_body, spec
+from regwatch.identity.permissions import CurrentPrincipal
+from regwatch.identity.services import client_ip
+from regwatch.taxonomy import services
 from regwatch.taxonomy.schemas import (
     Facet,
     FacetWrite,
@@ -29,28 +36,40 @@ READ, MANAGE = "taxonomy.read", "taxonomy.manage"
 YAML = "application/yaml"
 
 
-@router.get("/taxonomy/facets", **spec(list[Facet], desc="Facets with terms as a tree", perm=READ))
-async def list_facets() -> NoReturn:
-    not_implemented()
+@router.get(
+    "/taxonomy/facets",
+    **spec(list[Facet], desc="Facets with terms as a tree", perm=READ, stub=False),
+)  # fmt: skip
+async def list_facets(db: DbSession) -> list[Facet]:
+    return await services.list_facets(db)
 
 
-@router.post("/taxonomy/facets", **spec(Facet, status=201, desc="Created", perm=MANAGE))
-async def create_facet(body: FacetWrite) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/taxonomy/facets", **spec(Facet, status=201, desc="Created", perm=MANAGE, stub=False)
+)  # fmt: skip
+async def create_facet(
+    body: FacetWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Facet:
+    return await services.create_facet(db, body, principal.user.id, client_ip(request))
 
 
-@router.patch("/taxonomy/facets/{key}", **spec(Facet, desc="Updated", perm=MANAGE))
-async def update_facet(key: str, body: FacetWrite) -> NoReturn:
-    not_implemented()
+@router.patch("/taxonomy/facets/{key}", **spec(Facet, desc="Updated", perm=MANAGE, stub=False))
+async def update_facet(
+    key: str, body: FacetWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Facet:
+    return await services.update_facet(db, key, body, principal.user.id, client_ip(request))
 
 
 @router.delete(
     "/taxonomy/facets/{key}",
     **spec(status=204, desc="Deleted", perm=MANAGE, errors=(409,),
-           error_desc={409: "System facet or in use; hide instead"}),
+           error_desc={409: "System facet or in use; hide instead"}, stub=False),
 )  # fmt: skip
-async def delete_facet(key: str) -> NoReturn:
-    not_implemented()
+async def delete_facet(
+    key: str, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.delete_facet(db, key, principal.user.id, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.get("/taxonomy/facets/{key}/terms", **spec(list[Term], desc="Terms", perm=READ))
@@ -90,10 +109,10 @@ async def test_rules(id: UUID, body: RuleTest) -> NoReturn:
 
 @router.get(
     "/taxonomy/view-dimensions",
-    **spec(list[ViewDimension], desc="Dimensions for the view selector", perm=READ),
+    **spec(list[ViewDimension], desc="Dimensions for the view selector", perm=READ, stub=False),
 )
-async def list_view_dimensions() -> NoReturn:
-    not_implemented()
+async def list_view_dimensions(db: DbSession) -> list[ViewDimension]:
+    return await services.view_dimensions(db)
 
 
 @router.post(
