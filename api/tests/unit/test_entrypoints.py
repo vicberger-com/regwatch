@@ -6,14 +6,14 @@ from regwatch.api import main as api_main
 from regwatch.core import entrypoints
 
 
-@pytest.mark.parametrize(("func", "issue"), [(entrypoints.admin, "#31")])
-def test_pending_commands_exit_with_issue(
-    func: object, issue: str, capsys: pytest.CaptureFixture[str]
+def test_admin_requires_a_command(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    monkeypatch.setattr(entrypoints.sys, "argv", ["regwatch-admin"])
     with pytest.raises(SystemExit) as exc:
-        func()  # type: ignore[operator]
+        entrypoints.admin()
     assert exc.value.code == 2
-    assert issue in capsys.readouterr().err
+    assert "create-user" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("func", [entrypoints.worker, entrypoints.beat])

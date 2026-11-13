@@ -10,6 +10,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- `regwatch-admin create-user` creates local accounts such as the first administrator; the password is read without echo or from standard input, never from an argument (#31, REQ-16)
 - M1 auth core: Argon2id password hashing (argon2-cffi), random session tokens stored as sha256, the CSRF origin check, SQLAlchemy models for users, sessions and the audit log, and an `audit()` helper; timestamps mapped as timestamptz (#31, REQ-16)
 - Test fixtures in `api/tests/fixtures/`: 200-document corpus in seven languages with expected labels, a validator and `NOTICES.md`; feed and page fixtures; `make fixtures-check` (#12, REQ-25)
 - Test fixture HTTP server (`api/tests/support/fixture_server.py`, pytest fixture `fixture_server`, `make fixture-server`), seeded synthetic data generator writing COPY files, and security payload files with a loader (#12, REQ-25)

@@ -1,8 +1,8 @@
 """Console entry points whose implementations land in later issues.
 
 ``regwatch-worker`` and ``regwatch-beat`` stay up and idle until Celery lands (M3), so the
-Compose stack keeps its contract services; ``regwatch-admin`` exits with status 2 and says
-which issue delivers it. ``regwatch-seed`` runs the seed loader (:mod:`regwatch.core.seed`).
+Compose stack keeps its contract services. ``regwatch-seed`` runs the seed loader
+(:mod:`regwatch.core.seed`); ``regwatch-admin`` runs :mod:`regwatch.identity.admin_cli`.
 """
 
 from __future__ import annotations
@@ -24,11 +24,6 @@ def _idle(process: str) -> None:
     signal.pause()
 
 
-def _not_yet(command: str, issue: str) -> None:
-    print(f"{command}: not implemented yet; lands in {issue}", file=sys.stderr)
-    raise SystemExit(2)
-
-
 def worker() -> None:
     """Celery worker (``regwatch-worker``)."""
     _idle("worker")
@@ -48,4 +43,6 @@ def seed() -> None:
 
 def admin() -> None:
     """Administration commands (``regwatch-admin create-user``)."""
-    _not_yet("regwatch-admin", "#31")
+    from regwatch.identity.admin_cli import main
+
+    raise SystemExit(main(sys.argv[1:]))
