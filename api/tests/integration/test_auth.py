@@ -89,7 +89,7 @@ async def test_admin_login_cookie_and_me(client: httpx.AsyncClient, db_url: str)
     assert "max-age" not in cookie  # not remember_me: a browser-session cookie
     me = (await client.get(f"{API_PREFIX}/auth/me")).json()
     assert me["roles"] == ["admin"] and "users.manage" in me["permissions"]
-    assert (await client.get(f"{API_PREFIX}/admin/users")).status_code == 501  # #32 stub
+    assert (await client.get(f"{API_PREFIX}/admin/users")).status_code == 200
     assert len(await _audit(db_url, "auth.login")) == 1
 
 

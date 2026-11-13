@@ -20,19 +20,23 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import Request, Response
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.models import Setting
 from regwatch.core import security
-from regwatch.core.errors import ProblemError
+from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.models import AuditLog
+from regwatch.core.schemas import Page
 from regwatch.core.services import audit
 from regwatch.core.settings import Settings
 from regwatch.identity.models import Role, RolePermission, User, UserRole, UserSession
 from regwatch.identity.schemas import Me, Preferences, SessionInfo
+from regwatch.identity.schemas import User as UserOut
+from regwatch.identity.schemas import UserWithPassword as UserWithPasswordOut
 
 LOCKOUT_WINDOW = timedelta(minutes=15)  # M1 spec; no settings key yet (BL-50)
 LOGIN_RATE = (5, 60.0)  # attempts per seconds, per IP and per account (8.2)
@@ -475,3 +479,165 @@ async def create_user(
     audit(db, "user.create", "user", user.id, actor=actor,
           after={"display_name": display_name, "roles": sorted(set(roles))})  # fmt: skip
     return user
+
+
+# --- Administration of users and roles (#32) -------------------------------------------
+
+USER_MANAGER = "users.manage"
+
+
+def validation(field: str, message: str) -> ProblemError:
+    return ProblemError(422, "validation", message,
+                        errors=[ProblemFieldError(field=field, message=message)])  # fmt: skip
+
+
+async def _role_keys_by_user(
+    db: AsyncSession, user_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[str]]:
+    out: dict[uuid.UUID, list[str]] = {uid: [] for uid in user_ids}
+    rows = await db.execute(
+        select(UserRole.user_id, Role.key)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id.in_(user_ids))
+        .order_by(Role.key)
+    )
+    for uid, key in rows.tuples().all():
+        out[uid].append(key)
+    return out
+
+
+def user_out(user: User, roles: list[str]) -> UserOut:
+    return UserOut(
+        id=user.id, email=user.email, display_name=user.display_name, status=user.status,
+        roles=roles, must_change_password=user.must_change_password,
+        last_login_at=user.last_login_at, created_at=user.created_at,
+    )  # fmt: skip
+
+
+async def list_users(
+    db: AsyncSession, page: int, page_size: int, q: str | None, status: str | None
+) -> Page[UserOut]:
+    conds: list[Any] = []
+    if q:
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        conds.append(or_(User.email.ilike(like, escape="\\"),
+                         User.display_name.ilike(like, escape="\\")))  # fmt: skip
+    if status:
+        conds.append(User.status == status)
+    total = await db.scalar(select(func.count()).select_from(User).where(*conds)) or 0
+    users = (await db.scalars(
+        select(User).where(*conds).order_by(User.email).limit(page_size)
+        .offset((page - 1) * page_size)
+    )).all()  # fmt: skip
+    roles = await _role_keys_by_user(db, [u.id for u in users])
+    return Page[UserOut](items=[user_out(u, roles[u.id]) for u in users], total=total,
+                         page=page, page_size=page_size)  # fmt: skip
+
+
+async def _user_or_404(db: AsyncSession, user_id: uuid.UUID) -> User:
+    user = await db.get(User, user_id)
+    if user is None:
+        raise ProblemError(404, "not-found", "No such user.")
+    return user
+
+
+async def get_user(db: AsyncSession, user_id: uuid.UUID) -> UserOut:
+    user = await _user_or_404(db, user_id)
+    return user_out(user, (await _role_keys_by_user(db, [user.id]))[user.id])
+
+
+async def _ensure_a_manager_remains(db: AsyncSession) -> None:
+    """Refuse a change that would leave no active user able to manage users."""
+    await db.flush()
+    count = await db.scalar(
+        select(func.count(func.distinct(User.id)))
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+        .where(User.status == "active", RolePermission.permission_key == USER_MANAGER)
+    )
+    if not count:
+        await db.rollback()
+        raise validation("roles", "At least one active user must keep the users.manage permission.")
+
+
+async def admin_create_user(
+    db: AsyncSession, email: str, display_name: str, roles: list[str], actor: uuid.UUID
+) -> UserWithPasswordOut:
+    temporary = security.new_temporary_password()
+    try:
+        user = await create_user(db, email, display_name, temporary, roles,
+                                 must_change_password=True, actor=actor)  # fmt: skip
+    except ValueError as exc:
+        if "exists" in str(exc):
+            raise ProblemError(409, "conflict", "A user with this email exists.") from exc
+        raise validation("roles", str(exc)) from exc
+    await db.commit()
+    out = user_out(user, sorted(set(roles)))
+    return UserWithPasswordOut(**out.model_dump(exclude_unset=True), temporary_password=temporary)
+
+
+async def _revoke_all(db: AsyncSession, user_id: uuid.UUID) -> None:
+    await db.execute(
+        update(UserSession)
+        .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
+        .values(revoked_at=_now())
+    )
+
+
+async def update_user(
+    db: AsyncSession, user_id: uuid.UUID, changes: dict[str, Any], actor: uuid.UUID,
+    ip: str | None,
+) -> UserOut:  # fmt: skip
+    user = await _user_or_404(db, user_id)
+    before_roles = (await _role_keys_by_user(db, [user.id]))[user.id]
+    before = {"display_name": user.display_name, "status": user.status, "roles": before_roles}
+    if "display_name" in changes:
+        name = (changes["display_name"] or "").strip()
+        if not name or len(name) > 120:
+            raise validation("display_name", "Give a display name of 1 to 120 characters.")
+        user.display_name = name
+    if "status" in changes:
+        status = str(changes["status"])
+        if user_id == actor and status != "active":
+            raise validation("status", "You cannot disable or lock your own account.")
+        if status != user.status:
+            if status == "active":  # unlock by admin (M1 design notes)
+                user.failed_logins, user.locked_until = 0, None
+            else:
+                user.locked_until = None  # an admin lock has no end
+                await _revoke_all(db, user.id)
+            user.status = status
+    if "roles" in changes:
+        wanted = sorted(set(changes["roles"] or []))
+        found = await db.execute(select(Role.key, Role.id).where(Role.key.in_(wanted)))
+        ids: dict[str, uuid.UUID] = {key: rid for key, rid in found.tuples().all()}
+        missing = sorted(set(wanted) - set(ids))
+        if missing:
+            raise validation("roles", f"unknown roles: {', '.join(missing)}")
+        await db.execute(delete(UserRole).where(UserRole.user_id == user.id))
+        db.add_all(UserRole(user_id=user.id, role_id=ids[k]) for k in wanted)
+    user.updated_at = _now()
+    await _ensure_a_manager_remains(db)
+    after_roles = (await _role_keys_by_user(db, [user.id]))[user.id]
+    after = {"display_name": user.display_name, "status": user.status, "roles": after_roles}
+    if after != before:
+        audit(db, "user.update", "user", user.id, actor=actor, ip=ip, before=before, after=after)
+    await db.commit()
+    return user_out(user, after_roles)
+
+
+async def reset_password(
+    db: AsyncSession, user_id: uuid.UUID, actor: uuid.UUID, ip: str | None
+) -> str:
+    user = await _user_or_404(db, user_id)
+    temporary = security.new_temporary_password()
+    user.password_hash = await security.hash_password_async(temporary)
+    user.must_change_password = True
+    user.failed_logins, user.locked_until = 0, None
+    if user.status == "locked":
+        user.status = "active"
+    user.updated_at = _now()
+    await _revoke_all(db, user.id)
+    audit(db, "user.reset_password", "user", user.id, actor=actor, ip=ip)
+    await db.commit()
+    return temporary

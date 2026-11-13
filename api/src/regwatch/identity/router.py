@@ -1,7 +1,7 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
-Auth and ``/me/sessions`` are implemented (#31); the user and role admin stubs answer 501
-until #32.
+Auth, ``/me/sessions`` (#31) and user administration (#32) are implemented; role
+administration answers 501 until it lands, ``/me/preferences`` until M9.
 """
 
 from __future__ import annotations
@@ -89,38 +89,58 @@ async def change_password(
     return response
 
 
-@router.get("/admin/users", tags=ADMIN, **spec(Page[User], desc="Users", perm=USERS))
+@router.get(
+    "/admin/users", tags=ADMIN, **spec(Page[User], desc="Users", perm=USERS, stub=False)
+)  # fmt: skip
 async def list_users(
-    paging: Paging, q: str | None = None, status: UserStatus | None = None
-) -> NoReturn:
-    not_implemented()
+    paging: Paging, db: DbSession, q: str | None = None, status: UserStatus | None = None
+) -> Page[User]:
+    return await services.list_users(db, paging.page, paging.page_size, q, status)
 
 
 @router.post(
     "/admin/users", tags=ADMIN,
     **spec(UserWithPassword, status=201, desc="Created; temporary password returned once",
-           perm=USERS, errors=(409,)),
+           perm=USERS, errors=(409,), stub=False),
 )  # fmt: skip
-async def create_user(body: UserCreate) -> NoReturn:
-    not_implemented()
+async def create_user(
+    body: UserCreate, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> UserWithPassword:
+    out = await services.admin_create_user(
+        db, body.email, body.display_name, body.roles, principal.user.id
+    )
+    return out
 
 
-@router.get("/admin/users/{id}", tags=ADMIN, **spec(User, desc="User", perm=USERS, errors=(404,)))
-async def get_user(id: UUID) -> NoReturn:
-    not_implemented()
+@router.get(
+    "/admin/users/{id}", tags=ADMIN,
+    **spec(User, desc="User", perm=USERS, errors=(404,), stub=False),
+)  # fmt: skip
+async def get_user(id: UUID, db: DbSession) -> User:
+    return await services.get_user(db, id)
 
 
-@router.patch("/admin/users/{id}", tags=ADMIN, **spec(User, desc="Updated", perm=USERS))
-async def update_user(id: UUID, body: UserUpdate) -> NoReturn:
-    not_implemented()
+@router.patch("/admin/users/{id}", tags=ADMIN, **spec(User, desc="Updated", perm=USERS, stub=False))
+async def update_user(
+    id: UUID, body: UserUpdate, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> User:
+    return await services.update_user(
+        db, id, body.model_dump(exclude_unset=True), principal.user.id,
+        services.client_ip(request),
+    )  # fmt: skip
 
 
 @router.post(
     "/admin/users/{id}/reset-password", tags=ADMIN,
-    **spec(TemporaryPassword, desc="One-time temporary password", perm=USERS),
+    **spec(TemporaryPassword, desc="One-time temporary password", perm=USERS, stub=False),
 )  # fmt: skip
-async def reset_password(id: UUID) -> NoReturn:
-    not_implemented()
+async def reset_password(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> TemporaryPassword:
+    temporary = await services.reset_password(
+        db, id, principal.user.id, services.client_ip(request)
+    )
+    return TemporaryPassword(temporary_password=temporary)
 
 
 @router.get("/admin/roles", tags=ADMIN, **spec(list[Role], desc="Roles", perm=ROLES))
