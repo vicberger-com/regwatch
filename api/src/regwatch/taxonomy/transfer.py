@@ -12,7 +12,9 @@ The document has the shape of the seed files (``api/seed/taxonomy.yaml``)::
               match_rules: {..}, color_token: .., active: true }
 
 Import creates missing facets and terms and updates only the fields the file gives, so
-importing the same file twice changes nothing the second time (M2 acceptance 2). ``system``
+importing the same file twice changes nothing the second time (M2 acceptance 2). Every facet
+and term an import creates or changes gets its own audit row with before and after values,
+beside one summary row (M2 review finding 11). ``system``
 is ignored: imports cannot create or alter system facets' status. Parents are term keys of the
 same facet, defined earlier in the file or already present. The whole import is one
 transaction. YAML aliases are refused, so a small document cannot expand into a large one.
@@ -24,6 +26,7 @@ import uuid
 from typing import Any
 
 import yaml
+from anyio import to_thread
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +37,7 @@ from regwatch.taxonomy.models import Facet, Term
 from regwatch.taxonomy.schemas import ImportSummary
 
 SCHEMA_VERSION = 1
-MAX_FACETS, MAX_TERMS = 200, 5000
+MAX_FACETS, MAX_TERMS, MAX_TOTAL_TERMS = 200, 5000, 10_000
 FACET_KEYS = {"key", "label", "value_type", "multi", "required", "show_in_view_selector",
               "show_in_filters", "sort_order", "system", "hidden", "terms"}  # fmt: skip
 TERM_KEYS = {"key", "label", "parent", "synonyms", "match_rules", "color_token", "active"}
@@ -93,21 +96,26 @@ def parse(document: bytes) -> list[dict[str, Any]]:
                 raise _bad(f"facets[{i}].terms[{j}].synonyms", "a list of strings")
             if "match_rules" in t and not isinstance(t["match_rules"], dict):
                 raise _bad(f"facets[{i}].terms[{j}].match_rules", "a mapping")
+    total = sum(len(f.get("terms", [])) for f in facets)
+    if total > MAX_TOTAL_TERMS:
+        raise _bad("facets", f"at most {MAX_TOTAL_TERMS} terms in one import")
     checked: list[dict[str, Any]] = facets
     return checked
 
 
 async def import_taxonomy(db: AsyncSession, document: bytes, actor: uuid.UUID,
                           ip: str | None) -> ImportSummary:  # fmt: skip
-    facets = parse(document)
+    # PyYAML is pure Python: parsing up to 2 MB takes seconds, so not on the event loop
+    # (M2 review finding 5).
+    facets = await to_thread.run_sync(parse, document)
     counts = {"facets_created": 0, "facets_updated": 0, "terms_created": 0, "terms_updated": 0}
     for i, raw in enumerate(facets):
         where = f"facets[{i}] ({raw['key']})"
         try:
-            facet = await _import_facet(db, raw, counts)
+            facet = await _import_facet(db, raw, counts, actor, ip)
             for j, term in enumerate(raw.get("terms", [])):
                 where = f"facets[{i}].terms[{j}] ({raw['key']}/{term['key']})"
-                await _import_term(db, facet, term, counts)
+                await _import_term(db, facet, term, counts, actor, ip)
         except ProblemError as exc:
             await db.rollback()
             field = exc.errors[0].field if exc.errors else ""
@@ -120,7 +128,8 @@ async def import_taxonomy(db: AsyncSession, document: bytes, actor: uuid.UUID,
     return ImportSummary(**counts)
 
 
-async def _import_facet(db: AsyncSession, raw: dict[str, Any], counts: dict[str, int]) -> Facet:
+async def _import_facet(db: AsyncSession, raw: dict[str, Any], counts: dict[str, int],
+                        actor: uuid.UUID, ip: str | None) -> Facet:  # fmt: skip
     facet = await db.scalar(select(Facet).where(Facet.key == raw["key"]))
     given = {k: raw[k] for k in FACET_TYPES if k in raw}
     services.check_facet_fields(given)
@@ -137,20 +146,27 @@ async def _import_facet(db: AsyncSession, raw: dict[str, Any], counts: dict[str,
         db.add(facet)
         await db.flush()
         counts["facets_created"] += 1
+        audit(db, "taxonomy.import.facet_create", "facet", facet.key, actor=actor, ip=ip,
+              after=services.facet_snapshot(facet))  # fmt: skip
         return facet
     if "value_type" in given and given["value_type"] != facet.value_type:
         raise _bad("value_type", "an import cannot change a facet's value type")
-    changed = False
+    before = services.facet_snapshot(facet)
     for field, value in given.items():
         if getattr(facet, field) != value:
             setattr(facet, field, value)
-            changed = True
-    counts["facets_updated"] += changed
+    after = services.facet_snapshot(facet)
+    if after != before:
+        counts["facets_updated"] += 1
+        audit(db, "taxonomy.import.facet_update", "facet", facet.key, actor=actor, ip=ip,
+              before=before, after=after)  # fmt: skip
     return facet
 
 
-async def _import_term(db: AsyncSession, facet: Facet, raw: dict[str, Any],
-                       counts: dict[str, int]) -> None:  # fmt: skip
+async def _import_term(
+    db: AsyncSession, facet: Facet, raw: dict[str, Any], counts: dict[str, int],
+    actor: uuid.UUID, ip: str | None,
+) -> None:  # fmt: skip
     await services.lock_facet(db, facet.id)  # hierarchy changes are serialised per facet
     if facet.value_type != "term":
         raise _bad("terms", f"facet {facet.key!r} holds {facet.value_type} values, not terms")
@@ -174,13 +190,19 @@ async def _import_term(db: AsyncSession, facet: Facet, raw: dict[str, Any],
         db.add(term)
         await db.flush()
         counts["terms_created"] += 1
+        audit(db, "taxonomy.import.term_create", "term", term.id, actor=actor, ip=ip,
+              after={**services.term_snapshot(term), "facet": facet.key})  # fmt: skip
         return
     before = services.term_snapshot(term)
     if "parent" in raw and parent_id != term.parent_id:
         await services.check_parent(db, term, facet, parent_id)
         term.parent_id = parent_id
     services.apply_term_changes(term, changes)
-    counts["terms_updated"] += services.term_snapshot(term) != before
+    after = services.term_snapshot(term)
+    if after != before:
+        counts["terms_updated"] += 1
+        audit(db, "taxonomy.import.term_update", "term", term.id, actor=actor, ip=ip,
+              before=before, after={**after, "facet": facet.key})  # fmt: skip
 
 
 async def export_taxonomy(db: AsyncSession) -> str:

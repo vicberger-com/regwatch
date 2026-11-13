@@ -511,3 +511,21 @@ async def test_merge_into_an_inactive_term_is_refused(admin: httpx.AsyncClient) 
 async def test_seeding_bumped_the_taxonomy_version(admin: httpx.AsyncClient) -> None:
     """Review 12c: the seed's facets and terms count as a taxonomy change."""
     assert await _version(admin) >= 1
+
+
+async def test_imports_audit_every_change_and_cap_the_size(admin: httpx.AsyncClient) -> None:
+    """Review findings 11 and 5."""
+    document = "facets:\n  - {key: topic, label: Topics, terms: [{key: imp-a, label: A}]}"
+    assert (await _import(admin, document)).status_code == 200
+    rows = (await admin.get(_api("/admin/audit"), params={"page_size": 10})).json()["items"]
+    actions = {r["action"]: r for r in rows}
+    assert {"taxonomy.import", "taxonomy.import.facet_update",
+            "taxonomy.import.term_create"} <= set(actions)  # fmt: skip
+    update = actions["taxonomy.import.facet_update"]
+    assert update["before"]["label"] == "Topic" and update["after"]["label"] == "Topics"
+    assert actions["taxonomy.import.term_create"]["after"]["key"] == "imp-a"
+
+    terms = ", ".join(f"{{key: t{j}, label: T}}" for j in range(60))
+    many = "facets:\n" + "".join(f"  - {{key: f{i:03d}, terms: [{terms}]}}\n" for i in range(170))
+    resp = await _import(admin, many)
+    assert resp.status_code == 422 and "10000 terms" in resp.text
