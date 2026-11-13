@@ -175,3 +175,21 @@ async def test_feature_flags(admin: httpx.AsyncClient) -> None:
     assert missing.status_code == 404
     audit = await admin.get(_api("/admin/audit"), params={"action": "feature_flag.update"})
     assert audit.json()["items"][0]["after"] == {"enabled": True}
+
+
+async def test_branding_and_legal_text(admin: httpx.AsyncClient) -> None:
+    body = {"site_title": "Policy Watch", "company_name": "Example Ltd", "primary_color": "#123abc"}
+    resp = await admin.put(_api("/admin/branding"), json=body)
+    assert resp.status_code == 200
+    brand = (await admin.get(_api("/branding"))).json()
+    assert brand["site_title"] == "Policy Watch" and brand["primary_color"] == "#123abc"
+    bad = await admin.put(_api("/admin/branding"), json={"primary_color": "red"})
+    assert bad.status_code == 422
+    clear = await admin.put(_api("/admin/branding"), json={"primary_color": None})
+    assert clear.json()["primary_color"] is None
+    legal = {"page_markdown": "# Notices", "required_markings": "INTERNAL"}
+    assert (await admin.put(_api("/admin/legal"), json=legal)).status_code == 204
+    assert (await admin.get(_api("/branding"))).json()["required_markings"] == "INTERNAL"
+    page = (await admin.get(_api("/admin/audit"), params={"entity_type": "setting",
+                                                          "page_size": 2})).json()  # fmt: skip
+    assert page["total"] >= 4 and len(page["items"]) == 2

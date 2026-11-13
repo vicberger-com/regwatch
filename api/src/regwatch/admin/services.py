@@ -1,11 +1,11 @@
 """Service layer; other modules call this module only through here (ADR-0001).
 
-Runtime settings (``setting`` table, vocabulary in registries.yaml), feature flags and
-the audit viewer (#32, M1). Every write adds an ``audit_log`` row with before and after
-values in the same transaction.
+Runtime settings (``setting`` table, vocabulary in registries.yaml), feature flags, branding,
+the legal page text and the audit viewer (#32, M1). Every write adds an ``audit_log`` row with
+before and after values in the same transaction.
 
-Settings are read from the database on each use rather than cached per process, so a
-write is visible to every API worker at once (M1 "within one reload").
+Settings are read from the database on each use rather than cached per process, so a write
+is visible to every API worker at once (M1 "within one reload").
 """
 
 from __future__ import annotations
@@ -21,6 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.admin.schemas import (
     AuditEntry,
+    Branding,
+    BrandingWrite,
+    LegalWrite,
 )
 from regwatch.admin.schemas import FeatureFlag as FeatureFlagOut
 from regwatch.admin.schemas import Setting as SettingOut
@@ -182,6 +185,37 @@ async def set_flag(
         row.enabled, row.updated_by, row.updated_at = enabled, actor, _now()
     await db.commit()
     return _flag_out(row)
+
+
+async def branding(db: AsyncSession) -> Branding:
+    keys = [*BRANDING_KEYS.values(), "branding.logo_ref", "legal.required_markings"]
+    current = await values(db, keys)
+    out = Branding(**{field: current[key] for field, key in BRANDING_KEYS.items()})
+    out.primary_color = current["branding.primary_color"] or None
+    # Logo upload and serving land with the sanitizer (BL-68); until then no logo URL.
+    out.logo_url = None
+    out.required_markings = current["legal.required_markings"]
+    return out
+
+
+async def put_branding(
+    db: AsyncSession, body: BrandingWrite, actor: uuid.UUID, ip: str | None
+) -> Branding:
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        await _write(db, BRANDING_KEYS[field], "" if value is None else value, actor, ip,
+                     action="branding.update")  # fmt: skip
+    await db.commit()
+    return await branding(db)
+
+
+async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: str | None) -> None:
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        if value is None:
+            raise invalid(field, "must be a string", status=422)
+        await _write(db, LEGAL_KEYS[field], value, actor, ip, action="legal.update")
+    await db.commit()
 
 
 async def list_audit(

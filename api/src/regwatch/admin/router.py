@@ -1,7 +1,7 @@
 """Settings, feature flags, branding, legal page and audit routes; mounted under /api/v1.
 
-Audit, settings and feature flags are implemented (#32); branding and legal answer 501
-until #32 lands, the logo upload and rendered ``/legal`` page until BL-68.
+Implemented in #32 except the logo upload and the rendered ``/legal`` page, which answer 501
+until their sanitizer and Markdown renderer are registered (BL-68).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 
 from regwatch.admin import services
 from regwatch.admin.schemas import (
@@ -40,9 +40,12 @@ LOGO_BODY = raw_body(
 )
 
 
-@router.get("/branding", tags=SYSTEM, **spec(Branding, desc="Branding for authenticated users"))
-async def get_branding() -> NoReturn:
-    not_implemented()
+@router.get(
+    "/branding", tags=SYSTEM,
+    **spec(Branding, desc="Branding for authenticated users", stub=False),
+)  # fmt: skip
+async def get_branding(db: DbSession) -> Branding:
+    return await services.branding(db)
 
 
 @router.get("/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page"))
@@ -93,9 +96,13 @@ async def update_feature_flag(
     return await services.set_flag(db, key, body.enabled, principal.user.id, client_ip(request))
 
 
-@router.put("/admin/branding", tags=ADMIN, **spec(Branding, desc="Updated", perm=SETTINGS))
-async def put_branding(body: BrandingWrite) -> NoReturn:
-    not_implemented()
+@router.put(
+    "/admin/branding", tags=ADMIN, **spec(Branding, desc="Updated", perm=SETTINGS, stub=False)
+)  # fmt: skip
+async def put_branding(
+    body: BrandingWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Branding:
+    return await services.put_branding(db, body, principal.user.id, client_ip(request))
 
 
 @router.post(
@@ -107,9 +114,14 @@ async def upload_logo() -> NoReturn:
     not_implemented()
 
 
-@router.put("/admin/legal", tags=ADMIN, **spec(status=204, desc="Saved", perm=SETTINGS))
-async def put_legal(body: LegalWrite) -> NoReturn:
-    not_implemented()
+@router.put(
+    "/admin/legal", tags=ADMIN, **spec(status=204, desc="Saved", perm=SETTINGS, stub=False)
+)  # fmt: skip
+async def put_legal(
+    body: LegalWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.put_legal(db, body, principal.user.id, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.get(
