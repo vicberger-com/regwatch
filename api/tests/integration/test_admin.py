@@ -238,9 +238,10 @@ async def test_delegated_admins_cannot_escalate(admin: httpx.AsyncClient) -> Non
     assert (await ra.post(_api("/admin/roles"), json=new)).status_code == 403
     narrow = {"permissions": []}
     viewer_role = roles["viewer"]
+    # Removing permissions the actor does not hold is refused too (re-review N2).
     assert (
         await ra.patch(_api(f"/admin/roles/{viewer_role['id']}"), json=narrow)
-    ).status_code == 200
+    ).status_code == 403
     for c in (ua, ra):
         await c.aclose()
 
@@ -293,3 +294,28 @@ async def test_input_limits_and_no_store(
     assert (await put("branding.primary_color", "#00ff00")).status_code == 200
     assert (await put("branding.primary_color", "")).status_code == 200
     assert (await put("general.site_title", "Policy Watch")).status_code == 200
+
+
+async def test_review_followups_for_roles_and_settings(admin: httpx.AsyncClient) -> None:
+    """Re-review N2 and N3: role managers change only permissions they hold; setting strings
+    hold no control characters."""
+    for key, perms in (("role_admin", ["roles.manage"]), ("auditor", ["audit.read"])):
+        body = {"key": key, "label": key, "permissions": perms}
+        assert (await admin.post(_api("/admin/roles"), json=body)).status_code == 201
+    ra = await _as_new_user(admin, "ra2@example.org", ["role_admin"])
+    roles = {r["key"]: r for r in (await ra.get(_api("/admin/roles"))).json()}
+    strip = await ra.patch(_api(f"/admin/roles/{roles['auditor']['id']}"), json={"permissions": []})
+    assert strip.status_code == 403
+    assert (await ra.delete(_api(f"/admin/roles/{roles['auditor']['id']}"))).status_code == 403
+    await ra.aclose()
+
+    put = lambda key, value: admin.put(_api(f"/admin/settings/{key}"), json={"value": value})  # noqa: E731
+    assert (await put("general.contact_email", "x@y.z\r\nBcc: evil@x")).status_code == 400
+    assert (await put("general.contact_email", "not-an-email")).status_code == 400
+    assert (await put("capture.user_agent", "ua\r\nX-Evil: 1")).status_code == 400
+    assert (await put("outputs.allowed_recipient_domains", ["a.org\n"])).status_code == 400
+    assert (await put("general.contact_email", "ops@example.org")).status_code == 200
+    assert (await put("general.contact_email", "")).status_code == 200
+    assert (await put("legal.page_markdown", "# Notices\n\nLine two")).status_code == 200
+    bad = {"email": "ctl\u0001x@example.org", "display_name": "C", "roles": []}
+    assert (await admin.post(_api("/admin/users"), json=bad)).status_code == 422

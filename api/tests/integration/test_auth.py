@@ -247,3 +247,38 @@ def test_admin_cli_rejects_invalid_email(
     args = ["create-user", "--email", "nope", "--name", "N", "--password-stdin"]
     assert admin_cli.main(args) == 1
     assert "email" in capsys.readouterr().err
+
+
+async def test_wrong_current_password_counts_toward_lockout(client: httpx.AsyncClient) -> None:
+    """Re-review: a stolen session cannot guess the current password without limit."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    change = f"{API_PREFIX}/auth/password"
+    wrong = {"current_password": "not my password!", "new_password": "a new pass 5678"}
+    for _ in range(10):
+        services.login_attempts.clear()
+        assert (await client.post(change, headers=ORIGIN, json=wrong)).status_code in (400, 401)
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401  # sessions ended
+    services.login_attempts.clear()
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 423
+
+
+async def test_short_lockout_does_not_reveal_accounts(
+    client: httpx.AsyncClient, db_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-review N1: with auth.lockout_minutes under 15 both kinds of account unlock together."""
+
+    async def five_minutes(db: object) -> dict[str, int]:
+        return {**services.AUTH_DEFAULTS, "auth.lockout_minutes": 5}
+
+    monkeypatch.setattr(services, "auth_settings", five_minutes)
+    for _ in range(10):
+        services.login_attempts.clear()
+        await _login(client, "admin@example.org", "wrong password!!")
+        await _login(client, "nobody@example.org", "wrong password!!")
+    later = services.time.monotonic() + 6 * 60
+    monkeypatch.setattr(services.time, "monotonic", lambda: later)
+    real_now = services._now
+    monkeypatch.setattr(services, "_now", lambda: real_now() + services.timedelta(minutes=6))
+    for email in ("admin@example.org", "nobody@example.org"):
+        services.login_attempts.clear()
+        assert (await _login(client, email, "wrong password!!")).status_code == 401, email

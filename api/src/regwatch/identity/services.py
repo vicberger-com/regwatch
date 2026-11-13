@@ -107,6 +107,9 @@ class SlidingWindow:
         hits = self._prune(key, time.monotonic())
         return max(1, int(hits[0] + self.window_s - time.monotonic()) + 1) if hits else 1
 
+    def reset(self, key: str) -> None:
+        self._hits.pop(key, None)
+
     def clear(self) -> None:
         self._hits.clear()
 
@@ -313,6 +316,25 @@ async def revoke_token(db: AsyncSession, token: str | None) -> None:
         )
 
 
+async def _count_failure(
+    db: AsyncSession, user: User, ip: str | None, cfg: dict[str, int], now: datetime,
+    reason: str,
+) -> bool:  # fmt: skip
+    """Record a wrong password for ``user`` (row locked by the caller); lock the account and
+    end its sessions at the threshold. True when this failure locked it."""
+    user.failed_logins += 1
+    audit(db, "auth.login_failed", "user", user.id, ip=ip, after={"reason": reason})
+    await db.flush()
+    if await _failures_in_window(db, user, now) < cfg["auth.lockout_threshold"]:
+        return False
+    user.status = "locked"
+    user.locked_until = now + timedelta(minutes=cfg["auth.lockout_minutes"])
+    locked = {"status": "locked", "locked_until": user.locked_until.isoformat()}
+    audit(db, "auth.locked", "user", user.id, ip=ip, before={"status": "active"}, after=locked)
+    await _revoke_all(db, user.id)  # a locked account keeps no live session
+    return True
+
+
 async def login(
     db: AsyncSession,
     request: Request,
@@ -343,6 +365,7 @@ async def login(
         # emails exist (M1 acceptance 3, review finding 4).
         if unknown_failures.hit(key) >= threshold:
             unknown_locks.lock(key, cfg["auth.lockout_minutes"] * 60.0)
+            unknown_failures.reset(key)  # like failed_logins, the count restarts after a lock
             raise account_locked()
         raise invalid_credentials()
 
@@ -355,20 +378,9 @@ async def login(
         audit(db, "auth.unlocked", "user", user.id, ip=ip, after={"reason": "lock_expired"})
 
     if not await security.verify_password_async(user.password_hash, password):
-        user.failed_logins += 1
-        audit(db, "auth.login_failed", "user", user.id, ip=ip, after={"reason": "password"})
-        await db.flush()
-        if await _failures_in_window(db, user, now) >= threshold:
-            user.status = "locked"
-            user.locked_until = now + timedelta(minutes=cfg["auth.lockout_minutes"])
-            locked = {"status": "locked", "locked_until": user.locked_until.isoformat()}
-            audit(db, "auth.locked", "user", user.id, ip=ip,
-                  before={"status": "active"}, after=locked)  # fmt: skip
-            await _revoke_all(db, user.id)  # a locked account keeps no live session
-            await db.commit()
-            raise account_locked()
+        locked = await _count_failure(db, user, ip, cfg, now, "password")
         await db.commit()
-        raise invalid_credentials()
+        raise account_locked() if locked else invalid_credentials()
 
     if security.needs_rehash(user.password_hash):
         user.password_hash = await security.hash_password_async(password)
@@ -410,11 +422,13 @@ async def change_password(
     ip = client_ip(request)
     check_login_rate(ip, principal.user.email)
     cfg = await auth_settings(db)
-    user = await db.get(User, principal.user.id)
+    user = await db.scalar(select(User).where(User.id == principal.user.id).with_for_update())
     if user is None:
         raise unauthenticated()
     if not await security.verify_password_async(user.password_hash, current):
-        audit(db, "auth.password_change_failed", "user", user.id, actor=user.id, ip=ip)
+        # A wrong current password counts toward the lockout like a failed login, so a stolen
+        # session cannot be used to guess it (M1 re-review).
+        await _count_failure(db, user, ip, cfg, _now(), "password_change")
         await db.commit()
         raise password_problem("The current password is incorrect.")
     minimum = max(12, cfg["auth.password_min_length"])
@@ -804,7 +818,8 @@ async def update_role(
     perms = perms_before
     if "permissions" in changes:
         perms = await _check_permissions(db, changes["permissions"] or [])
-        _require_held(actor, set(perms) - set(perms_before), "grant")
+        # Adding or removing a permission both need it held (re-review N2).
+        _require_held(actor, set(perms) ^ set(perms_before), "change")
         if role.key == "admin" and role.system and perms != perms_before:
             raise validation("permissions", "The admin role always holds every permission.")
         await db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
@@ -825,6 +840,7 @@ async def delete_role(
     role = await _role_or_404(db, role_id)
     if role.system:
         raise ProblemError(409, "conflict", "System roles cannot be deleted.")
+    _require_held(actor, set((await _perms_by_role(db)).get(role.id, [])), "delete roles with")
     holders = await db.scalar(select(func.count()).select_from(UserRole)
                               .where(UserRole.role_id == role.id))  # fmt: skip
     if holders:

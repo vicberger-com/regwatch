@@ -66,3 +66,37 @@
 ## Author response (M1 session, 2026-11-13)
 - Finding 5: `make env` (`scripts/dev-env.sh`) writes `REGWATCH_TRUSTED_PROXIES=172.16.0.0/12,192.168.0.0/16,10.0.0.0/8`, so the development stack does see client addresses. The finding holds for any deployment that keeps the contract default `10.0.0.0/8`; the fix belongs in the `env.example` comment and the production overrides (M10), plus a start-up warning when the proxy peer is outside the trusted ranges.
 - Findings 1 to 11 are accepted for fixing in `sec/M1-*` branches before Gate G1; each fix PR fills its row here.
+
+## Re-verification (M1 independent review, 2026-11-13)
+Against `sec/M1-lockout`, `sec/M1-escalation` and `sec/M1-input-limits`: unit 391 passed, database 32 passed; original proofs of concept re-run, bypasses attempted.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | fixed | bursts of 5 concurrent wrong passwords now lock on the 10th failure; unknown emails too |
+| 2 | fixed | self-grant, admin creation, admin reset, admin disable, widening one's own role and creating a `settings.manage` role all 403 |
+| 3 | fixed | 3 MiB with Content-Length, chunked, `Content-Length: -1` and a GET with a body all 413 before parsing (ASGI level) |
+| 4 | fixed at default settings | 423 latency 57 to 64 ms real against 59 to 69 ms unknown; both 423 after 16 minutes and 401 after 31 |
+| 5 | deferred | BL-73 open, not yet accepted by the owner |
+| 6 | deferred | BL-61 open |
+| 7 | fixed | NUL in login email, list `q`, audit filters, settings, role label and user email all 422; logs hold no parameters, emails or hashes; unique race 409 |
+| 8 | partly fixed | branding and legal keys refused through the settings API; other string keys still took any text (N3) |
+| 9 | fixed (code reading) | advisory lock before any read; the race was not reproduced on either version |
+| 10 | fixed | email, name, role, permission, label and password limits enforced; control characters were still accepted in emails |
+| 11 | fixed | both responses carry `no-store` |
+| 12 | partly fixed | (a) and (d) fixed; (b) BL-66; (c) not addressed |
+
+New issues from the re-verification:
+- **N1 (low):** with `auth.lockout_minutes` under 15 the unknown-account failure count outlived its lock, so after the lock the two kinds of account answered differently.
+- **N2 (low):** `update_role` checked only added permissions and `delete_role` none, so a role manager could remove permissions they do not hold from other roles.
+- **N3 (low):** string settings other than branding and legal took control characters, for example `general.contact_email` with `\r\nBcc:` and `capture.user_agent` with a header line.
+- **(low, not raised before):** wrong current passwords on `POST /auth/password` did not count toward the lockout.
+- **(info):** since 12d, ten wrong passwords against an email also end that user's sessions; this is the accepted lockout trade-off and is recorded in ASSUMPTIONS.md.
+
+**Sign-off:** no high or critical open; medium open: 5 (BL-73) and 6 (BL-61), both deferred and not yet accepted by the owner; low open at re-verification: N1, N2, N3 and password-change guessing · M1 independent review · 2026-11-13
+
+## Author follow-up (M1 session, 2026-11-13), branch `sec/M1-review-followups`
+Fixed after the re-verification and covered by tests, not yet re-verified by the reviewer:
+- N1: the unknown-account failure count restarts when its lock begins, as `failed_logins` does for real accounts (`test_short_lockout_does_not_reveal_accounts`).
+- N2: changing a role needs every added or removed permission held, and deleting one needs all its permissions held (`test_review_followups_for_roles_and_settings`; `test_delegated_admins_cannot_escalate` now expects 403 for removal).
+- N3: string settings refuse control characters (newlines allowed only in `legal.page_markdown`, `legal.required_markings` and `branding.company_address`), list entries included; `general.contact_email` must be an email address or empty; emails refuse control characters (`test_review_followups_for_roles_and_settings`).
+- Password-change guessing: a wrong current password is a counted failure (`auth.login_failed` with reason `password_change`), locks at the threshold and ends the sessions (`test_wrong_current_password_counts_toward_lockout`).

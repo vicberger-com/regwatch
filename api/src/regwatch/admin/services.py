@@ -32,7 +32,7 @@ from regwatch.core import registry
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.models import AuditLog
 from regwatch.core.registry import SettingDef
-from regwatch.core.schemas import Page
+from regwatch.core.schemas import Page, check_email, has_control
 from regwatch.core.services import audit
 
 MAX_STRING = 200_000
@@ -118,7 +118,20 @@ _DEDICATED: dict[str, tuple[type[BaseModel], str]] = {
 }
 
 
+# String settings that are multi-line text; every other string goes into headers, titles or
+# URLs and must hold no control characters (re-review N3).
+MULTILINE = {"legal.page_markdown", "legal.required_markings", "branding.company_address"}
+
+
 def _check_owned_by_dedicated_route(key: str, value: Any) -> None:
+    texts = value if isinstance(value, list) else [value]
+    if any(isinstance(t, str) and has_control(t, allow_newlines=key in MULTILINE) for t in texts):
+        raise invalid("value", "must not contain control characters")
+    if key == "general.contact_email" and value:
+        try:
+            check_email(value)
+        except ValueError as exc:
+            raise invalid("value", str(exc)) from exc
     if key == "branding.logo_ref":
         raise invalid("value", "set by the logo upload, not by the settings API")
     if key in _DEDICATED:

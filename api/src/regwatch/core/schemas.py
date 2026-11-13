@@ -22,12 +22,20 @@ Email = Annotated[str, Field(json_schema_extra={"format": "email"})]
 # it), so the live document stays equal to the contract (review finding 10).
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_EMAIL = 254
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def has_control(value: str, *, allow_newlines: bool = False) -> bool:
+    """True if ``value`` holds C0 or DEL control characters (tab and newlines optionally)."""
+    if allow_newlines:
+        value = value.replace("\n", "").replace("\r", "").replace("\t", "")
+    return _CONTROL.search(value) is not None
 
 
 def check_email(value: str) -> str:
     """A syntactic check until email-validator is registered (BL-14)."""
     value = value.strip()
-    if len(value) > MAX_EMAIL or not _EMAIL.match(value):
+    if len(value) > MAX_EMAIL or not _EMAIL.match(value) or _CONTROL.search(value):
         raise ValueError("must be an email address")
     return value
 
