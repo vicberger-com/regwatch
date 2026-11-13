@@ -70,3 +70,38 @@
 - **12(b):** `regulation.attributes` is written by M4 and M5, not yet. M4's task card should include rewriting it on merge; BL-75 records this.
 - **12(d):** the contract wins: export needs `taxonomy.read`, which also matches what `GET /taxonomy/facets` already exposes. The `registries.yaml` description is corrected by the CP proposed as BL-75.
 - **12(e):** accepted. The Origin check prevents cross-site posting, and a body that is not YAML fails parsing with 422.
+
+## Re-verification (M2 independent review, 2026-11-13)
+Against `sec/M2-regex`, `sec/M2-integrity` and `sec/M2-import`: unit 435 passed, database 88 passed; the original proofs of concept were re-run, and new ones were aimed at each fix.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | fixed, low residual (N1) | the earlier worst cases take 0.00 s; `\d+\s*EUR` on 10 MB 0.03 s; RE2 releases the GIL, and `/health` answered in 0.07 s during 8 parallel rule tests |
+| 2 | fixed, low residual (N3) | every earlier 500 case now 422; reads keep working |
+| 3 | fixed, low residual (N2) | delete deactivates, rename rewrites, retype 422, facet delete 409 |
+| 4 | fixed | the original two-session proof of concept keeps 3 tags; target deactivated |
+| 5 | fixed | parse off the event loop; 10,000-term import 26.6 s with `/health` at 0.23 s at worst; 10,001 terms 422 |
+| 6 | fixed | the reviewer's proof of concept reproduced the race on the old code and is refused on the new |
+| 7, 8 | fixed | trailing newlines, blank names, long labels and out-of-range sort orders refused |
+| 9 | fixed, low residual (N4) | lone surrogates and invisible separators refused; field names bounded |
+| 10 | partly fixed | `""`, `^` and `(?:)` refused, but `\b` and `a*\b` passed |
+| 11 | fixed, info (N5) | 10,000-term import wrote 10,001 audit rows |
+| 12 | (a), (c) fixed; (b), (d), (e) agreed as deferred or accepted | |
+
+New at re-verification:
+- **N1 (low):** large RE2 programs are slow and memory-heavy. `x.{999}y` took 64.5 s on 10 MB, and the cache grew to about 2.9 GB per process at 1,024 entries.
+- **N2 (low):** a concurrent rename and delete left a dangling attribute key.
+- **N3 (low):** lone surrogates in match-rule strings gave 500.
+- **N4 (low):** the widened control-character set refused right-to-left marks in legitimate Arabic, Hebrew and Persian text.
+- **N5 (info):** concurrent imports in opposite facet order deadlocked (500), and term-update audit rows held full snapshots.
+
+**Sign-off:** no high or critical open · M2 independent review · 2026-11-13
+
+## Author follow-up (M2 session, 2026-11-13), branch `sec/M2-reverify-followups`
+Fixed after the sign-off, covered by tests, not re-verified:
+- **N1:** patterns over 1,000 RE2 states are refused (`x.{999}y` compiles to 7,998, `\pL{300}z` to 358,805; realistic rules stay under 100), and the cache holds 128 entries. The per-document time budget belongs to M4 (BL-75 c). Tests: `test_costly_or_zero_width_patterns_are_refused`, `test_realistic_patterns_still_pass`.
+- **Finding 10 residual:** patterns that can match zero characters in ordinary text, such as `\b` and `a*\b`, are refused. `\bAI Act\b` is still accepted.
+- **N2:** `delete_term` refreshes the term after taking its locks, and a rename takes the facet lock. This is by code reading; there is no test that reproduces the interleaving. M3 and M4 locking goes to BL-75 (c).
+- **N3:** rule strings refuse control characters and lone surrogates (`test_rule_strings_refuse_lone_surrogates`, `test_reverify_followups`).
+- **N4:** U+200E, U+200F and U+061C are accepted again, and a leading byte-order mark is dropped from text attributes. Overrides, isolates, separators, U+200B, other byte-order marks and surrogates stay refused (`test_right_to_left_marks_and_a_leading_bom_are_accepted`).
+- **N5:** imports lock the facets they name in key order before writing, and a deadlock answers 409. Term-update audit rows record only the changed fields (`test_reverify_followups`).

@@ -109,6 +109,8 @@ def _check(rule: FacetRule, value: Any) -> Any:  # noqa: ANN401 - any JSON
                 raise ValueError(f"not an active term of {rule.key}: {shown!r}")
             return sorted(set(keys)) if rule.multi else keys[0]
         case "text":
+            if isinstance(value, str):
+                value = value.removeprefix("\ufeff")  # a leading byte-order mark (N4)
             if (
                 not isinstance(value, str)
                 or len(value) > MAX_TEXT

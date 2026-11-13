@@ -316,6 +316,8 @@ def check_match_rules(rules: dict[str, Any]) -> dict[str, Any]:
         items = rules.get(field) or []
         if not isinstance(items, list) or not all(isinstance(i, str) for i in items):
             raise validation(f"match_rules.{field}", "must be a list of strings")
+        if any(has_control(i) for i in items):  # lone surrogates cannot be stored (N3)
+            raise validation(f"match_rules.{field}", "must not contain control characters")
         if len(items) > MAX_RULE_ITEMS or any(len(i) > MAX_PATTERN for i in items):
             limit = f"at most {MAX_RULE_ITEMS} entries of up to {MAX_PATTERN} characters"
             raise validation(f"match_rules.{field}", limit)
@@ -457,6 +459,7 @@ async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, A
             raise validation("key", "a key of lower-case letters, digits, '-' and '_'")
         if await db.scalar(select(Term.id).where(Term.facet_id == facet.id, Term.key == key)):
             raise ProblemError(409, "conflict", "A term with this key exists in the facet.")
+        await lock_facet(db, facet.id)  # a concurrent delete sees the new key (re-verify N2)
         await rewrite_attribute_key(db, facet.key, term.key, key)  # review finding 3
         term.key = key
     if "parent_id" in changes and changes["parent_id"] != term.parent_id:
@@ -480,6 +483,7 @@ async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
     await lock_facet(db, facet.id)
     # The row lock makes a concurrent tag insert wait, so the count below stays true.
     await db.execute(select(Term.id).where(Term.id == term.id).with_for_update())
+    await db.refresh(term)  # a rename committed while we waited changed the key (N2)
     before = term_snapshot(term)
     used = (await _item_counts(db, [term.id])).get(term.id, 0)
     used += await term_references(db, facet.key, term)  # attributes and source defaults

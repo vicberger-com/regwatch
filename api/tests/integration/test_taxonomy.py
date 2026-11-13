@@ -529,3 +529,28 @@ async def test_imports_audit_every_change_and_cap_the_size(admin: httpx.AsyncCli
     many = "facets:\n" + "".join(f"  - {{key: f{i:03d}, terms: [{terms}]}}\n" for i in range(170))
     resp = await _import(admin, many)
     assert resp.status_code == 422 and "10000 terms" in resp.text
+
+
+async def test_reverify_followups(admin: httpx.AsyncClient) -> None:
+    """M2 re-verification N3, N4 and N5."""
+    import asyncio
+
+    terms = _api("/taxonomy/facets/topic/terms")
+    surrogate = {"key": "sur", "label": "S", "match_rules": {"keywords": ["a\ud800"]}}
+    body = __import__("json").dumps(surrogate)  # httpx's json= would refuse the surrogate
+    sent = await admin.post(terms, content=body, headers={"content-type": "application/json"})
+    assert sent.status_code == 422
+    persian = await admin.post(terms, json={"key": "fa", "label": "حریم‌خصوصی‏"})
+    assert persian.status_code == 201
+
+    one = "facets:\n  - {key: topic, label: T1}\n  - {key: industry, label: I1}"
+    two = "facets:\n  - {key: industry, label: I2}\n  - {key: topic, label: T2}"
+    results = await asyncio.gather(_import(admin, one), _import(admin, two))
+    assert [r.status_code for r in results] == [200, 200]
+
+    update = "facets:\n  - {key: topic, terms: [{key: fa, label: Privacy}]}"
+    assert (await _import(admin, update)).json()["terms_updated"] == 1
+    query = {"action": "taxonomy.import.term_update"}
+    rows = (await admin.get(_api("/admin/audit"), params=query)).json()["items"]
+    assert rows[0]["before"] == {"label": "حریم‌خصوصی‏"}
+    assert rows[0]["after"] == {"label": "Privacy", "key": "fa", "facet": "topic"}

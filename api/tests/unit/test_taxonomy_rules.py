@@ -73,3 +73,22 @@ def test_backtracking_shapes_run_in_linear_time(pattern: str, text: str) -> None
     started = time.perf_counter()
     rules.evaluate({"regex": [pattern]}, text)
     assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize("pattern", [r"x.{999}y", r"\pL{300}z", r"\b", r"a*\b", r"(?m)$"])
+def test_costly_or_zero_width_patterns_are_refused(pattern: str) -> None:
+    """M2 re-verification N1 and the finding 10 residual."""
+    with pytest.raises(ProblemError):
+        services.check_match_rules({"regex": [pattern]})
+
+
+@pytest.mark.parametrize("pattern", [r"\bAI Act\b", r"(?i)art(icle)?\s+\d+", r"\d+\s*EUR"])
+def test_realistic_patterns_still_pass(pattern: str) -> None:
+    assert services.check_match_rules({"regex": [pattern]})
+
+
+def test_rule_strings_refuse_lone_surrogates() -> None:
+    """M2 re-verification N3."""
+    for field in ("keywords", "regex", "languages"):
+        with pytest.raises(ProblemError):
+            services.check_match_rules({field: ["a\ud800"]})

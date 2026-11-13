@@ -103,7 +103,7 @@ def test_random_documents_never_crash(
         assert set(out.values) <= {r.key for r in rules}
 
 
-@pytest.mark.parametrize("text", ["a\ud800b", "a b", "a​b", "a﻿b", "a؜b"])
+@pytest.mark.parametrize("text", ["a\ud800b", "a b", "a​b", "a﻿b"])
 def test_invisible_and_unstorable_characters_are_refused(text: str) -> None:
     """Review finding 9: PostgreSQL cannot store lone surrogates; the others are invisible."""
     assert list(_fields({"notes": text})) == ["attributes.notes"]
@@ -116,3 +116,9 @@ def test_int64_bounds_and_bounded_errors() -> None:
     assert all(len(f) < 100 for f in errors)
     many = _fields({f"key{i}": 1 for i in range(80)})
     assert len(many) == 51 and many["attributes"] == "and 30 more"
+
+
+@pytest.mark.parametrize("text", ["سلام‌دنیا‏", "مرحبا؜ بك", "שלום‎ עולם", "﻿leading BOM"])
+def test_right_to_left_marks_and_a_leading_bom_are_accepted(text: str) -> None:
+    """M2 re-verification N4: Persian, Arabic and Hebrew text carries these marks."""
+    assert VALIDATOR.validate({"notes": text}).values["notes"] == text.removeprefix("﻿")

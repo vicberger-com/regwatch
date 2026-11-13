@@ -22,6 +22,12 @@ from typing import Any
 import re2
 
 MAX_HITS = 1000
+# RE2 is linear in the text, but its per-character cost grows with the compiled program: a
+# 1,000-state pattern such as x.{999}y costs about 6.5 µs per character once the DFA runs out
+# of memory (M2 re-verification N1). Typical rule patterns compile to well under 100.
+MAX_PROGRAM_SIZE = 1000
+# Probes for patterns that can match zero characters somewhere in ordinary text, such as \b.
+_ZERO_WIDTH_PROBES = ("", "a", "a b", "1", "é", "a.")
 SNIPPET = 40  # characters either side of a hit in the evidence
 MAX_EVIDENCE = 5
 _WORDLESS = ((0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xAC00, 0xD7AF))
@@ -31,7 +37,7 @@ class PatternError(ValueError):
     """The pattern is not valid RE2 syntax or can match an empty string."""
 
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=128)  # each entry keeps its DFA cache, a few MB for large programs
 def compile_pattern(pattern: str) -> Any:  # noqa: ANN401 - re2 has no type stubs
     try:
         compiled = re2.compile(pattern)
@@ -39,8 +45,14 @@ def compile_pattern(pattern: str) -> Any:  # noqa: ANN401 - re2 has no type stub
         raise PatternError(
             f"not supported by RE2 (no backreferences or lookaround): {exc}"
         ) from exc
-    if compiled.search("") is not None:
-        raise PatternError("matches the empty string, so it would match every text")
+    if compiled.programsize > MAX_PROGRAM_SIZE:
+        size = compiled.programsize
+        raise PatternError(f"too complex ({size} RE2 states, at most {MAX_PROGRAM_SIZE}); "
+                           "shorten counted repetitions such as {999}")  # fmt: skip
+    for probe in _ZERO_WIDTH_PROBES:
+        if any(m.end() == m.start() for m in compiled.finditer(probe)):
+            raise PatternError("can match zero characters (for example \\b or a*), so it "
+                               "would match almost every text")  # fmt: skip
     return compiled
 
 

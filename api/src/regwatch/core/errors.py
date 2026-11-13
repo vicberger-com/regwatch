@@ -183,7 +183,12 @@ async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
 # 22021 character_not_in_repertoire and 22P05 untranslatable_character (NUL in text);
 # 23505 unique_violation (a concurrent insert won).
 _NUL = (422, "validation", "Text must not contain NUL characters.")
-_SQLSTATE = {"22021": _NUL, "22P05": _NUL, "23505": (409, "conflict", "The record already exists.")}
+_SQLSTATE = {
+    "22021": _NUL,
+    "22P05": _NUL,
+    "23505": (409, "conflict", "The record already exists."),
+    "40P01": (409, "conflict", "A concurrent change conflicted; try again."),
+}
 
 
 async def _database_error(request: Request, exc: Exception) -> JSONResponse:

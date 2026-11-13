@@ -109,6 +109,11 @@ async def import_taxonomy(db: AsyncSession, document: bytes, actor: uuid.UUID,
     # (M2 review finding 5).
     facets = await to_thread.run_sync(parse, document)
     counts = {"facets_created": 0, "facets_updated": 0, "terms_created": 0, "terms_updated": 0}
+    # Lock every existing facet the file names, in key order, before any write, so two imports
+    # wait for each other instead of deadlocking (M2 re-verification N5).
+    keys = sorted({f["key"] for f in facets})
+    await db.execute(select(Facet.id).where(Facet.key.in_(keys)).order_by(Facet.key)
+                     .with_for_update())  # fmt: skip
     for i, raw in enumerate(facets):
         where = f"facets[{i}] ({raw['key']})"
         try:
@@ -201,8 +206,12 @@ async def _import_term(
     after = services.term_snapshot(term)
     if after != before:
         counts["terms_updated"] += 1
+        # Only the changed fields: imports can touch thousands of terms (N5).
+        changed = [k for k in after if after[k] != before.get(k)]
+        old = {k: before[k] for k in changed}
+        new = {**{k: after[k] for k in changed}, "key": term.key, "facet": facet.key}
         audit(db, "taxonomy.import.term_update", "term", term.id, actor=actor, ip=ip,
-              before=before, after={**after, "facet": facet.key})  # fmt: skip
+              before=old, after=new)  # fmt: skip
 
 
 async def export_taxonomy(db: AsyncSession) -> str:
