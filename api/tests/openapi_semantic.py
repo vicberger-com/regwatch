@@ -8,8 +8,9 @@ What remains is compared per operation: tags, security, ``x-permission``, parame
 request body and responses.
 
 The live document may add responses the contract does not list: ``422`` for request
-validation, ``501`` for stubs, and the session gate's ``401`` and ``403``, which the contract
-states once for every route in ``info.description`` (#31); all must be problem details.
+validation, ``501`` for stubs, the session gate's ``401`` and ``403``, which the contract
+states once for every route in ``info.description`` (#31), and ``413`` from the request size
+limit on operations with a body; all must be problem details.
 Anything else that differs is reported, unless it is listed in ``ACCEPTED`` with its reason.
 
 Usage (from ``api/``): ``python -m tests.openapi_semantic CONTRACT.yaml [--live FILE]
@@ -30,7 +31,7 @@ import yaml
 
 METHODS = ("get", "put", "post", "patch", "delete")
 _ANNOTATIONS = {"title", "description", "summary", "examples", "example", "operationId"}
-FRAMEWORK_CODES = {"401", "403", "422", "501"}
+FRAMEWORK_CODES = {"401", "403", "413", "422", "501"}
 PROBLEM = {"application/problem+json"}
 
 # Differences that are understood and tracked; each value says why it is accepted.

@@ -353,3 +353,33 @@ async def test_viewers_export_but_do_not_import(admin: httpx.AsyncClient) -> Non
     resp = await viewer.post(_api("/taxonomy/import"), content="facets: []", headers=YAML_HEADERS)
     assert resp.status_code == 403
     await viewer.aclose()
+
+
+async def test_validator_follows_taxonomy_changes(admin: httpx.AsyncClient, db_url: str) -> None:
+    """M2 design notes: a facet change bumps taxonomy.version, which rebuilds the validator."""
+    from regwatch.core.db import create_engine, session_factory
+    from regwatch.core.errors import ProblemError
+    from regwatch.taxonomy.validator import get_validator
+
+    engine = create_engine(db_url, poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            first = await get_validator(db)
+            assert (await get_validator(db)) is first  # cached while the version holds
+            with pytest.raises(ProblemError):
+                first.validate({"enforcement_body": "edpb"})
+            assert first.validate({"topic": ["privacy"]}).values == {"topic": ["privacy"]}
+
+        await admin.post(_api("/taxonomy/facets"),
+                         json={"key": "enforcement_body", "label": "E", "value_type": "term",
+                               "multi": False})  # fmt: skip
+        await admin.post(_api("/taxonomy/facets/enforcement_body/terms"),
+                         json={"key": "edpb", "label": "EDPB"})  # fmt: skip
+        async with session_factory(engine)() as db:
+            second = await get_validator(db)
+            assert second is not first and second.version > first.version
+            assert second.validate({"enforcement_body": "edpb"}).values == {
+                "enforcement_body": "edpb"
+            }
+    finally:
+        await engine.dispose()

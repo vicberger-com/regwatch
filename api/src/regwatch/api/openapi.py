@@ -53,6 +53,9 @@ def build_openapi(app: FastAPI, prefix: str) -> dict[str, Any]:
                 responses.setdefault("401", problem("No valid session"))
             if not public or method.upper() in UNSAFE_METHODS:
                 responses.setdefault("403", problem("Forbidden or origin mismatch"))
+            # BodySizeLimitMiddleware: bodies over 2 MB, even with fields inside their limits.
+            if "requestBody" in op:
+                responses.setdefault("413", problem("Request body too large"))
     components = doc.setdefault("components", {})
     schemas = components.setdefault("schemas", {})
     for name in _FASTAPI_SCHEMAS:

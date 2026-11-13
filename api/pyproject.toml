@@ -36,6 +36,7 @@ dev = [
     "schemathesis>=4.33.0",
     "pyyaml>=6.0.3",
     "types-pyyaml>=6.0.12.20261030",
+    "hypothesis>=6.100",
 ]
 
 [build-system]

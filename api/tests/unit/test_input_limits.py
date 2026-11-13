@@ -98,3 +98,20 @@ async def test_database_input_errors_map_to_problems(sqlstate: str, status: int)
         resp = await c.get("/x")
     assert resp.status_code == status
     assert "secret@example.org" not in resp.text
+
+
+async def test_a_contract_valid_body_over_2_mb_gets_a_documented_413(app: FastAPI) -> None:
+    """Fields within their maxLength can still exceed 2 MB once JSON-escaped (12 bytes for an
+    emoji); the 413 that answers is documented on every operation with a body."""
+    import json
+
+    body = json.dumps({"page_markdown": "\U0001f600" * 200_000}).encode()
+    assert len(body) > MAX_BODY_BYTES
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
+        resp = await c.put(API_PREFIX + "/admin/legal", content=body,
+                           headers={"content-type": "application/json"})  # fmt: skip
+    assert resp.status_code == 413
+    doc = app.openapi()
+    assert "413" in doc["paths"]["/admin/legal"]["put"]["responses"]
+    assert "413" not in doc["paths"]["/health"]["get"]["responses"]
