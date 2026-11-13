@@ -109,7 +109,7 @@ async def test_temporary_password_then_viewer_is_denied_admin(client: httpx.Asyn
     ok = await client.post(change, headers=ORIGIN, json=new)
     assert ok.status_code == 204
     assert client.cookies["rw_session"] != old_cookie  # rotated
-    assert (await client.get(f"{API_PREFIX}/jurisdictions")).status_code == 501
+    assert (await client.get(f"{API_PREFIX}/jurisdictions")).status_code == 200  # taxonomy.read
     # Acceptance 1: a viewer gets 403 on every admin route, even with a crafted request.
     admin_routes = [("GET", "/admin/users"), ("GET", "/admin/audit"), ("GET", "/admin/settings"),
                     ("PATCH", "/admin/feature-flags/auth.oidc")]  # fmt: skip

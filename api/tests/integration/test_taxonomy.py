@@ -221,3 +221,44 @@ async def test_rule_test_endpoint(admin: httpx.AsyncClient) -> None:
     assert hit["matched"] is True and hit["confidence"] == 0.7 and hit["evidence"]
     miss = (await admin.post(test, json={"text": "Nothing relevant"})).json()
     assert miss == {"matched": False, "confidence": 0.0, "evidence": []}
+
+
+async def test_jurisdictions_and_regions(admin: httpx.AsyncClient) -> None:
+    countries = (await admin.get(_api("/jurisdictions"), params={"kind": "country"})).json()
+    assert len(countries) == 250 and all(j["kind"] == "country" for j in countries)
+    supra = (await admin.get(_api("/jurisdictions"), params={"kind": "supranational"})).json()
+    assert {j["code"] for j in supra} == {"EU", "COE", "OECD", "UN", "INTL"}
+    de = (await admin.get(_api("/jurisdictions/de"))).json()
+    assert de["name"] == "Germany" and de["region_code"] == "155" and de["geometry_ref"] == "DEU"
+    assert (await admin.get(_api("/jurisdictions/ZZ"))).status_code == 404
+
+    post = lambda body: admin.post(_api("/jurisdictions"), json=body)  # noqa: E731
+    by = {"code": "DE-BY", "name": "Bavaria", "kind": "subdivision", "parent_code": "DE",
+          "region_code": "155"}  # fmt: skip
+    created = await post(by)
+    assert created.status_code == 201 and created.json()["parent_code"] == "DE"
+    assert (await post(by)).status_code == 409
+    for bad in ({**by, "code": "FR-75", "parent_code": "DE"},
+                {**by, "code": "DE-BE", "parent_code": "EU"},
+                {**by, "code": "DE-BW", "parent_code": None},
+                {"code": "D", "name": "X", "kind": "country"},
+                {"code": "XQ", "name": "X", "kind": "country", "region_code": "999"},
+                {"code": "XQ", "name": "X", "kind": "country", "geometry_ref": "../x"},
+                {"code": "XQ", "name": "X\r\n", "kind": "country"},
+                {"code": "XQ", "name": "X", "kind": "planet"}):  # fmt: skip
+        assert (await post(bad)).status_code == 422, bad
+
+    patch = lambda code, body: admin.patch(_api(f"/jurisdictions/{code}"), json=body)  # noqa: E731
+    assert (await patch("DE-BY", {"name": "Freistaat Bayern"})).json()["name"] == "Freistaat Bayern"
+    assert (await patch("DE-BY", {"code": "DE-BB"})).status_code == 422
+    assert (await patch("DE-BY", {"kind": "country"})).status_code == 422
+    assert (await patch("DE-BY", {"parent_code": "AT"})).status_code == 422
+    assert (await patch("AQ", {"active": False})).json()["active"] is False
+    inactive = (await admin.get(_api("/jurisdictions"), params={"active": False})).json()
+    assert [j["code"] for j in inactive] == ["AQ"]
+
+    regions = {r["code"]: r for r in (await admin.get(_api("/jurisdictions/regions"))).json()}
+    assert len(regions) == 17 and regions["155"]["name"] == "Western Europe"
+    assert {"DE", "DE-BY", "FR"} <= set(regions["155"]["jurisdiction_codes"])
+    audit = (await admin.get(_api("/admin/audit"), params={"entity_type": "jurisdiction"})).json()
+    assert {r["action"] for r in audit["items"]} == {"jurisdiction.create", "jurisdiction.update"}

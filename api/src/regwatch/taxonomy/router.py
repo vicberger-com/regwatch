@@ -1,7 +1,7 @@
 """Facet, term and jurisdiction routes; mounted under /api/v1.
 
-Facets, terms, merge, the rule test and view dimensions are implemented (M2); the other stubs
-answer 501 until M2 lands.
+Facets, terms, merge, the rule test, view dimensions, jurisdictions and regions are implemented
+(M2); import and export answer 501 until M2 lands.
 """
 
 from __future__ import annotations
@@ -155,35 +155,52 @@ async def export_taxonomy() -> NoReturn:
     not_implemented()
 
 
-@router.get("/jurisdictions", **spec(list[Jurisdiction], desc="Jurisdictions", perm=READ))
+@router.get(
+    "/jurisdictions", **spec(list[Jurisdiction], desc="Jurisdictions", perm=READ, stub=False)
+)  # fmt: skip
 async def list_jurisdictions(
+    db: DbSession,
     kind: Literal["country", "subdivision", "supranational"] | None = None,
     active: bool | None = None,
-) -> NoReturn:
-    not_implemented()
+) -> list[Jurisdiction]:
+    return await services.list_jurisdictions(db, kind, active)
 
 
-@router.post("/jurisdictions", **spec(Jurisdiction, status=201, desc="Created", perm=MANAGE))
-async def create_jurisdiction(body: JurisdictionWrite) -> NoReturn:
-    not_implemented()
+@router.post(
+    "/jurisdictions", **spec(Jurisdiction, status=201, desc="Created", perm=MANAGE, stub=False)
+)  # fmt: skip
+async def create_jurisdiction(
+    body: JurisdictionWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Jurisdiction:
+    values = body.model_dump(exclude_unset=True)
+    return await services.create_jurisdiction(db, values, principal.user.id, client_ip(request))
 
 
 # Registered before /jurisdictions/{code} so the literal path wins.
 @router.get(
     "/jurisdictions/regions",
-    **spec(list[Region], desc="UN M49 regions with member codes", perm=READ),
+    **spec(list[Region], desc="UN M49 regions with member codes", perm=READ, stub=False),
 )
-async def list_regions() -> NoReturn:
-    not_implemented()
+async def list_regions(db: DbSession) -> list[Region]:
+    return await services.list_regions(db)
 
 
 @router.get(
-    "/jurisdictions/{code}", **spec(Jurisdiction, desc="Jurisdiction", perm=READ, errors=(404,))
+    "/jurisdictions/{code}",
+    **spec(Jurisdiction, desc="Jurisdiction", perm=READ, errors=(404,), stub=False),
 )
-async def get_jurisdiction(code: str) -> NoReturn:
-    not_implemented()
+async def get_jurisdiction(code: str, db: DbSession) -> Jurisdiction:
+    return await services.get_jurisdiction(db, code)
 
 
-@router.patch("/jurisdictions/{code}", **spec(Jurisdiction, desc="Updated", perm=MANAGE))
-async def update_jurisdiction(code: str, body: JurisdictionWrite) -> NoReturn:
-    not_implemented()
+@router.patch(
+    "/jurisdictions/{code}", **spec(Jurisdiction, desc="Updated", perm=MANAGE, stub=False)
+)  # fmt: skip
+async def update_jurisdiction(
+    code: str, body: JurisdictionWrite, principal: CurrentPrincipal, request: Request,
+    db: DbSession,
+) -> Jurisdiction:  # fmt: skip
+    changes = body.model_dump(exclude_unset=True)
+    return await services.update_jurisdiction(
+        db, code, changes, principal.user.id, client_ip(request)
+    )

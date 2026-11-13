@@ -17,15 +17,18 @@ from typing import Any
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from regwatch.admin.models import Setting
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.schemas import has_control
 from regwatch.core.services import audit
 from regwatch.taxonomy import rules
-from regwatch.taxonomy.models import Facet, ItemTerm, Term
+from regwatch.taxonomy.models import Facet, ItemTerm, Jurisdiction, Term
 from regwatch.taxonomy.schemas import Facet as FacetOut
 from regwatch.taxonomy.schemas import FacetWrite, RuleTestResult, ViewDimension
+from regwatch.taxonomy.schemas import Jurisdiction as JurisdictionOut
+from regwatch.taxonomy.schemas import Region as RegionOut
 from regwatch.taxonomy.schemas import Term as TermOut
 
 VERSION_KEY = "taxonomy.version"
@@ -467,3 +470,152 @@ async def run_rule_test(db: AsyncSession, term_id: uuid.UUID, sample: str,
     result = rules.evaluate(term.match_rules or {}, sample, language)
     return RuleTestResult(matched=result.matched, confidence=result.confidence,
                           evidence=result.evidence)  # fmt: skip
+
+
+# --- Jurisdictions and regions ---------------------------------------------------------------
+
+# UN M49 sub-regions used by the seed (region_code), with their M49 English names.
+M49_REGIONS: dict[str, str] = {
+    "015": "Northern Africa", "202": "Sub-Saharan Africa",
+    "419": "Latin America and the Caribbean", "021": "Northern America",
+    "143": "Central Asia", "030": "Eastern Asia", "035": "South-eastern Asia",
+    "034": "Southern Asia", "145": "Western Asia", "151": "Eastern Europe",
+    "154": "Northern Europe", "039": "Southern Europe", "155": "Western Europe",
+    "053": "Australia and New Zealand", "054": "Melanesia", "057": "Micronesia",
+    "061": "Polynesia",
+}  # fmt: skip
+CODE_PATTERNS = {
+    "country": re.compile(r"^[A-Z]{2}$"),  # ISO 3166-1 alpha-2 (XK user-assigned)
+    "subdivision": re.compile(r"^[A-Z]{2}-[A-Z0-9]{1,3}$"),  # ISO 3166-2
+    "supranational": re.compile(r"^[A-Z][A-Z0-9_]{1,15}$"),  # EU, COE, OECD, ...
+}
+GEOMETRY_REF = re.compile(r"^[A-Z0-9_-]{1,20}$")
+JURISDICTION_FIELDS = ("name", "kind", "region_code", "geometry_ref", "active")
+
+
+def jurisdiction_out(j: Jurisdiction, parent_code: str | None) -> JurisdictionOut:
+    return JurisdictionOut(id=j.id, code=j.code, name=j.name, kind=j.kind,
+                           parent_code=parent_code, region_code=j.region_code,
+                           geometry_ref=j.geometry_ref, active=j.active)  # fmt: skip
+
+
+async def list_jurisdictions(db: AsyncSession, kind: str | None,
+                             active: bool | None) -> list[JurisdictionOut]:  # fmt: skip
+    parent = aliased(Jurisdiction)
+    stmt = (select(Jurisdiction, parent.code).outerjoin(parent, parent.id == Jurisdiction.parent_id)
+            .order_by(Jurisdiction.name))  # fmt: skip
+    if kind:
+        stmt = stmt.where(Jurisdiction.kind == kind)
+    if active is not None:
+        stmt = stmt.where(Jurisdiction.active.is_(active))
+    return [jurisdiction_out(j, p) for j, p in (await db.execute(stmt)).tuples().all()]
+
+
+async def _jurisdiction(db: AsyncSession, code: str) -> tuple[Jurisdiction, str | None]:
+    parent = aliased(Jurisdiction)
+    row = (await db.execute(
+        select(Jurisdiction, parent.code).outerjoin(parent, parent.id == Jurisdiction.parent_id)
+        .where(Jurisdiction.code == code.upper())
+    )).tuples().first()  # fmt: skip
+    if row is None:
+        raise not_found("jurisdiction")
+    return row[0], row[1]
+
+
+async def get_jurisdiction(db: AsyncSession, code: str) -> JurisdictionOut:
+    j, parent_code = await _jurisdiction(db, code)
+    return jurisdiction_out(j, parent_code)
+
+
+def _check_jurisdiction(values: dict[str, Any]) -> None:
+    name = values.get("name")
+    if not name or len(name.strip()) > 120 or has_control(name):
+        raise validation("name", "a name is one line of 1 to 120 characters")
+    region = values.get("region_code")
+    if region is not None and region not in M49_REGIONS:
+        raise validation("region_code", "an M49 sub-region code, such as 155")
+    geometry = values.get("geometry_ref")
+    if geometry is not None and not GEOMETRY_REF.match(geometry):
+        raise validation("geometry_ref", "a Natural Earth feature id, such as DEU")
+
+
+async def _parent_id(db: AsyncSession, kind: str, parent_code: str | None,
+                     code: str) -> uuid.UUID | None:  # fmt: skip
+    """Subdivisions need a country parent whose code prefixes theirs; others have none."""
+    if kind != "subdivision":
+        if parent_code:
+            raise validation("parent_code", "only subdivisions have a parent")
+        return None
+    if not parent_code or not code.startswith(parent_code.upper() + "-"):
+        raise validation("parent_code", "the country whose code prefixes the subdivision code")
+    row = (await db.execute(select(Jurisdiction.id, Jurisdiction.kind)
+                            .where(Jurisdiction.code == parent_code.upper()))).first()  # fmt: skip
+    if row is None or row[1] != "country":
+        raise validation("parent_code", "the parent must be an existing country")
+    parent_id: uuid.UUID = row[0]
+    return parent_id
+
+
+async def create_jurisdiction(db: AsyncSession, values: dict[str, Any], actor: uuid.UUID,
+                              ip: str | None) -> JurisdictionOut:  # fmt: skip
+    code = (values.get("code") or "").upper()
+    kind = values.get("kind")
+    if kind not in CODE_PATTERNS:
+        raise validation("kind", "country, subdivision or supranational")
+    if not CODE_PATTERNS[kind].match(code):
+        raise validation("code", f"not a valid {kind} code")
+    _check_jurisdiction(values)
+    if await db.scalar(select(Jurisdiction.id).where(Jurisdiction.code == code)) is not None:
+        raise ProblemError(409, "conflict", "A jurisdiction with this code exists.")
+    parent_id = await _parent_id(db, kind, values.get("parent_code"), code)
+    j = Jurisdiction(code=code, name=values["name"].strip(), kind=kind, parent_id=parent_id,
+                     region_code=values.get("region_code"), geometry_ref=values.get("geometry_ref"),
+                     active=values.get("active", True))  # fmt: skip
+    db.add(j)
+    await db.flush()
+    audit(db, "jurisdiction.create", "jurisdiction", code, actor=actor, ip=ip,
+          after={"code": code, **{f: getattr(j, f) for f in JURISDICTION_FIELDS}})  # fmt: skip
+    await db.commit()
+    return jurisdiction_out(j, values.get("parent_code"))
+
+
+async def update_jurisdiction(db: AsyncSession, code: str, changes: dict[str, Any],
+                              actor: uuid.UUID, ip: str | None) -> JurisdictionOut:  # fmt: skip
+    j, parent_code = await _jurisdiction(db, code)
+    before = {"parent_code": parent_code, **{f: getattr(j, f) for f in JURISDICTION_FIELDS}}
+    if "code" in changes and (changes["code"] or "").upper() != j.code:
+        raise validation("code", "a jurisdiction keeps its code")
+    if "kind" in changes and changes["kind"] != j.kind:
+        raise validation("kind", "a jurisdiction keeps its kind")
+    merged = {**before, **changes}
+    _check_jurisdiction(merged)
+    if "parent_code" in changes:
+        j.parent_id = await _parent_id(db, j.kind, changes["parent_code"], j.code)
+        parent_code = changes["parent_code"].upper() if changes["parent_code"] else None
+    for field in ("name", "region_code", "geometry_ref", "active"):
+        if field in changes:
+            if field in ("name", "active") and changes[field] is None:
+                raise validation(field, f"{field} cannot be null")
+            value = changes[field]
+            setattr(j, field, value.strip() if field == "name" else value)
+    after = {"parent_code": parent_code, **{f: getattr(j, f) for f in JURISDICTION_FIELDS}}
+    if after != before:
+        audit(db, "jurisdiction.update", "jurisdiction", j.code, actor=actor, ip=ip,
+              before=before, after=after)  # fmt: skip
+    await db.commit()
+    return jurisdiction_out(j, parent_code)
+
+
+async def list_regions(db: AsyncSession) -> list[RegionOut]:
+    rows = await db.execute(
+        select(Jurisdiction.region_code, Jurisdiction.code)
+        .where(Jurisdiction.region_code.is_not(None), Jurisdiction.active.is_(True))
+        .order_by(Jurisdiction.region_code, Jurisdiction.code)
+    )
+    members: dict[str, list[str]] = {}
+    for region, code in rows.tuples().all():
+        if region is not None:
+            members.setdefault(region, []).append(code)
+    ordered = sorted(members.items(), key=lambda kv: M49_REGIONS.get(kv[0], kv[0]))
+    return [RegionOut(code=r, name=M49_REGIONS.get(r, r), jurisdiction_codes=codes)
+            for r, codes in ordered]  # fmt: skip
