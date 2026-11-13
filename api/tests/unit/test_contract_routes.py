@@ -15,6 +15,7 @@ from fastapi.routing import APIRoute
 from regwatch.api.app import API_PREFIX, api_routes, create_app
 from regwatch.core.routing import PERMISSION_KEY
 from regwatch.core.settings import Settings
+from regwatch.identity.permissions import authorize
 
 from ..openapi_semantic import ACCEPTED, compare, load, operations
 
@@ -75,7 +76,7 @@ def _mutate(doc: dict[str, Any]) -> dict[str, Any]:
     users[PERMISSION_KEY] = "users.read"
     next(p for p in users["parameters"] if p["name"] == "page")["schema"]["minimum"] = 0
     doc["components"]["schemas"]["User"]["properties"]["email"]["format"] = "uri"
-    doc["paths"]["/branding"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
+    doc["paths"]["/legal"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
     return doc
 
 
@@ -86,7 +87,7 @@ def test_semantic_diff_reports_drift(app: FastAPI) -> None:
     assert "GET /admin/users.x-permission" in joined
     assert "GET /admin/users.parameters.query:page.schema.minimum" in joined
     assert "properties.email.format" in joined
-    assert "GET /branding: 501 is not problem details" in joined
+    assert "GET /legal: 501 is not problem details" in joined
 
 
 def test_document_shape(app: FastAPI) -> None:
@@ -98,10 +99,21 @@ def test_document_shape(app: FastAPI) -> None:
     assert {"HTTPValidationError", "ValidationError"}.isdisjoint(doc["components"]["schemas"])
 
 
-async def test_stubs_answer_501_problem(app: FastAPI) -> None:
+async def test_gate_answers_before_stubs(app: FastAPI) -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(f"{API_PREFIX}/admin/users")
+        assert resp.status_code == 401
+        assert resp.headers["content-type"] == "application/problem+json"
+        resp = await client.post(f"{API_PREFIX}/admin/users", json={})
+        assert resp.status_code == 403  # no Origin header: the CSRF check comes first
+
+
+async def test_stubs_answer_501_problem(app: FastAPI) -> None:
+    app.dependency_overrides[authorize] = lambda: None  # past the gate (#31)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(f"{API_PREFIX}/sources")
         assert resp.status_code == 501
         assert resp.headers["content-type"] == "application/problem+json"
         resp = await client.post(f"{API_PREFIX}/admin/branding/logo", content=b"x")

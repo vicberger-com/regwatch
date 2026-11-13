@@ -4,12 +4,16 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Security
+- Session gate on every API route: `identity.permissions.authorize` is an app-wide dependency that checks `Origin` on mutating requests (CSRF), requires a live `rw_session` on every route not marked public (deny by default), blocks all but `/auth/me`, `/auth/logout` and `/auth/password` while a temporary password is in force, and enforces each route's `x-permission`; the live OpenAPI document lists the gate's 401 and 403 problem responses; `/api/v1/openapi.json` is no longer served in production (#31, REQ-16)
+
 ### Changed
 - Coverage floors (CP-04, owner decision on BL-72): `make test` and the CI `test-api` job run the unit tests (100 percent floor on security-critical modules) and then the database integration tests against a throwaway PostgreSQL in Docker, with the 85 percent floor on both together; `make test-unit` runs the unit tests alone; tests needing the Compose stack are marked `stack`; 7.1 and `M0-tooling.md` amended (#32, BL-72, REQ-25)
 - License allow-list: MIT-0, BlueOak-1.0.0 and Python-2.0 added by owner decision, and the nine tooling exceptions for them removed; data terms TW-OGDL-1.0, BOE-2024 and UrhG-5 added to ADR-0003 decision 5, with the five PRC statute excerpts approved for the private test corpus only; ADR-0003 amendment 2 (#29, #12, BL-59, BL-63, REQ-20, REQ-25)
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- `GET /auth/me`; sessions resolved from the `rw_session` cookie with an idle timeout from the user preference bounded by `sessions.idle_timeout_max_minutes` and an absolute lifetime of `sessions.absolute_lifetime_hours` (#31, REQ-16)
 - `regwatch-admin create-user` creates local accounts such as the first administrator; the password is read without echo or from standard input, never from an argument (#31, REQ-16)
 - M1 auth core: Argon2id password hashing (argon2-cffi), random session tokens stored as sha256, the CSRF origin check, SQLAlchemy models for users, sessions and the audit log, and an `audit()` helper; timestamps mapped as timestamptz (#31, REQ-16)
 - Test fixtures in `api/tests/fixtures/`: 200-document corpus in seven languages with expected labels, a validator and `NOTICES.md`; feed and page fixtures; `make fixtures-check` (#12, REQ-25)

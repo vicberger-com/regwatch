@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, FastAPI
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute
 from starlette.routing import BaseRoute
 
@@ -12,9 +15,11 @@ from regwatch.api.middleware import RequestContextMiddleware
 from regwatch.api.openapi import install_openapi
 from regwatch.api.router import router as system_router
 from regwatch.capture.router import router as capture_router
+from regwatch.core.db import create_engine, session_factory
 from regwatch.core.errors import install_problem_handlers
 from regwatch.core.logging_setup import configure_logging
 from regwatch.core.settings import Settings, get_settings
+from regwatch.identity.permissions import authorize
 from regwatch.identity.router import router as identity_router
 from regwatch.outputs.router import router as outputs_router
 from regwatch.processing.router import router as processing_router
@@ -57,14 +62,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
 
+    engine = create_engine(settings.database_url.get_secret_value())
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        await engine.dispose()
+
+    # The API description and docs are served outside production only (no session needed).
+    exposed = settings.env != "production"
     app = FastAPI(
         title="regwatch API",
         version=services.app_version(),
-        openapi_url=f"{API_PREFIX}/openapi.json",
+        openapi_url=f"{API_PREFIX}/openapi.json" if exposed else None,
         docs_url=f"{API_PREFIX}/docs" if settings.env == "development" else None,
         redoc_url=None,
         generate_unique_id_function=_operation_id,
+        # Every module route passes the session, permission and origin gate (#31).
+        dependencies=[Depends(authorize)],
+        lifespan=lifespan,
     )
+    app.state.db = session_factory(engine)
     app.dependency_overrides[get_settings] = lambda: settings
     app.add_middleware(RequestContextMiddleware)
     for router in MODULE_ROUTERS:

@@ -1,17 +1,20 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
-Stubs answer 501 until M1 (#31, #32) implements them.
+``GET /auth/me`` is implemented (#31); the other stubs answer 501 until #31 and #32 land.
 """
 
 from __future__ import annotations
 
-from typing import NoReturn
+from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from regwatch.core.routing import Paging, Tags, not_implemented, spec
 from regwatch.core.schemas import Page
+from regwatch.core.settings import Settings, get_settings
+from regwatch.identity import services
+from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.schemas import (
     Login,
     Me,
@@ -34,6 +37,7 @@ AUTH: Tags = ["auth"]
 ADMIN: Tags = ["admin"]
 ME: Tags = ["me"]
 USERS, ROLES = "users.manage", "roles.manage"
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(
@@ -50,9 +54,9 @@ async def logout() -> NoReturn:
     not_implemented()
 
 
-@router.get("/auth/me", tags=AUTH, **spec(Me, desc="Current user"))
-async def auth_me() -> NoReturn:
-    not_implemented()
+@router.get("/auth/me", tags=AUTH, **spec(Me, desc="Current user", stub=False))
+async def auth_me(principal: CurrentPrincipal) -> Me:
+    return services.to_me(principal.user, principal.roles, principal.permissions)
 
 
 @router.post("/auth/password", tags=AUTH, **spec(status=204, desc="Changed", errors=(400,)))

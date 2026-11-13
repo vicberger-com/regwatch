@@ -16,6 +16,7 @@ from pydantic import TypeAdapter
 from regwatch.core.errors import Problem
 from regwatch.core.routing import problem
 from regwatch.core.schemas import Page
+from regwatch.core.security import UNSAFE_METHODS
 
 TAGS = ["system", "auth", "admin", "taxonomy", "capture", "items", "search", "reports",
         "outputs", "me"]  # fmt: skip
@@ -42,9 +43,16 @@ def build_openapi(app: FastAPI, prefix: str) -> dict[str, Any]:
         path.removeprefix(prefix) or "/": item for path, item in doc.get("paths", {}).items()
     }
     for item in doc["paths"].values():
-        for op in item.values():
-            if "422" in op.get("responses", {}):
-                op["responses"]["422"] = problem("Validation error")
+        for method, op in item.items():
+            responses = op.setdefault("responses", {})
+            if "422" in responses:
+                responses["422"] = problem("Validation error")
+            # The session gate (#31): the contract states these once, in info.description.
+            public = op.get("security") == []
+            if not public:
+                responses.setdefault("401", problem("No valid session"))
+            if not public or method.upper() in UNSAFE_METHODS:
+                responses.setdefault("403", problem("Forbidden or origin mismatch"))
     components = doc.setdefault("components", {})
     schemas = components.setdefault("schemas", {})
     for name in _FASTAPI_SCHEMAS:

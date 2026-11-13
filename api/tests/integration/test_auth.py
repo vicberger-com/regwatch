@@ -1,5 +1,5 @@
-"""Integration: local accounts against PostgreSQL; the login, lockout, logout and session
-tests join as #31 lands (M1 acceptance 2, 3 and 4; REQ-14, REQ-16)."""
+"""Integration: login, lockout, logout and sessions against PostgreSQL (#31; M1 acceptance
+2, 3 and 4; REQ-14, REQ-16)."""
 
 from __future__ import annotations
 
