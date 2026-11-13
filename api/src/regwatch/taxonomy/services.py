@@ -14,6 +14,7 @@ import unicodedata
 import uuid
 from typing import Any
 
+from anyio import to_thread
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,7 @@ from regwatch.core.schemas import has_control
 from regwatch.core.services import audit
 from regwatch.taxonomy import rules
 from regwatch.taxonomy.models import Facet, ItemTerm, Jurisdiction, Term
+from regwatch.taxonomy.rules import PatternError, compile_pattern
 from regwatch.taxonomy.schemas import Facet as FacetOut
 from regwatch.taxonomy.schemas import FacetWrite, RuleTestResult, ViewDimension
 from regwatch.taxonomy.schemas import Jurisdiction as JurisdictionOut
@@ -208,11 +210,6 @@ async def view_dimensions(db: AsyncSession) -> list[ViewDimension]:
 
 TERM_KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,60}$")
 MAX_SYNONYMS, MAX_RULE_ITEMS, MAX_PATTERN = 50, 100, 200
-# A quantified group that contains a quantifier or an alternation, such as (a+)+, (\w*)* or
-# (a|aa){2,}: the shapes behind catastrophic backtracking. Patterns are entered by
-# administrators and run by M4 over captured text, so they are refused here (M2 design notes;
-# BL-74 for a linear-time engine, which would make this check unnecessary).
-_NESTED_QUANTIFIER = re.compile(r"\((?:[^()\\]|\\.)*[+*}|](?:[^()\\]|\\.)*\)\s*[+*{]")
 
 
 def normalise_synonyms(values: list[str]) -> list[str]:
@@ -238,14 +235,10 @@ def check_match_rules(rules: dict[str, Any]) -> dict[str, Any]:
             limit = f"at most {MAX_RULE_ITEMS} entries of up to {MAX_PATTERN} characters"
             raise validation(f"match_rules.{field}", limit)
     for pattern in rules.get("regex") or []:
-        if _NESTED_QUANTIFIER.search(pattern):
-            raise validation(
-                "match_rules.regex", f"nested quantifier in {pattern!r} (backtracking)"
-            )
         try:
-            re.compile(pattern)
-        except re.error as exc:
-            raise validation("match_rules.regex", f"invalid pattern {pattern!r}: {exc}") from exc
+            compile_pattern(pattern)  # RE2: linear time (review finding 1, BL-74)
+        except PatternError as exc:
+            raise validation("match_rules.regex", f"{pattern!r}: {exc}") from exc
     if rules.get("min_hits", 1) < 1:
         raise validation("match_rules.min_hits", "must be at least 1")
     weight = rules.get("weight", 1.0)
@@ -473,7 +466,8 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
 async def run_rule_test(db: AsyncSession, term_id: uuid.UUID, sample: str,
                           language: str | None) -> RuleTestResult:  # fmt: skip
     term, _ = await _term_or_404(db, term_id)
-    result = rules.evaluate(term.match_rules or {}, sample, language)
+    # Off the event loop: matching is linear but still CPU work (review finding 1).
+    result = await to_thread.run_sync(rules.evaluate, term.match_rules or {}, sample, language)
     return RuleTestResult(matched=result.matched, confidence=result.confidence,
                           evidence=result.evidence)  # fmt: skip
 

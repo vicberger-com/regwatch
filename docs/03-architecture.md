@@ -119,6 +119,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Mailpit | development mail catcher | MIT | V `364916b` | tooling | M8 |
 | ipp (npm) | IPP printing bridge | none (MIT claimed; no LICENSE file) | rejected (R-01 E1, R-04) | not used; print bridge deferred (BL-13) | M8 |
 | argon2-cffi | password hashing | MIT | V `1fcae4f` | dependency | M1 |
+| google-re2 1.1.20251105 (RE2 with statically linked Abseil and pybind11) | linear-time regular expressions for term match rules, run on captured text (BL-74, M2 review finding 1) | BSD-3-Clause; bundled Abseil Apache-2.0, pybind11 BSD-3-Clause | V `927f5d5` (tag 2025-11-05, which `python/setup.py` builds as 1.1.20251105); bundled libraries identified from the extension's symbols | dependency | M2, M4 |
 | Authlib | OpenID Connect client | BSD-3 | V `46b9487` | dependency | M1 |
 | Keycloak | reference identity provider for tests | Apache-2.0 | V `24ed1da` | tooling, optional service | M1 |
 | pycasbin (optional) | policy engine | Apache-2.0 | V `f858158` | dependency | M1 |

@@ -127,8 +127,9 @@ async def test_terms_tree_flat_rules_and_soft_delete(
     other = await admin.patch(_api(f"/taxonomy/terms/{third['id']}"),
                               json={"parent_id": topic[0]["id"]})  # fmt: skip
     assert other.status_code == 422  # parent from another facet
-    for rules in ({"regex": ["(a+)+$"]}, {"regex": ["("]}, {"min_hits": 0}, {"weight": 0},
-                  {"keywords": ["x" * 201]}):  # fmt: skip
+    refused = [{"regex": ["(?<=x)a"]}, {"regex": ["a*"]}, {"regex": ["("]}, {"min_hits": 0},
+               {"weight": 0}, {"keywords": ["x" * 201]}]  # fmt: skip
+    for rules in refused:
         resp = await admin.patch(
             _api(f"/taxonomy/terms/{third['id']}"), json={"match_rules": rules}
         )
@@ -330,7 +331,7 @@ facets:
         "facets: []\nextra: 1",
         "facets:\n  - {key: topic, value_type: text}",
         "facets:\n  - {key: new_one, terms: [{key: a, label: A, parent: missing}]}",
-        "facets:\n  - {key: new_one, terms: [{key: a, label: A, match_rules: {regex: ['(a+)+']}}]}",
+        "facets:\n  - {key: new_one, terms: [{key: a, label: A, match_rules: {regex: ['a*']}}]}",
         "facets:\n  - {key: new_one, terms: [{key: 'Bad Key', label: A}]}",
         "facets:\n  - {key: new_one, colour: red}",
         "facets:\n  - {key: new_one, sort_order: true}",

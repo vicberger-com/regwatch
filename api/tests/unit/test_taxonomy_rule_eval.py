@@ -39,3 +39,22 @@ def test_regex_languages_and_cjk() -> None:
 def test_empty_rules_never_match() -> None:
     assert not evaluate({}, "anything").matched
     assert not evaluate({"keywords": ["  "]}, "anything").matched
+
+
+def test_keyword_boundaries_with_unicode_and_hit_cap() -> None:
+    from regwatch.taxonomy.rules import MAX_HITS
+
+    assert evaluate({"keywords": ["café"]}, "Le café, un CAFÉ.").hits == 2
+    assert not evaluate({"keywords": ["café"]}, "cafés").matched  # longer word
+    capped = evaluate({"keywords": ["x"], "regex": ["y"]}, "x " * 5000 + "y" * 5000)
+    assert capped.hits == MAX_HITS
+
+
+def test_regex_hits_stop_at_the_cap_without_building_every_match() -> None:
+    import time
+
+    from regwatch.taxonomy.rules import MAX_HITS
+
+    started = time.perf_counter()
+    result = evaluate({"regex": ["a"]}, "a" * 10_000_000)  # 10 MB, the captured-body cap
+    assert result.hits == MAX_HITS and time.perf_counter() - started < 2.0

@@ -3,22 +3,45 @@
 ``match_rules`` is ``{keywords, regex, languages, min_hits, weight}`` (schema.sql). A term
 matches when keyword and regex hits together reach ``min_hits``. Confidence starts at 0.6
 for exactly ``min_hits`` hits (the default ``classification.min_confidence``), rises by 0.1 per
-further hit up to 1.0, and is scaled by ``weight``. Patterns were checked when saved
-(``services.check_match_rules``).
+further hit up to 1.0, and is scaled by ``weight``.
+
+Captured text is hostile and rule patterns are entered by administrators, so matching runs in
+time linear in the text (M2 review finding 1, BL-74): regexes use RE2 (google-re2, BSD-3), which
+does not backtrack, and keywords use a plain substring scan. Patterns are compiled with RE2 when
+saved (``compile_pattern``), so syntax RE2 lacks (backreferences, lookaround) is refused there.
 """
 
 from __future__ import annotations
 
-import re
 import unicodedata
 from dataclasses import dataclass, field
+from functools import lru_cache
+from itertools import islice
 from typing import Any
+
+import re2
 
 MAX_HITS = 1000
 SNIPPET = 40  # characters either side of a hit in the evidence
 MAX_EVIDENCE = 5
-# Scripts written without spaces between words: keywords match as plain substrings there.
-_NO_WORD_BOUNDARIES = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]")
+_WORDLESS = ((0x3040, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xAC00, 0xD7AF))
+
+
+class PatternError(ValueError):
+    """The pattern is not valid RE2 syntax or can match an empty string."""
+
+
+@lru_cache(maxsize=1024)
+def compile_pattern(pattern: str) -> Any:  # noqa: ANN401 - re2 has no type stubs
+    try:
+        compiled = re2.compile(pattern)
+    except re2.error as exc:
+        raise PatternError(
+            f"not supported by RE2 (no backreferences or lookaround): {exc}"
+        ) from exc
+    if compiled.search("") is not None:
+        raise PatternError("matches the empty string, so it would match every text")
+    return compiled
 
 
 @dataclass
@@ -31,6 +54,26 @@ class RuleResult:
 
 def _fold(text: str) -> str:
     return unicodedata.normalize("NFKC", text).casefold()
+
+
+def _wordless(text: str) -> bool:
+    return any(lo <= ord(c) <= hi for c in text for lo, hi in _WORDLESS)
+
+
+def _keyword_spans(folded: str, needle: str, limit: int) -> list[tuple[int, int]]:
+    """Occurrences of ``needle`` not inside a longer word, by a linear substring scan."""
+    spans: list[tuple[int, int]] = []
+    boundaries = not _wordless(needle)
+    start = folded.find(needle)
+    while start != -1 and len(spans) < limit:
+        end = start + len(needle)
+        if not boundaries or (
+            (start == 0 or not folded[start - 1].isalnum())
+            and (end == len(folded) or not folded[end].isalnum())
+        ):
+            spans.append((start, end))
+        start = folded.find(needle, start + 1)
+    return spans
 
 
 def _snippet(text: str, start: int, end: int) -> str:
@@ -47,15 +90,13 @@ def evaluate(rules: dict[str, Any], text: str, language: str | None = None) -> R
     spans: list[tuple[int, int]] = []
     for keyword in rules.get("keywords") or []:
         needle = _fold(keyword).strip()
-        if not needle:
-            continue
-        if _NO_WORD_BOUNDARIES.search(needle):
-            pattern = re.escape(needle)
-        else:
-            pattern = rf"(?<!\w){re.escape(needle)}(?!\w)"
-        spans += [m.span() for m in re.finditer(pattern, folded)][:MAX_HITS]
+        if needle:
+            spans += _keyword_spans(folded, needle, MAX_HITS - len(spans))
     for raw in rules.get("regex") or []:
-        spans += [m.span() for m in re.finditer(raw, text)][:MAX_HITS]
+        if len(spans) >= MAX_HITS:
+            break
+        pattern = compile_pattern(raw)
+        spans += [m.span() for m in islice(pattern.finditer(text), MAX_HITS - len(spans))]
     hits = min(len(spans), MAX_HITS)
     min_hits = max(1, int(rules.get("min_hits", 1)))
     if hits < min_hits:

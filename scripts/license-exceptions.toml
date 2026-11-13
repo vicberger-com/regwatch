@@ -23,6 +23,15 @@ scope = "any"
 reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE.md is the 3-clause text"
 reviewed = "encode/httpx tag 0.28.1 (26d48e0) LICENSE.md, read 2026-11-02 (#29); register row V"
 
+[[exception]]
+ecosystem = "python"
+package = "google-re2"
+version = "1.1.20251105"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE is the 3-clause text. The extension statically links Abseil (Apache-2.0) and pybind11 (BSD-3-Clause)"
+reviewed = "google/re2 tag 2025-11-05 (927f5d5) LICENSE, python/setup.py version 1.1.20251105, read 2026-11-13 (M2 review finding 1, BL-74); register row V"
+
 # --- Development tooling under licenses allowed only for data -------------------------------
 # caniuse-lite is browserslist build data, not shipped. MIT-0, BlueOak-1.0.0 and Python-2.0 joined
 # the 3.5 allow-list by owner decision (BL-59, ADR-0003 amendment 2), so those packages need no entry.

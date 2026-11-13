@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from regwatch.core.errors import ProblemError
-from regwatch.taxonomy import services
+from regwatch.taxonomy import rules, services
 from regwatch.taxonomy.models import Term
 
 
@@ -25,11 +25,12 @@ def test_bad_synonyms_are_refused(raw: list[str]) -> None:
 
 @pytest.mark.parametrize(
     "rules",
-    [{"regex": ["(a+)+"]}, {"regex": [r"(\w*)*x"]}, {"regex": ["(a|aa){2,}"]},
-     {"regex": ["[unclosed"]}, {"min_hits": 0}, {"weight": 11}, {"weight": 0},
+    [{"regex": ["[unclosed"]}, {"regex": [r"(?<!x)a"]}, {"regex": [r"(a)\1"]},
+     {"regex": [""]}, {"regex": ["a*"]}, {"regex": ["(x|)"]},
+     {"min_hits": 0}, {"weight": 11}, {"weight": 0},
      {"keywords": ["k"] * 101}, {"languages": ["x" * 201]}],
 )  # fmt: skip
-def test_unsafe_or_invalid_rules_are_refused(rules: dict[str, Any]) -> None:
+def test_invalid_rules_are_refused(rules: dict[str, Any]) -> None:
     with pytest.raises(ProblemError) as exc:
         services.check_match_rules(rules)
     assert exc.value.status == 422
@@ -57,3 +58,18 @@ def test_tree_nests_children_and_promotes_orphans() -> None:
     assert [t.key for t in tree] == ["root", "orphan"]
     assert [c.key for c in tree[0].children] == ["child"]
     assert tree[0].facet_key == "topic"
+
+
+@pytest.mark.parametrize(
+    ("pattern", "text"),
+    [("((a+))+$", "a" * 50_000 + "b"), (r"\d+\s*EUR", "1" * 50_000),
+     (r"\w*\w*\w*z", "a" * 50_000), ("(a|aa){2,}$", "a" * 50_000 + "b")],
+)  # fmt: skip
+def test_backtracking_shapes_run_in_linear_time(pattern: str, text: str) -> None:
+    """Review finding 1: patterns that froze Python re for seconds or minutes run at once."""
+    import time
+
+    services.check_match_rules({"regex": [pattern]})  # accepted: RE2 cannot backtrack
+    started = time.perf_counter()
+    rules.evaluate({"regex": [pattern]}, text)
+    assert time.perf_counter() - started < 1.0
