@@ -159,6 +159,7 @@ Read from the project's own repository at the release tag over HTTPS (`raw.githu
 | B4 | markdown-it-py | executablebooks/markdown-it-py | v4.3.0 | d504583a458edfa399ee800074244fceec288862 | LICENSE | MIT | allowed |
 | B5 | mdurl | executablebooks/mdurl | 0.1.2 | 596bf1c8752de45fa576a52c315d6d8cc5bb1a4e | LICENSE | MIT | allowed |
 | B6 | defusedxml | tiran/defusedxml | v0.7.1 | ebff1b493751e2f0775314bdd4188d64f07ea184 | LICENSE | PSF-2.0 | allowed (BL-53) |
+| B7 | python-multipart | Kludex/python-multipart | 0.0.33 | 9217f261d36b3fdd38ece3d8c1e38a5a52fb2a3d | LICENSE.txt | Apache-2.0 | allowed (no runtime dependencies) |
 
 nh3 0.3.7 `Cargo.lock` (85 crates), declared licenses: 52 MIT OR Apache-2.0, 9 MIT, 2 MPL-2.0 (cssparser 0.37.0, dtoa-short 0.3.5; used unmodified, so the MPL file-level duty to publish changes does not arise), 18 Unicode-3.0 (icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data, icu_properties, icu_properties_data, icu_provider, litemap, potential_utf, tinystr, writeable, yoke, yoke-derive, zerofrom, zerofrom-derive, zerotrie, zerovec, zerovec-derive), 1 (MIT OR Apache-2.0) AND Unicode-3.0 (unicode-ident), 1 Apache-2.0 WITH LLVM-exception (target-lexicon, build time only, through pyo3-build-config). Proc-macro and build crates (syn, quote, the `*-derive` crates, ouroboros_macro) run at build time only, though their licenses are listed above anyway. The wheel's Python metadata says only MIT, so `scripts/license-scan.sh` cannot see the bundled crates; the register row carries them.
 

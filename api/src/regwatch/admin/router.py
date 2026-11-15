@@ -1,18 +1,19 @@
 """Settings, feature flags, branding, legal page and audit routes; mounted under /api/v1.
 
-Implemented in #32; the rendered ``/legal`` page in BL-68. The logo upload answers 501 until its
-SVG check lands (BL-68).
+Implemented in #32; the rendered ``/legal`` page, the logo upload and the public logo route
+(CP-07) in BL-68.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, NoReturn
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
+from starlette.datastructures import UploadFile
 
-from regwatch.admin import services
+from regwatch.admin import logo, services
 from regwatch.admin.schemas import (
     AuditEntry,
     Branding,
@@ -25,7 +26,8 @@ from regwatch.admin.schemas import (
     SettingWrite,
 )
 from regwatch.core.db import DbSession
-from regwatch.core.routing import Paging, Tags, not_implemented, raw_body, spec
+from regwatch.core.errors import ProblemError
+from regwatch.core.routing import Paging, Tags, raw_body, spec
 from regwatch.core.schemas import Page
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
@@ -46,6 +48,35 @@ LOGO_BODY = raw_body(
 )  # fmt: skip
 async def get_branding(db: DbSession) -> Branding:
     return await services.branding(db)
+
+
+_LOGO_HEADERS = {
+    # Even opened directly instead of through <img>, the file cannot run or load anything.
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": 'inline; filename="logo"',
+    "Cache-Control": "public, max-age=300",
+}
+_LOGO_SPEC = spec(desc="The current logo", public=True, errors=(404,), stub=False)
+_LOGO_SPEC["responses"][200] = {
+    "description": "The current logo",
+    "content": {
+        t: {"schema": {"type": "string", "format": "binary"}} for t in (logo.PNG, logo.SVG)
+    },
+}
+
+
+@router.get("/branding/logo", tags=SYSTEM, **_LOGO_SPEC)
+async def get_logo(request: Request, db: DbSession) -> Response:
+    found = await services.logo_file(db)
+    if found is None:
+        raise services.not_found("logo")
+    data, media_type, sha = found
+    etag = f'"{sha}"'
+    headers = {**_LOGO_HEADERS, "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(data, media_type=media_type, headers=headers)
 
 
 @router.get("/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page", stub=False))
@@ -108,10 +139,18 @@ async def put_branding(
 @router.post(
     "/admin/branding/logo", tags=ADMIN,
     **spec(Branding, desc="Stored (PNG or sanitized SVG, 1 MB cap)", perm=SETTINGS,
-           errors=(415,), body=LOGO_BODY),
+           errors=(415,), body=LOGO_BODY, stub=False),
 )  # fmt: skip
-async def upload_logo() -> NoReturn:
-    not_implemented()
+async def upload_logo(request: Request, principal: CurrentPrincipal, db: DbSession) -> Branding:
+    # One file part and nothing else; the whole body is capped at 2 MB before this runs.
+    async with request.form(max_files=1, max_fields=1) as form:
+        upload = form.get("file")
+        if not isinstance(upload, UploadFile):
+            raise ProblemError(
+                415, "unsupported-media-type", "Send the logo as a file part named file."
+            )
+        data = await upload.read(logo.MAX_BYTES + 1)
+    return await services.upload_logo(db, data, principal.user.id, client_ip(request))
 
 
 @router.put(

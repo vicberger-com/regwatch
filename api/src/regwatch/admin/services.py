@@ -10,7 +10,9 @@ is visible to every API worker at once (M1 "within one reload").
 
 from __future__ import annotations
 
+import hashlib
 import math
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -19,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.admin import logo
 from regwatch.admin.legal import render as render_legal
 from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.admin.schemas import (
@@ -30,7 +33,7 @@ from regwatch.admin.schemas import (
 )
 from regwatch.admin.schemas import FeatureFlag as FeatureFlagOut
 from regwatch.admin.schemas import Setting as SettingOut
-from regwatch.core import registry
+from regwatch.core import objectstore, registry
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.models import AuditLog
 from regwatch.core.registry import SettingDef
@@ -230,8 +233,10 @@ async def branding(db: AsyncSession) -> Branding:
     current = await values(db, keys)
     out = Branding(**{field: current[key] for field, key in BRANDING_KEYS.items()})
     out.primary_color = current["branding.primary_color"] or None
-    # Logo upload and serving land with the sanitizer (BL-68); until then no logo URL.
-    out.logo_url = None
+    # The key holds the content hash, so a new upload gives a new URL (CP-07).
+    ref = current["branding.logo_ref"]
+    match = LOGO_KEY.fullmatch(ref) if ref else None
+    out.logo_url = f"/api/v1/branding/logo?v={match['sha'][:12]}" if match else None
     out.required_markings = current["legal.required_markings"]
     return out
 
@@ -248,6 +253,34 @@ async def put_branding(
                      action="branding.update")  # fmt: skip
     await db.commit()
     return await branding(db)
+
+
+LOGO_KEY = re.compile(r"branding/logo-(?P<sha>[0-9a-f]{64})\.(?P<ext>png|svg)")
+LOGO_TYPES = {"png": logo.PNG, "svg": logo.SVG}
+
+
+async def upload_logo(db: AsyncSession, data: bytes, actor: uuid.UUID, ip: str | None) -> Branding:
+    """Check, store and select a new logo (BL-68). Old logo files stay for the audit trail."""
+    try:
+        media_type = logo.check(data)
+    except logo.LogoRejectedError as exc:
+        raise ProblemError(415, "unsupported-media-type", str(exc)) from None
+    ext = "png" if media_type == logo.PNG else "svg"
+    key = f"branding/logo-{hashlib.sha256(data).hexdigest()}.{ext}"
+    await objectstore.put(key, data)
+    await _write(db, "branding.logo_ref", key, actor, ip, action="branding.logo")
+    await db.commit()
+    return await branding(db)
+
+
+async def logo_file(db: AsyncSession) -> tuple[bytes, str, str] | None:
+    """The current logo's bytes, media type and content hash, or None (CP-07)."""
+    ref = (await values(db, ["branding.logo_ref"]))["branding.logo_ref"]
+    match = LOGO_KEY.fullmatch(ref) if ref else None
+    if match is None:
+        return None
+    data = await objectstore.get(ref)
+    return (data, LOGO_TYPES[match["ext"]], match["sha"]) if data is not None else None
 
 
 async def legal(db: AsyncSession) -> Legal:

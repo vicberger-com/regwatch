@@ -65,6 +65,12 @@ paths:
     get:
       tags: [system]
       responses: { "200": { description: Branding for authenticated users, content: { application/json: { schema: { $ref: "#/components/schemas/Branding" } } } } }
+  /branding/logo:
+    get:
+      tags: [system]
+      security: []
+      description: The current logo, public so the sign-in page can show it (CP-07). Served with a sandboxing CSP and nosniff; 404 when no logo is uploaded.
+      responses: { "200": { description: The current logo, content: { image/png: { schema: { type: string, format: binary } }, image/svg+xml: { schema: { type: string, format: binary } } } }, "404": { $ref: "#/components/responses/Problem" } }
   /legal:
     get:
       tags: [system]

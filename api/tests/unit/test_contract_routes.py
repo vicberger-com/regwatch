@@ -43,9 +43,9 @@ def _routed(app: FastAPI) -> dict[tuple[str, str], APIRoute]:
     return pairs
 
 
-def test_contract_has_68_paths_and_91_operations() -> None:
-    assert len(CONTRACT["paths"]) == 68
-    assert len(operations(CONTRACT)) == 91
+def test_contract_has_69_paths_and_92_operations() -> None:
+    assert len(CONTRACT["paths"]) == 69  # CP-07 added GET /branding/logo
+    assert len(operations(CONTRACT)) == 92
 
 
 def test_every_contract_operation_is_routed(app: FastAPI) -> None:
@@ -78,8 +78,7 @@ def _mutate(doc: dict[str, Any]) -> dict[str, Any]:
     users[PERMISSION_KEY] = "users.read"
     next(p for p in users["parameters"] if p["name"] == "page")["schema"]["minimum"] = 0
     doc["components"]["schemas"]["User"]["properties"]["email"]["format"] = "uri"
-    logo = doc["paths"]["/admin/branding/logo"]["post"]
-    logo["responses"]["501"]["content"] = {"application/json": {}}
+    doc["paths"]["/sources"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
     return doc
 
 
@@ -90,7 +89,7 @@ def test_semantic_diff_reports_drift(app: FastAPI) -> None:
     assert "GET /admin/users.x-permission" in joined
     assert "GET /admin/users.parameters.query:page.schema.minimum" in joined
     assert "properties.email.format" in joined
-    assert "POST /admin/branding/logo: 501 is not problem details" in joined
+    assert "GET /sources: 501 is not problem details" in joined
 
 
 def test_document_shape(app: FastAPI) -> None:
@@ -119,7 +118,7 @@ async def test_stubs_answer_501_problem(app: FastAPI) -> None:
         resp = await client.get(f"{API_PREFIX}/sources")
         assert resp.status_code == 501
         assert resp.headers["content-type"] == "application/problem+json"
-        resp = await client.post(f"{API_PREFIX}/admin/branding/logo", content=b"x")
+        resp = await client.get(f"{API_PREFIX}/admin/printers")
         assert resp.status_code == 501
         # A raw (non-JSON) body reaches its handler: the YAML import, implemented in M2,
         # rejects a malformed document before touching the database.
