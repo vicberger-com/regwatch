@@ -126,7 +126,9 @@ const jurisdictionsRoute = createRoute({
   component: function Jurisdictions() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
-    return <JurisdictionsPage />;
+    return (
+      <JurisdictionsPage canManage={hasPermission(me, "taxonomy.manage")} />
+    );
   },
 });
 
