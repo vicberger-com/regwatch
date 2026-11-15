@@ -269,13 +269,11 @@ describe("re-verification follow-ups", () => {
         <RouterProvider router={router} />
       </QueryClientProvider>,
     );
-    await userEvent
-      .setup()
-      .click(
-        await screen.findByRole("button", {
-          name: "Reset password for vic@example.org",
-        }),
-      );
+    await userEvent.setup().click(
+      await screen.findByRole("button", {
+        name: "Reset password for vic@example.org",
+      }),
+    );
     expect(await screen.findByRole("status")).toHaveTextContent("MEM-SECRET-9");
     const kept = JSON.stringify(
       queryClient

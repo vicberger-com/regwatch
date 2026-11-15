@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-router";
 
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
+import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
@@ -115,6 +116,16 @@ const taxonomyRoute = createRoute({
   },
 });
 
+const rolesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/roles",
+  component: function Roles() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "roles.manage")) return <NotPermitted />;
+    return <RolesPage />;
+  },
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   authedRoute.addChildren([
@@ -122,6 +133,7 @@ export const routeTree = rootRoute.addChildren([
     changePasswordRoute,
     usersRoute,
     taxonomyRoute,
+    rolesRoute,
   ]),
 ]);
 

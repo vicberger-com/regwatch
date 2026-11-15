@@ -31,6 +31,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- M1 web roles screen `/admin/roles` for `roles.manage` holders: role list; create and edit with a permission matrix grouped by module (the admin role shown locked); delete custom roles after confirmation; the API's reason shown on refusal, such as granting a permission one does not hold (#32, REQ-16, REQ-18)
 - Optional `REGWATCH_DEV_PUBLIC_HOST` (development only, read by the Vite dev server through Compose) for opening the dev stack through an owner-only HTTPS proxy such as a DevSpaces URL: the dev server accepts that host and runs live reload over `wss:443`; `deploy/README.md` explains setting it with `REGWATCH_BASE_URL`; published ports stay on 127.0.0.1 (REQ-26)
 - M2 web taxonomy editing for `taxonomy.manage` holders: a create-facet form with the view-selector option, and an add-term form with a parent picker and comma-separated synonyms; the API's reason is shown on refusal (M2 acceptance 1 from the UI) (REQ-03, REQ-11)
 - M2 web taxonomy screen `/admin/taxonomy`: facet list with system and hidden markers, the selected facet's details and nested term tree with synonyms, for `taxonomy.read` holders; not permitted otherwise; a "Taxonomy" header link (REQ-03, REQ-11, REQ-18)

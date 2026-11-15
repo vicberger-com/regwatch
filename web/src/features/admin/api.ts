@@ -85,3 +85,48 @@ export function useResetPassword() {
     return result.data.temporary_password ?? "";
   });
 }
+
+export type Permission = Schemas["Permission"];
+
+export const permissionsQuery = queryOptions({
+  queryKey: ["admin", "permissions"],
+  queryFn: async (): Promise<Permission[]> => {
+    const result = await api.GET("/admin/permissions");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+});
+
+function useRoleMutation<T, R>(call: (input: T) => Promise<R>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: call,
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: rolesQuery.queryKey }),
+  });
+}
+
+export function useSaveRole() {
+  return useRoleMutation(
+    async (input: { id?: string; body: Schemas["RoleWrite"] }) => {
+      const result = input.id
+        ? await api.PATCH("/admin/roles/{id}", {
+            params: { path: { id: input.id } },
+            body: input.body,
+          })
+        : await api.POST("/admin/roles", { body: input.body });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+  );
+}
+
+export function useDeleteRole() {
+  return useRoleMutation(async (id: string) => {
+    const result = await api.DELETE("/admin/roles/{id}", {
+      params: { path: { id } },
+    });
+    if (!result.response.ok) throw failure(result);
+  });
+}
