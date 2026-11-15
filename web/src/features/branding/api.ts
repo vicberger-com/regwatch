@@ -1,4 +1,4 @@
-/** Branding and logo (#32, BL-68). */
+/** Branding, logo and legal page (#32, BL-68). */
 import {
   queryOptions,
   useMutation,
@@ -25,11 +25,24 @@ export const brandingQuery = queryOptions({
   staleTime: 5 * 60_000,
 });
 
+export const legalQuery = queryOptions({
+  queryKey: ["branding", "legal"],
+  queryFn: async () => {
+    const result = await api.GET("/legal");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+});
+
 function useBrandingMutation<T, R>(call: (input: T) => Promise<R>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: call,
-    onSuccess: () => client.invalidateQueries({ queryKey: ["branding"] }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: ["branding"] }),
+        client.invalidateQueries({ queryKey: ["admin", "settings"] }),
+      ]),
   });
 }
 
@@ -52,4 +65,13 @@ export function useUploadLogo() {
     if (!result.response.ok || result.data === undefined) throw failure(result);
     return result.data;
   });
+}
+
+export function useSaveLegal() {
+  return useBrandingMutation(
+    async (body: { page_markdown: string; required_markings: string }) => {
+      const result = await api.PUT("/admin/legal", { body });
+      if (!result.response.ok) throw failure(result);
+    },
+  );
 }

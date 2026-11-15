@@ -15,9 +15,18 @@ const BRANDING = {
   logo_url: null,
   required_markings: "INTERNAL",
 };
+const SETTINGS = [
+  { key: "legal.page_markdown", type: "string", value: "# Legal\n\nKeep me." },
+  { key: "legal.required_markings", type: "string", value: "INTERNAL" },
+];
 const BASE = {
   "GET /auth/me": [200, ME],
   "GET /branding": [200, BRANDING],
+  "GET /legal": [
+    200,
+    { html: "<h1>Legal</h1><p>Keep me.</p>", required_markings: "INTERNAL" },
+  ],
+  "GET /admin/settings": [200, SETTINGS],
 } satisfies Routes;
 
 afterEach(() => {
@@ -123,6 +132,29 @@ describe("branding screen", () => {
     expect(
       await screen.findByRole("img", { name: "Current logo" }),
     ).toHaveAttribute("src", "/api/v1/branding/logo?v=abc");
+  });
+
+  it("edits the stored legal Markdown and previews the sanitized page", async () => {
+    const api = fakeApi({ ...BASE, "PUT /admin/legal": [204, undefined] });
+    renderAt("/admin/branding");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Legal page" });
+    const source = within(form).getByLabelText(/Page text in Markdown/);
+    expect(source).toHaveValue("# Legal\n\nKeep me.");
+    expect(
+      within(form).getByRole("heading", { name: "Legal" }),
+    ).toBeInTheDocument();
+    const save = within(form).getByRole("button", { name: "Save legal page" });
+    expect(save).toBeDisabled();
+    await user.type(source, " More.");
+    await user.click(save);
+    expect(
+      await within(form).findByText("Legal page saved."),
+    ).toBeInTheDocument();
+    expect(api.calls.find((c) => c.key === "PUT /admin/legal")?.body).toEqual({
+      page_markdown: "# Legal\n\nKeep me. More.",
+      required_markings: "INTERNAL",
+    });
   });
 
   it("reports a failed load", async () => {
