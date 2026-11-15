@@ -22,6 +22,7 @@ import { JurisdictionsPage } from "@/features/jurisdictions/JurisdictionsPage";
 import { FlagsPage } from "@/features/settings/FlagsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { BrandingPage } from "@/features/branding/BrandingPage";
+import { LegalPage } from "@/features/branding/LegalPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
@@ -163,6 +164,12 @@ const settingsRoute = createRoute({
   },
 });
 
+const legalRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/legal",
+  component: LegalPage,
+});
+
 const brandingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/branding",
@@ -195,6 +202,7 @@ export const routeTree = rootRoute.addChildren([
     jurisdictionsRoute,
     settingsRoute,
     brandingRoute,
+    legalRoute,
     auditRoute,
   ]),
 ]);

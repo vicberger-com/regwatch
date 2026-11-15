@@ -7,9 +7,10 @@ import {
 
 import { hasPermission, useLogout } from "@/lib/auth/session";
 
+import { BrandMark, Footer } from "./BrandingShell";
 import { ThemeSwitch } from "./ThemeSwitch";
 
-/** The signed-in frame: skip link, header with user and sign-out, and the routed page. */
+/** The signed-in frame: skip link, header with brand, user and sign-out, the page and footer. */
 export function AppShell() {
   const { me } = useRouteContext({ from: "/authed" });
   const logout = useLogout();
@@ -25,9 +26,7 @@ export function AppShell() {
       </a>
       <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-4 py-2">
         <nav aria-label="Main" className="flex items-center gap-4">
-          <Link to="/" className="text-lg font-semibold">
-            regwatch
-          </Link>
+          <BrandMark />
           {hasPermission(me, "users.manage") && (
             <Link to="/admin/users">Users</Link>
           )}
@@ -84,6 +83,7 @@ export function AppShell() {
       <main id="main" className="flex-1 p-6">
         <Outlet />
       </main>
+      <Footer />
     </div>
   );
 }

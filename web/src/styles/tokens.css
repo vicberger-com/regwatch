@@ -11,7 +11,9 @@
   --border: #d9dee5;
   --text: #1b2430;
   --text-muted: #5b6675;
-  --accent: #1f5aa6; /* replaceable by branding.primary_color (M1) */
+  /* branding.primary_color replaces the light accent through --brand-accent (M1, BL-68); the
+     dark and high-contrast themes keep their own, tested accents. */
+  --accent: var(--brand-accent, #1f5aa6);
   --accent-contrast: #ffffff;
   --good: #1e7f4f;
   --warning: #b7791f;

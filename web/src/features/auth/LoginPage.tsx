@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
+import { API_BASE_URL } from "@/lib/api/client";
 import { ApiProblem, loginErrorMessage, useLogin } from "@/lib/auth/session";
 
 /** `/login` (screens.md): email, password, sign-in button and an error live region. */
@@ -34,6 +35,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
 
   return (
     <div className="mx-auto mt-16 max-w-sm rounded border border-border bg-surface p-6">
+      <LoginLogo />
       <h1 className="text-xl font-semibold">Sign in</h1>
       <form className="mt-4 flex flex-col gap-3" onSubmit={submit} noValidate>
         <label className="flex flex-col gap-1">
@@ -81,4 +83,20 @@ export function LoginPage({ next }: { next?: string | undefined }) {
 export function safeNext(next: string | undefined): string {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
   return next;
+}
+
+/** The branding logo before sign-in (CP-07: the logo route is public); hidden when none. */
+function LoginLogo() {
+  const [shown, setShown] = useState(true);
+  if (!shown) return null;
+  return (
+    <img
+      src={`${API_BASE_URL}/branding/logo`}
+      alt=""
+      className="mb-4 h-12 w-auto"
+      onError={() => {
+        setShown(false);
+      }}
+    />
+  );
 }
