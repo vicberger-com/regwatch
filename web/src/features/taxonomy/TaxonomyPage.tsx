@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 
 import { problemText } from "@/lib/auth/session";
 
+import { TaxonomyTransfer } from "./TaxonomyTransfer";
 import {
   facetsQuery,
   flatten,
@@ -35,6 +36,7 @@ export function TaxonomyPage({ canManage }: { canManage: boolean }) {
       <h1 id="taxonomy-heading" className="text-2xl font-semibold">
         Taxonomy
       </h1>
+      <TaxonomyTransfer canManage={canManage} />
       <div className="flex flex-wrap gap-6">
         <nav aria-label="Facets" className="min-w-48">
           <ul className="flex flex-col gap-1">

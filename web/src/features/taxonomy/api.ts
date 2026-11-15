@@ -65,3 +65,25 @@ export function flatten(terms: Term[]): { term: Term; depth: number }[] {
   }
   return out;
 }
+
+/** The size the API accepts for one request body (BodySizeLimitMiddleware). */
+export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+
+export function useImportTaxonomy() {
+  return useTaxonomyMutation(async (document: string) => {
+    const result = await api.POST("/taxonomy/import", {
+      body: document,
+      bodySerializer: (body) => body,
+      headers: { "Content-Type": "application/yaml" },
+    });
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  });
+}
+
+/** The whole taxonomy as a YAML file the browser saves. */
+export async function exportTaxonomy(): Promise<Blob> {
+  const result = await api.GET("/taxonomy/export", { parseAs: "blob" });
+  if (!result.response.ok || result.data === undefined) throw failure(result);
+  return result.data;
+}

@@ -1,0 +1,89 @@
+import { useMutation } from "@tanstack/react-query";
+import { useState, type ChangeEvent } from "react";
+
+import { problemText } from "@/lib/auth/session";
+
+import { exportTaxonomy, MAX_IMPORT_BYTES, useImportTaxonomy } from "./api";
+
+const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
+
+function save(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Export for every reader; import (a YAML file, merged by key) for managers. */
+export function TaxonomyTransfer({ canManage }: { canManage: boolean }) {
+  const download = useMutation({
+    mutationFn: exportTaxonomy,
+    onSuccess: (blob) => {
+      save(blob, "regwatch-taxonomy.yaml");
+    },
+  });
+  const upload = useImportTaxonomy();
+  const [tooBig, setTooBig] = useState(false);
+
+  async function choose(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    upload.reset();
+    setTooBig(file.size > MAX_IMPORT_BYTES);
+    if (file.size > MAX_IMPORT_BYTES) return;
+    if (
+      !window.confirm(
+        `Import ${file.name}? Facets and terms with matching keys are updated; others are added.`,
+      )
+    )
+      return;
+    upload.mutate(await file.text());
+  }
+
+  const summary = upload.data;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        className={button}
+        disabled={download.isPending}
+        onClick={() => {
+          download.mutate();
+        }}
+      >
+        Export YAML
+      </button>
+      {canManage && (
+        <label className={`${button} cursor-pointer`}>
+          Import YAML
+          <input
+            type="file"
+            accept=".yaml,.yml,application/yaml"
+            className="sr-only"
+            disabled={upload.isPending}
+            onChange={(e) => {
+              void choose(e);
+            }}
+          />
+        </label>
+      )}
+      <p role="status">
+        {summary &&
+          `Imported: ${String(summary.facets_created ?? 0)} facets added, ${String(summary.facets_updated ?? 0)} updated; ${String(summary.terms_created ?? 0)} terms added, ${String(summary.terms_updated ?? 0)} updated.`}
+      </p>
+      {(tooBig || upload.isError || download.isError) && (
+        <p role="alert" className="w-full text-critical">
+          {tooBig
+            ? "The file is larger than 2 MB, the most one import accepts."
+            : upload.isError
+              ? problemText(upload.error, "The import failed.")
+              : problemText(download.error, "The export failed.")}
+        </p>
+      )}
+    </div>
+  );
+}

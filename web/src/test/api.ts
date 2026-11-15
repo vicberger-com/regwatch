@@ -12,7 +12,8 @@ export function fakeApi(routes: Routes) {
     const url = new URL(request.url);
     const key = `${request.method} ${url.pathname.replace("/api/v1", "")}`;
     const text = await request.text();
-    const body: unknown = text ? JSON.parse(text) : undefined;
+    const json = request.headers.get("Content-Type")?.includes("json") ?? false;
+    const body: unknown = text && json ? JSON.parse(text) : text || undefined;
     calls.push({ key, body, origin: request.headers.get("origin") });
     const route = routes[key];
     if (route === undefined) throw new Error(`unexpected request ${key}`);
