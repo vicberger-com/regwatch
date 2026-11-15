@@ -18,6 +18,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "google-re2>=1.1,<2",
     "markdown-it-py>=4.3,<5",  # BL-68, register 3.6
+    "defusedxml>=0.7.1,<0.8",  # BL-68, register 3.6: SVG logo parsing
     "nh3>=0.3.7,<0.4",  # BL-68, register 3.6; bundled crates in R-01 B1 to B3
 ]
 
@@ -74,6 +75,11 @@ strict = true
 # google-re2 ships no type information (M2, BL-74).
 [[tool.mypy.overrides]]
 module = ["re2"]
+ignore_missing_imports = true
+
+# defusedxml ships no type information (BL-68); its stubs would be one more dependency.
+[[tool.mypy.overrides]]
+module = ["defusedxml", "defusedxml.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
