@@ -5,10 +5,15 @@ from the content, not from what the client declared.
 
 SVG: parsed with defusedxml (no DTD, entities or external references), then every element must
 be in the SVG namespace and on ``ELEMENTS``, and every attribute on ``ATTRIBUTES``. That leaves out
-``script``, ``foreignObject``, ``style``, animation and every ``on*`` handler. A ``href`` may only
-point inside the document (``#id``), and ``url(...)`` in a value may only be ``url(#id)``. The
-logo is shown only through ``<img>`` (where scripts never run) and served with its own strict CSP,
-so this check is the second of two layers.
+``script``, ``foreignObject``, ``style`` (element and attribute), animation and every ``on*``
+handler. A ``href`` may only point inside the document (``#id``). Attribute values may not hold
+CSS escapes (backslashes), comments (``/*``) or at-rules (``@``), and a ``(`` is allowed only as
+``url(#id)``, a colour function (``rgb``, ``rgba``, ``hsl``, ``hsla``) with numeric arguments,
+or, in transform attributes, an SVG transform function with numbers (BL-68 review finding 2).
+A ``<use>`` may not point at an element that holds a ``<use>`` itself, so references cannot
+multiply into billions of drawn copies (review finding 3). The logo is shown only through
+``<img>`` (where scripts never run) and served with its own strict CSP, so this check is the
+second of two layers.
 """
 
 from __future__ import annotations
@@ -48,11 +53,17 @@ ATTRIBUTES = frozenset({
     "gradientUnits", "gradientTransform", "spreadMethod", "patternUnits",
     "patternContentUnits", "patternTransform", "clipPathUnits", "maskUnits", "maskContentUnits",
     "font-family", "font-size", "font-weight", "font-style", "text-anchor",
-    "dominant-baseline", "letter-spacing", "style", "href", _XLINK_HREF, _XML_SPACE,
+    "dominant-baseline", "letter-spacing", "href", _XLINK_HREF, _XML_SPACE,
 })  # fmt: skip
-_URL = re.compile(r"url\s*\(", re.IGNORECASE)
-_LOCAL_URL = re.compile(r"url\s*\(\s*['\"]?#", re.IGNORECASE)
-_STYLE_DENY = re.compile(r"@import|expression\s*\(|javascript:|behavio(u)?r\s*:|-moz-binding", re.I)
+_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?%?"
+_ARGS = rf"\(\s*{_NUMBER}(?:\s*[,\s]\s*{_NUMBER})*\s*\)"
+# The only parenthesised forms a value may contain; anything else with "(" is refused.
+_LOCAL_URL = re.compile(r"url\(\s*(['\"]?)#[A-Za-z_][\w.-]*\1\s*\)")
+_FRAGMENT = re.compile(r"#[A-Za-z_][\w.-]*")
+_COLOUR_FN = re.compile(rf"(?:rgba?|hsla?){_ARGS}")
+_TRANSFORM_FN = re.compile(rf"(?:matrix|translate|scale|rotate|skewX|skewY){_ARGS}")
+_TRANSFORM_ATTRS = frozenset({"transform", "gradientTransform", "patternTransform"})
+_FORBIDDEN = ("\\", "/*", "@")
 
 
 class LogoRejectedError(ValueError):
@@ -103,6 +114,24 @@ def _check_svg(data: bytes) -> None:
         if count > MAX_ELEMENTS:
             raise LogoRejectedError(f"An SVG logo has at most {MAX_ELEMENTS} elements.")
         _check_element(element)
+    _check_use_chains(root)
+
+
+def _check_use_chains(root: Element) -> None:
+    use = f"{_SVG_NS}use"
+    parent = {child: el for el in root.iter() for child in el}
+    # Mark every <use> and its ancestors, stopping at the first one already marked: linear.
+    holds_use: set[Element] = set()
+    for el in root.iter(use):
+        node: Element | None = el
+        while node is not None and node not in holds_use:
+            holds_use.add(node)
+            node = parent.get(node)
+    marked_ids = {el.get("id") for el in holds_use if el.get("id")}
+    for el in root.iter(use):
+        target = (el.get("href") or el.get(_XLINK_HREF) or "").strip()[1:]
+        if target in marked_ids:
+            raise LogoRejectedError("A <use> in an SVG logo may not point at another <use>.")
 
 
 def _check_element(element: Element) -> None:
@@ -116,9 +145,17 @@ def _check_element(element: Element) -> None:
             raise LogoRejectedError(
                 f"SVG logos may not use the {attr.rsplit('}', 1)[-1]} attribute."
             )
-        if attr in ("href", _XLINK_HREF) and not value.strip().startswith("#"):
+        if attr in ("href", _XLINK_HREF) and not _FRAGMENT.fullmatch(value.strip()):
             raise LogoRejectedError("Links in an SVG logo may only point inside the file.")
-        if _URL.search(value) and len(_URL.findall(value)) != len(_LOCAL_URL.findall(value)):
-            raise LogoRejectedError("An SVG logo may not load anything from elsewhere.")
-        if attr == "style" and _STYLE_DENY.search(value):
-            raise LogoRejectedError("The style in this SVG logo is not allowed.")
+        _check_value(attr, value)
+
+
+def _check_value(attr: str, value: str) -> None:
+    if any(mark in value for mark in _FORBIDDEN):
+        raise LogoRejectedError("An SVG logo may not use CSS escapes, comments or @ rules.")
+    rest = _LOCAL_URL.sub("", value)
+    rest = _COLOUR_FN.sub("", rest)
+    if attr in _TRANSFORM_ATTRS:
+        rest = _TRANSFORM_FN.sub("", rest)
+    if "(" in rest or ")" in rest:
+        raise LogoRejectedError("An SVG logo may not load anything from elsewhere.")

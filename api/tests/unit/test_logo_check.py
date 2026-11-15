@@ -45,7 +45,8 @@ def test_a_plain_svg_with_local_references_is_accepted() -> None:
     body = (
         '<defs><linearGradient id="g"><stop offset="0" stop-color="#123"/></linearGradient>'
         '<symbol id="s"><circle r="2"/></symbol></defs>'
-        '<rect width="10" height="10" fill="url(#g)" style="fill:url(\'#g\')"/>'
+        '<rect width="10" height="10" fill="url(#g)" stroke="rgb(10, 20, 30)"/>'
+        '<g transform="translate(1 2) rotate(45) scale(.5)"><path d="M0 0L1 1"/></g>'
         '<use href="#s"/><use xlink:href="#s"/><title>Logo</title><text x="1">Acme</text>'
     )
     assert check(b"\xef\xbb\xbf<?xml version='1.0'?>\n" + svg(body)) == SVG
@@ -112,3 +113,37 @@ def test_size_and_element_count_are_bounded() -> None:
         check(png() + b"\x00" * MAX_BYTES)
     with pytest.raises(LogoRejectedError, match=str(MAX_ELEMENTS)):
         check(svg("<g/>" * MAX_ELEMENTS))
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        svg('<rect fill="\\75 rl(https://e.example/x)"/>'),
+        svg('<rect fill="u\\rl(https://e.example/x)"/>'),
+        svg("<rect mask=\"image-set('https://e.example/x.png' 1x)\"/>"),
+        svg('<rect fill="url( https://e.example/x )"/>'),
+        svg("<rect fill=\"url('#ok') url(//e.example/x)\"/>"),
+        svg('<rect fill="red /* comment */"/>'),
+        svg('<rect fill="@import"/>'),
+        svg('<rect fill="rgb(var(--x))"/>'),
+        svg('<rect transform="translate(url(#a))"/>'),
+        svg('<rect fill="translate(1)"/>'),
+        svg('<rect style="fill:red"/>'),
+    ],
+)
+def test_css_tricks_in_values_are_refused(data: bytes) -> None:
+    """BL-68 review finding 2: only url(#id), colour and transform functions may use "("."""
+    with pytest.raises(LogoRejectedError):
+        check(data)
+
+
+def test_use_chains_are_refused_but_single_references_pass() -> None:
+    """BL-68 review finding 3: references to a <use> would multiply the drawn copies."""
+    single = '<defs><circle id="c" r="1"/></defs>' + '<use href="#c"/>' * 50
+    assert check(svg(single)) == SVG
+    chain = '<defs><circle id="a0" r="1"/><g id="a1"><use href="#a0"/><use href="#a0"/></g></defs>'
+    with pytest.raises(LogoRejectedError, match="another <use>"):
+        check(svg(chain + '<use href="#a1"/>'))
+    direct = '<defs><circle id="c" r="1"/><use id="u" href="#c"/></defs><use xlink:href="#u"/>'
+    with pytest.raises(LogoRejectedError, match="another <use>"):
+        check(svg(direct))

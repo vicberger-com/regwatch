@@ -10,6 +10,7 @@ is visible to every API worker at once (M1 "within one reload").
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
@@ -21,8 +22,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.admin import legal as legal_page
 from regwatch.admin import logo
-from regwatch.admin.legal import render as render_legal
 from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.admin.schemas import (
     AuditEntry,
@@ -261,8 +262,8 @@ LOGO_TYPES = {"png": logo.PNG, "svg": logo.SVG}
 
 async def upload_logo(db: AsyncSession, data: bytes, actor: uuid.UUID, ip: str | None) -> Branding:
     """Check, store and select a new logo (BL-68). Old logo files stay for the audit trail."""
-    try:
-        media_type = logo.check(data)
+    try:  # parsing an SVG costs up to about 40 times its size, so not on the event loop
+        media_type = await asyncio.to_thread(logo.check, data)
     except logo.LogoRejectedError as exc:
         raise ProblemError(415, "unsupported-media-type", str(exc)) from None
     ext = "png" if media_type == logo.PNG else "svg"
@@ -286,7 +287,7 @@ async def logo_file(db: AsyncSession) -> tuple[bytes, str, str] | None:
 async def legal(db: AsyncSession) -> Legal:
     """The legal page as sanitized HTML, with the footer markings (BL-68)."""
     current = await values(db, list(LEGAL_KEYS.values()))
-    return Legal(html=render_legal(current["legal.page_markdown"]),
+    return Legal(html=await legal_page.render_async(current["legal.page_markdown"]),
                  required_markings=current["legal.required_markings"])  # fmt: skip
 
 
@@ -297,6 +298,11 @@ async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: st
             raise invalid(field, "must be a string", status=422)
         if has_control(value, allow_newlines=True):
             raise invalid(field, "must not contain control characters")
+        if field == "page_markdown":
+            try:  # rendered now, off the event loop, so GET /legal is served from the cache
+                await legal_page.render_async(value, budget=legal_page.SAVE_BUDGET)
+            except legal_page.LegalTooComplexError:
+                raise invalid(field, "takes too long to render; simplify the page") from None
         await _write(db, LEGAL_KEYS[field], value, actor, ip, action="legal.update")
     await db.commit()
 

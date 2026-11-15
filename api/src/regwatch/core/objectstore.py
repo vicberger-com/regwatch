@@ -31,7 +31,7 @@ def _path(key: str) -> Path:
         raise ObjectStoreError("the S3 object store is not implemented yet (BL-79)")
     root = Path(settings.object_store_path).resolve()
     path = (root / key).resolve()
-    if not path.is_relative_to(root):  # pragma: no cover - the key pattern already rules it out
+    if not path.is_relative_to(root):  # a symlink inside the store that points out of it
         raise ObjectStoreError(f"object key leaves the store: {key!r}")
     return path
 

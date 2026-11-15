@@ -58,3 +58,14 @@ async def test_failed_write_leaves_no_temporary_file(
     with pytest.raises(OSError, match="disk full"):
         await objectstore.put("branding/logo-x.png", b"data")
     assert list((store / "branding").iterdir()) == []
+
+
+async def test_a_symlink_out_of_the_store_is_refused(
+    store: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """BL-68 review finding 8: resolve() follows links, so the root check is the guard."""
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "secret.png").write_bytes(b"secret")
+    (store / "branding").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(objectstore.ObjectStoreError, match="leaves the store"):
+        await objectstore.get("branding/secret.png")

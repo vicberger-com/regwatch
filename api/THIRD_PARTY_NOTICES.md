@@ -2,6 +2,10 @@
 
 Notices that a license requires to accompany copies of the regwatch API. Shipped in the API image at `/app/THIRD_PARTY_NOTICES.md` (docs/08-security-compliance.md 8.6; ADR-0003 amendment 3).
 
+## MPL-2.0 source availability (cssparser, dtoa-short), bundled in nh3
+
+nh3 0.3.7 statically links cssparser 0.37.0 and dtoa-short 0.3.5, unmodified, under the Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/). As MPL-2.0 section 3.2(a) requires, their source code is available at https://crates.io/crates/cssparser/0.37.0 and https://crates.io/crates/dtoa-short/0.3.5 (repositories https://github.com/servo/rust-cssparser and https://github.com/upsuper/dtoa-short).
+
 ## ICU4X (Unicode-3.0), bundled in nh3
 
 nh3 0.3.7 statically links these ICU4X crates, version 2.3, through `url` and `idna`: icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data, icu_properties, icu_properties_data, icu_provider, litemap, potential_utf, tinystr, writeable, yoke, yoke-derive, zerofrom, zerofrom-derive, zerotrie, zerovec, zerovec-derive; unicode-ident 1.0 carries the same notice for its Unicode data. Source: https://github.com/unicode-org/icu4x, tag `icu@2.3.0`, commit `b1cec62bb76ddd8f1f7f52616997f0f243d5eb9e`, file `LICENSE`, reproduced unchanged below.

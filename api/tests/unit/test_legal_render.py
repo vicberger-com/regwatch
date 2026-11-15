@@ -66,3 +66,12 @@ def test_attributes_outside_the_allowlist_are_removed() -> None:
 
 def test_empty_page() -> None:
     assert render("") == ""
+
+
+async def test_render_runs_off_the_event_loop_and_enforces_a_budget() -> None:
+    """BL-68 review finding 4: a slow page is refused at save time, not served slowly."""
+    from regwatch.admin.legal import LegalTooComplexError, render_async
+
+    assert await render_async("# Fine") == "<h1>Fine</h1>\n"
+    with pytest.raises(LegalTooComplexError):
+        await render_async("![" * 30_000 + "x", budget=0.01)

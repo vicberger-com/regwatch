@@ -19,8 +19,8 @@ dependencies = [
     "google-re2>=1.1,<2",
     "markdown-it-py>=4.3,<5",  # BL-68, register 3.6
     "defusedxml>=0.7.1,<0.8",  # BL-68, register 3.6: SVG logo parsing
-    "nh3>=0.3.7,<0.4",
-    "python-multipart>=0.0.33,<0.1",  # BL-68, register 3.6: logo upload form parsing  # BL-68, register 3.6; bundled crates in R-01 B1 to B3
+    "nh3>=0.3.7,<0.4",  # BL-68, register 3.6; bundled crates in R-01 B1 to B3
+    "python-multipart>=0.0.33,<0.1",  # BL-68, register 3.6: logo upload form parsing
 ]
 
 [project.scripts]

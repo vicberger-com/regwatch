@@ -10,6 +10,7 @@ import pytest
 
 from regwatch.api.app import API_PREFIX, create_app
 from regwatch.core.settings import Settings, get_settings
+from tests.integration.test_admin import _as_new_user
 from tests.integration.test_auth import ADMIN_PW, ORIGIN, _login, clear_limits, db_url
 from tests.unit.test_logo_check import png, svg
 
@@ -99,3 +100,18 @@ async def test_upload_needs_a_file_part_and_settings_manage(client: httpx.AsyncC
     assert (await client.post(LOGO, data={"file": "not a file"})).status_code == 415
     two = [("file", ("a.png", png(), "image/png")), ("file", ("b.png", png(), "image/png"))]
     assert (await client.post(LOGO, files=two)).status_code >= 400
+
+
+async def test_upload_needs_the_permission_and_the_site_origin(client: httpx.AsyncClient) -> None:
+    """BL-68 review finding 8: a signed-in user without settings.manage, and a foreign Origin."""
+    await _admin(client)
+    viewer = await _as_new_user(client, "logo-viewer@example.org", ["viewer"])
+    try:
+        refused = await viewer.post(LOGO, files={"file": ("a.png", png(), "image/png")})
+        assert refused.status_code == 403
+    finally:
+        await viewer.aclose()
+    foreign = await client.post(LOGO, files={"file": ("a.png", png(), "image/png")},
+                                headers={"Origin": "https://evil.example"})  # fmt: skip
+    assert foreign.status_code == 403
+    assert (await client.get(PUBLIC)).status_code == 404  # nothing was stored

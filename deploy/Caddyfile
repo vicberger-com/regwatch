@@ -16,7 +16,9 @@
 		# Development CSP: Vite injects <style> for CSS imports and runs live reload over a
 		# websocket to its own origin, which connect-src 'self' covers in current browsers.
 		# Production drops 'unsafe-inline' (web review finding 5, re-verification N2, BL-76).
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		# "?" sets it only when the upstream sent none, so a route's own, stricter policy (the
+		# sandboxed logo, CP-07) is kept instead of replaced (BL-68 review finding 1).
+		?Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 	}
 	handle /api/* {
 		reverse_proxy api:8000
