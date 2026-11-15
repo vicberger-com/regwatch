@@ -8,7 +8,23 @@ import tailwindConfig from "./tailwind.config";
 
 // Optional: the host name of an HTTPS proxy in front of the stack, such as a DevSpaces URL
 // (deploy/README.md). The dev server then accepts that Host and runs live reload over it.
-const publicHost = process.env.REGWATCH_DEV_PUBLIC_HOST?.trim() || undefined;
+const publicHost = devPublicHost(process.env.REGWATCH_DEV_PUBLIC_HOST);
+
+/** One exact host name: a leading dot would make Vite accept every subdomain. */
+function devPublicHost(raw: string | undefined): string | undefined {
+  const host = raw?.trim().toLowerCase();
+  if (!host) return undefined;
+  if (
+    !/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
+      host,
+    )
+  ) {
+    throw new Error(
+      `REGWATCH_DEV_PUBLIC_HOST must be one host name, not ${JSON.stringify(raw)}`,
+    );
+  }
+  return host;
+}
 
 // React JSX is compiled by Vite's built-in esbuild ("jsx": "react-jsx" in tsconfig.app.json).
 export default defineConfig({

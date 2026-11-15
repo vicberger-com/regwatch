@@ -39,6 +39,7 @@ export function UsersPage({ selfId }: { selfId: string }) {
       </h1>
       <CreateUser
         roleKeys={(roles.data ?? []).map((r) => r.key)}
+        rolesUnavailable={roles.isError}
         onCreated={(email, password) => {
           setSecret({ email, password });
         }}
@@ -82,10 +83,14 @@ export function UsersPage({ selfId }: { selfId: string }) {
                 isSelf={u.id === selfId}
                 busy={update.isPending || reset.isPending}
                 onStatus={(status) => {
+                  const verb = status === "disabled" ? "Disable" : "Enable";
+                  if (!window.confirm(`${verb} ${u.email}?`)) return;
                   setSecret(null);
                   update.mutate({ id: u.id, body: { status } });
                 }}
                 onReset={() => {
+                  const ask = `Reset the password of ${u.email}? This ends all their sessions.`;
+                  if (!window.confirm(ask)) return;
                   setSecret(null);
                   reset.mutate(u.id, {
                     onSuccess: (password) => {
@@ -123,15 +128,17 @@ function Row(props: {
           : "never"}
       </td>
       <td className="flex gap-2 py-1">
-        <button
-          type="button"
-          className={button}
-          disabled={busy}
-          aria-label={`Reset password for ${user.email}`}
-          onClick={props.onReset}
-        >
-          Reset password
-        </button>
+        {!isSelf && (
+          <button
+            type="button"
+            className={button}
+            disabled={busy}
+            aria-label={`Reset password for ${user.email}`}
+            onClick={props.onReset}
+          >
+            Reset password
+          </button>
+        )}
         {!isSelf && (
           <button
             type="button"
@@ -152,6 +159,7 @@ function Row(props: {
 
 function CreateUser(props: {
   roleKeys: string[];
+  rolesUnavailable: boolean;
   onCreated: (email: string, password: string) => void;
 }) {
   const create = useCreateUser();
@@ -210,6 +218,12 @@ function CreateUser(props: {
       </div>
       <fieldset className="flex flex-wrap gap-3">
         <legend>Roles</legend>
+        {props.rolesUnavailable && (
+          <p className="text-text-muted">
+            The role list needs the roles.manage permission; users are created
+            without roles.
+          </p>
+        )}
         {props.roleKeys.map((key) => (
           <label key={key} className="flex items-center gap-1">
             <input

@@ -90,7 +90,24 @@ function FacetDetail({
   );
 }
 
-function TermTree({ terms, label }: { terms: Term[]; label?: string }) {
+// Deeper levels are not drawn, so a very deep hierarchy cannot freeze the page
+// (web review finding 9; BL-76 for a depth cap in the API).
+const MAX_DEPTH = 16;
+
+function TermTree({
+  terms,
+  label,
+  depth = 0,
+}: {
+  terms: Term[];
+  label?: string;
+  depth?: number;
+}) {
+  if (depth >= MAX_DEPTH) {
+    return (
+      <p className="ml-4 text-text-muted">Deeper terms are not shown here.</p>
+    );
+  }
   return (
     <ul aria-label={label} className="ml-4 list-disc">
       {terms.map((t) => (
@@ -103,7 +120,7 @@ function TermTree({ terms, label }: { terms: Term[]; label?: string }) {
             </span>
           )}
           {t.children && t.children.length > 0 && (
-            <TermTree terms={t.children} />
+            <TermTree terms={t.children} depth={depth + 1} />
           )}
         </li>
       ))}

@@ -24,6 +24,7 @@ function users(list: unknown[]) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("users screen", () => {
@@ -112,6 +113,7 @@ describe("users screen", () => {
         { ...VIEWER, status: "disabled" },
       ],
     });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderAt("/admin/users");
     const user = userEvent.setup();
     await user.click(
@@ -132,6 +134,10 @@ describe("users screen", () => {
       });
     });
     expect(screen.getByRole("status")).not.toHaveTextContent("reset-777"); // shown once
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("ends all their sessions"),
+    );
   });
 
   it("tells a user without users.manage that the page is not permitted", async () => {
@@ -143,5 +149,91 @@ describe("users screen", () => {
       "do not have permission",
     );
     expect(screen.queryByRole("link", { name: "Users" })).toBeNull();
+  });
+
+  it("does nothing when a confirmation is cancelled, and offers no reset on one's own row", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": [200, users([ADMIN, VIEWER])],
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderAt("/admin/users");
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Disable vic@example.org" }),
+    );
+    await user.click(
+      screen.getByRole("button", {
+        name: "Reset password for vic@example.org",
+      }),
+    );
+    expect(
+      api.calls.filter(
+        (c) => c.key.startsWith("PATCH") || c.key.includes("reset"),
+      ),
+    ).toEqual([]);
+    expect(
+      screen.queryByRole("button", {
+        name: `Reset password for ${ADMIN.email}`,
+      }),
+    ).toBeNull();
+  });
+
+  it("loads every page of users", async () => {
+    const many = Array.from({ length: 201 }, (_, i) => ({
+      ...VIEWER,
+      id: `u${String(i)}`,
+      email: `u${String(i)}@example.org`,
+    }));
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": () => [
+        200,
+        { items: many.slice(0, 200), total: 201, page: 1, page_size: 200 },
+      ],
+    });
+    const calls: string[] = [];
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) => {
+      const url = new URL(request.url);
+      calls.push(url.search);
+      if (
+        url.pathname.endsWith("/admin/users") &&
+        url.searchParams.get("page") === "2"
+      ) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: many.slice(200),
+              total: 201,
+              page: 2,
+              page_size: 200,
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }
+      return original(request);
+    });
+    renderAt("/admin/users");
+    expect(await screen.findByText("u200@example.org")).toBeInTheDocument();
+    expect(calls.some((q) => q.includes("page=2"))).toBe(true);
+  });
+});
+
+describe("create form without roles.manage", () => {
+  it("explains that roles cannot be listed", async () => {
+    fakeApi({
+      "GET /auth/me": [200, { ...ADMIN, permissions: ["users.manage"] }],
+      "GET /admin/users": [
+        200,
+        { items: [ADMIN], total: 1, page: 1, page_size: 200 },
+      ],
+      "GET /admin/roles": [403, problem(403)],
+    });
+    renderAt("/admin/users");
+    expect(
+      await screen.findByText(/needs the roles.manage permission/),
+    ).toBeInTheDocument();
   });
 });

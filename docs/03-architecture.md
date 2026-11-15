@@ -102,7 +102,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | typescript-eslint, eslint-plugin-react-hooks, eslint-plugin-jsx-a11y | lint rules (#27) | MIT | V `4ad6b75`, `d1727fb`, `7f3d698` | tooling | M0 |
 | DefinitelyTyped (`@types/react`, `@types/react-dom`, `@types/node`) | type declarations (#27) | MIT | V `8239b0b` (untagged HEAD, 2026-11-02) | tooling | M0 |
 | Node.js 22 (`node:22-slim` image) | runtime of the web development server only; not shipped (#27) | MIT, with bundled third-party notices | V `27f2131`, `14b1d12` (untagged HEAD, 2026-11-02) | tooling (base image) | M0 |
-| TanStack Query, Table, Router | data and routing | MIT | V `a6be1ce`, `95c4768`, `6b9fe6d` | dependency | M6 |
+| TanStack Query, Table, Router | data and routing; Query 5.107.1 and Router 1.170.46 ship from M1 and M2 (sign-in, admin screens) | MIT | V `a6be1ce`, `95c4768`, `6b9fe6d` | dependency | M1, M2, M6 |
+| TanStack runtime packages: @tanstack/query-core, router-core, history, store, react-store; seroval, seroval-plugins, cookie-es, isbot, use-sync-external-store | transitive runtime dependencies of TanStack Query and Router (web review finding 6) | MIT; isbot Unlicense | S, licence from each installed package.json (2026-11-15); repository LICENSE files to read at release (BL-52) | dependency (transitive) | M1, M2, M6 |
 | Tailwind CSS | styling | MIT | V `c2b24dd` | dependency | M6 |
 | shadcn/ui, Radix UI | accessible components | MIT | V `96da9cc`, `9aebdd4` | vendored (by design) | M6 |
 | MapLibre GL JS | map rendering | BSD-3 | V `538a768` | dependency | M6 |

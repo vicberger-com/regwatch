@@ -197,4 +197,23 @@ describe("taxonomy screen", () => {
       ["privacy", 1],
     ]);
   });
+
+  it("draws at most 16 levels and flattens deep trees without recursion", async () => {
+    let deep = term("t-last", "level-999", "Level 999");
+    for (let i = 998; i >= 0; i--)
+      deep = term(`t${String(i)}`, `level-${String(i)}`, `Level ${String(i)}`, [
+        deep,
+      ]);
+    fakeApi({
+      "GET /auth/me": [200, { ...ADMIN, permissions: ["taxonomy.read"] }],
+      "GET /taxonomy/facets": [200, [{ ...TOPIC, terms: [deep] }]],
+    });
+    renderAt("/admin/taxonomy");
+    expect(
+      await screen.findByText("Deeper terms are not shown here."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Level 15")).toBeInTheDocument();
+    expect(screen.queryByText("Level 16")).toBeNull();
+    expect(flatten([deep] as never)).toHaveLength(1000);
+  });
 });

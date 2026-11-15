@@ -50,13 +50,18 @@ export function useCreateTerm() {
   );
 }
 
-/** Every term of a tree, depth first, with its depth (for the parent picker). */
-export function flatten(
-  terms: Term[],
-  depth = 0,
-): { term: Term; depth: number }[] {
-  return terms.flatMap((term) => [
-    { term, depth },
-    ...flatten(term.children ?? [], depth + 1),
-  ]);
+/** Every term of a tree, depth first, with its depth (for the parent picker); iterative, so a
+ * deep hierarchy cannot overflow the stack (web review finding 9). */
+export function flatten(terms: Term[]): { term: Term; depth: number }[] {
+  const out: { term: Term; depth: number }[] = [];
+  const stack = [...terms].reverse().map((term) => ({ term, depth: 0 }));
+  for (let next = stack.pop(); next; next = stack.pop()) {
+    out.push(next);
+    const children = next.term.children ?? [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      if (child) stack.push({ term: child, depth: next.depth + 1 });
+    }
+  }
+  return out;
 }

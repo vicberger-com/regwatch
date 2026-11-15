@@ -11,14 +11,25 @@ import { failure } from "@/lib/auth/session";
 export type User = Schemas["User"];
 export type Role = Schemas["Role"];
 
+const PAGE_SIZE = 200; // the API's maximum
+const MAX_PAGES = 50;
+
 export const usersQuery = queryOptions({
   queryKey: ["admin", "users"],
+  // Every page, so no account is out of reach (web review finding 8).
   queryFn: async (): Promise<User[]> => {
-    const result = await api.GET("/admin/users", {
-      params: { query: { page_size: 200 } },
-    });
-    if (!result.response.ok || result.data === undefined) throw failure(result);
-    return result.data.items;
+    const users: User[] = [];
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const result = await api.GET("/admin/users", {
+        params: { query: { page, page_size: PAGE_SIZE } },
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      users.push(...result.data.items);
+      if (users.length >= result.data.total || result.data.items.length === 0)
+        break;
+    }
+    return users;
   },
 });
 
