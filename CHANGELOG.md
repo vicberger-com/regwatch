@@ -32,6 +32,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- Component register rows for BL-68: nh3 0.3.7 (pending the Unicode-3.0 decision, BL-78), markdown-it-py 4.3.0 with mdurl 0.1.2, and defusedxml 0.7.1, with license verification in R-01 (BL-68)
 - M1 web feature flags screen `/admin/flags` for `settings.manage` holders: each flag as a labelled switch with its description; the API's precondition (such as a missing data-processing basis) is shown when a change is refused (#32, REQ-16, REQ-18)
 - M1 web audit log `/admin/audit` for `audit.read` holders: filters for action, entity type and a UTC date range; previous and next pages; each entry's before and after values shown side by side as indented JSON text, never as markup. CSV export is not part of this screen yet (#32, REQ-16, REQ-18)
 - M1 web settings screen `/admin/settings` for `settings.manage` holders: settings grouped by key prefix, each edited with a control for its type (switch, list of values, one-per-line list, number or text), checked in the browser before saving and again by the API, whose reason is shown when a value is refused (#32, REQ-16, REQ-18)

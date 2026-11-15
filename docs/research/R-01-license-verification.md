@@ -147,6 +147,21 @@ Re-read at the versions pinned in `web/pnpm-lock.yaml`, because rows 21, 22, 26,
 
 Transitive packages in `api/uv.lock` (Starlette, AnyIO, python-dotenv, typing-extensions and others) and `web/pnpm-lock.yaml` are not listed here; the license scan in #29 (pip-licenses, license-checker and the allow-list) covers them.
 
+## Addendum: BL-68 sanitizing and rendering (2026-11-15)
+
+Read from the project's own repository at the release tag over HTTPS (`raw.githubusercontent.com`, commit SHAs from the GitHub API); versions checked against PyPI. For nh3, the Rust crates compiled into the wheel come from `Cargo.lock` at the tag; each crate's declared license was read from crates.io for that exact version.
+
+| # | Component | Repository | Tag | Commit | File | SPDX | Policy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| B1 | nh3 | messense/nh3 | v0.3.7 | 74f36b850c5cb36435b7d9774fe20d1ba3dd663e | LICENSE | MIT | allowed; bundled crates below |
+| B2 | ammonia (bundled in nh3) | rust-ammonia/ammonia | v4.1.4 | fba751216ad8eb7a4e71882350016f810e4d925a | LICENSE-MIT, LICENSE-APACHE | MIT OR Apache-2.0 | allowed |
+| B3 | ICU4X crates (bundled in nh3 through url and idna) | unicode-org/icu4x | icu@2.3.0 | b1cec62bb76ddd8f1f7f52616997f0f243d5eb9e | LICENSE | Unicode-3.0 | **not on the allow-list: BL-78** |
+| B4 | markdown-it-py | executablebooks/markdown-it-py | v4.3.0 | d504583a458edfa399ee800074244fceec288862 | LICENSE | MIT | allowed |
+| B5 | mdurl | executablebooks/mdurl | 0.1.2 | 596bf1c8752de45fa576a52c315d6d8cc5bb1a4e | LICENSE | MIT | allowed |
+| B6 | defusedxml | tiran/defusedxml | v0.7.1 | ebff1b493751e2f0775314bdd4188d64f07ea184 | LICENSE | PSF-2.0 | allowed (BL-53) |
+
+nh3 0.3.7 `Cargo.lock` (85 crates), declared licenses: 52 MIT OR Apache-2.0, 9 MIT, 2 MPL-2.0 (cssparser 0.37.0, dtoa-short 0.3.5; used unmodified, so the MPL file-level duty to publish changes does not arise), 18 Unicode-3.0 (icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data, icu_properties, icu_properties_data, icu_provider, litemap, potential_utf, tinystr, writeable, yoke, yoke-derive, zerofrom, zerofrom-derive, zerotrie, zerovec, zerovec-derive), 1 (MIT OR Apache-2.0) AND Unicode-3.0 (unicode-ident), 1 Apache-2.0 WITH LLVM-exception (target-lexicon, build time only, through pyo3-build-config). Proc-macro and build crates (syn, quote, the `*-derive` crates, ouroboros_macro) run at build time only, though their licenses are listed above anyway. The wheel's Python metadata says only MIT, so `scripts/license-scan.sh` cannot see the bundled crates; the register row carries them.
+
 ## Exceptions (component evaluation records)
 
 Only the license criteria are in scope for R-01. Activity, tests, documentation, API fit and size are scored by each module's candidate research (3.8 step 1).
