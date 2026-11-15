@@ -18,6 +18,7 @@ import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { JurisdictionsPage } from "@/features/jurisdictions/JurisdictionsPage";
 import { FlagsPage } from "@/features/settings/FlagsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
@@ -119,6 +120,16 @@ const taxonomyRoute = createRoute({
   },
 });
 
+const jurisdictionsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/jurisdictions",
+  component: function Jurisdictions() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
+    return <JurisdictionsPage />;
+  },
+});
+
 const rolesRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/roles",
@@ -168,6 +179,7 @@ export const routeTree = rootRoute.addChildren([
     taxonomyRoute,
     rolesRoute,
     flagsRoute,
+    jurisdictionsRoute,
     settingsRoute,
     auditRoute,
   ]),
