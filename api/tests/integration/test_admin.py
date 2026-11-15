@@ -191,6 +191,8 @@ async def test_branding_and_legal_text(admin: httpx.AsyncClient) -> None:
     legal = {"page_markdown": "# Notices", "required_markings": "INTERNAL"}
     assert (await admin.put(_api("/admin/legal"), json=legal)).status_code == 204
     assert (await admin.get(_api("/branding"))).json()["required_markings"] == "INTERNAL"
+    shown = (await admin.get(_api("/legal"))).json()
+    assert shown == {"html": "<h1>Notices</h1>\n", "required_markings": "INTERNAL"}
     page = (await admin.get(_api("/admin/audit"), params={"entity_type": "setting",
                                                           "page_size": 2})).json()  # fmt: skip
     assert page["total"] >= 4 and len(page["items"]) == 2
@@ -353,3 +355,20 @@ async def test_names_and_labels_are_single_line(admin: httpx.AsyncClient) -> Non
     assert (
         await admin.put(_api("/admin/settings/general.site_title"), json=title)
     ).status_code == 400
+
+
+async def test_legal_page_is_sanitized_and_needs_a_session(admin: httpx.AsyncClient) -> None:
+    """BL-68: hostile Markdown renders as text; the page is not public."""
+    hostile = (
+        "Terms <script>alert(1)</script> <img src=x onerror=alert(1)>\n\n"
+        "[ok](https://example.org) [bad](javascript:alert(1)) "
+        "![pixel](https://tracker.example/p.png)"
+    )
+    saved = await admin.put(_api("/admin/legal"), json={"page_markdown": hostile})
+    assert saved.status_code == 204
+    html = (await admin.get(_api("/legal"))).json()["html"]
+    assert "<script" not in html and "<img" not in html and 'href="javascript' not in html
+    assert "&lt;script&gt;" in html
+    assert '<a href="https://example.org" rel="noopener noreferrer nofollow">ok</a>' in html
+    async with httpx.AsyncClient(base_url=admin.base_url, transport=admin._transport) as anon:
+        assert (await anon.get(_api("/legal"))).status_code == 401

@@ -17,6 +17,8 @@ dependencies = [
     "pyyaml>=6.0",
     "argon2-cffi>=23.1",
     "google-re2>=1.1,<2",
+    "markdown-it-py>=4.3,<5",  # BL-68, register 3.6
+    "nh3>=0.3.7,<0.4",  # BL-68, register 3.6; bundled crates in R-01 B1 to B3
 ]
 
 [project.scripts]

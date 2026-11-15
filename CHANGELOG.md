@@ -32,6 +32,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- `GET /legal` returns the legal page: the owner's Markdown rendered as CommonMark with raw HTML switched off, then sanitized with nh3 to a short allowlist (headings, paragraphs, lists, emphasis, code, quotes, tables and links); links keep only http, https, mailto and relative targets and get `rel="noopener noreferrer nofollow"`; images are dropped so the page loads nothing from other sites. Signed-in users only, like `/branding` (#32, BL-68, REQ-16)
 - Component register rows for BL-68: nh3 0.3.7 (its bundled ICU4X crates are Unicode-3.0, which joins the allow-list by owner decision BL-78, ADR-0003 amendment 3), markdown-it-py 4.3.0 with mdurl 0.1.2, and defusedxml 0.7.1, with license verification in R-01 (BL-68)
 - M1 web feature flags screen `/admin/flags` for `settings.manage` holders: each flag as a labelled switch with its description; the API's precondition (such as a missing data-processing basis) is shown when a change is refused (#32, REQ-16, REQ-18)
 - M1 web audit log `/admin/audit` for `audit.read` holders: filters for action, entity type and a UTC date range; previous and next pages; each entry's before and after values shown side by side as indented JSON text, never as markup. CSV export is not part of this screen yet (#32, REQ-16, REQ-18)

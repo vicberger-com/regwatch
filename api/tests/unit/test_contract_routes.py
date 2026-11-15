@@ -78,7 +78,8 @@ def _mutate(doc: dict[str, Any]) -> dict[str, Any]:
     users[PERMISSION_KEY] = "users.read"
     next(p for p in users["parameters"] if p["name"] == "page")["schema"]["minimum"] = 0
     doc["components"]["schemas"]["User"]["properties"]["email"]["format"] = "uri"
-    doc["paths"]["/legal"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
+    logo = doc["paths"]["/admin/branding/logo"]["post"]
+    logo["responses"]["501"]["content"] = {"application/json": {}}
     return doc
 
 
@@ -89,7 +90,7 @@ def test_semantic_diff_reports_drift(app: FastAPI) -> None:
     assert "GET /admin/users.x-permission" in joined
     assert "GET /admin/users.parameters.query:page.schema.minimum" in joined
     assert "properties.email.format" in joined
-    assert "GET /legal: 501 is not problem details" in joined
+    assert "POST /admin/branding/logo: 501 is not problem details" in joined
 
 
 def test_document_shape(app: FastAPI) -> None:

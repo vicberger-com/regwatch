@@ -1,7 +1,7 @@
 """Settings, feature flags, branding, legal page and audit routes; mounted under /api/v1.
 
-Implemented in #32 except the logo upload and the rendered ``/legal`` page, which answer 501
-until their sanitizer and Markdown renderer are registered (BL-68).
+Implemented in #32; the rendered ``/legal`` page in BL-68. The logo upload answers 501 until its
+SVG check lands (BL-68).
 """
 
 from __future__ import annotations
@@ -48,9 +48,9 @@ async def get_branding(db: DbSession) -> Branding:
     return await services.branding(db)
 
 
-@router.get("/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page"))
-async def get_legal() -> NoReturn:
-    not_implemented()
+@router.get("/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page", stub=False))
+async def get_legal(db: DbSession) -> Legal:
+    return await services.legal(db)
 
 
 @router.get(

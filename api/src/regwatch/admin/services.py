@@ -19,11 +19,13 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.admin.legal import render as render_legal
 from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.admin.schemas import (
     AuditEntry,
     Branding,
     BrandingWrite,
+    Legal,
     LegalWrite,
 )
 from regwatch.admin.schemas import FeatureFlag as FeatureFlagOut
@@ -246,6 +248,13 @@ async def put_branding(
                      action="branding.update")  # fmt: skip
     await db.commit()
     return await branding(db)
+
+
+async def legal(db: AsyncSession) -> Legal:
+    """The legal page as sanitized HTML, with the footer markings (BL-68)."""
+    current = await values(db, list(LEGAL_KEYS.values()))
+    return Legal(html=render_legal(current["legal.page_markdown"]),
+                 required_markings=current["legal.required_markings"])  # fmt: skip
 
 
 async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: str | None) -> None:
