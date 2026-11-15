@@ -111,7 +111,7 @@ const taxonomyRoute = createRoute({
   component: function Taxonomy() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
-    return <TaxonomyPage />;
+    return <TaxonomyPage canManage={hasPermission(me, "taxonomy.manage")} />;
   },
 });
 
