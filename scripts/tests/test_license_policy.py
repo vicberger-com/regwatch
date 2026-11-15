@@ -37,6 +37,7 @@ import license_policy as lp  # noqa: E402
         ("MIT-0", "allowed"),
         ("BlueOak-1.0.0", "allowed"),
         ("Python-2.0", "allowed"),
+        ("Unicode-3.0", "allowed"),
         ("OFL-1.1", "font-only"),
         ("BSD License", "unknown"),
         ("UNKNOWN", "unknown"),

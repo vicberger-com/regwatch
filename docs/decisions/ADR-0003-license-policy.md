@@ -104,3 +104,10 @@ The owner accepted two further decisions found by the M0 pull requests:
 
 - **MIT-0, BlueOak-1.0.0 and Python-2.0 join the 3.5 allow-list** (BL-59, from #29). All three are permissive with no copyleft: MIT-0 is MIT without the notice condition, the Blue Oak Model License 1.0.0 adds a patent grant, and Python-2.0 is the CPython license stack whose PSF part is already allowed. Nine web tooling packages had passed the license scan only as reviewed `tooling` exceptions; those exceptions are removed from `scripts/license-exceptions.toml` and `scripts/license_policy.py` allows the three licenses directly.
 - **Data terms for the #12 test corpus** (BL-63): the three open terms and the private-test-corpus exception for five PRC statute excerpts, recorded in decision 5 above.
+
+## Amendment 3 (2026-11-15)
+
+The owner accepted one further decision found by the BL-68 component review:
+
+- **Unicode-3.0 joins the 3.5 allow-list** (BL-78). nh3 0.3.7, the HTML sanitizer named in 8.1 and needed by BL-68, statically links 18 ICU4X crates under the Unicode License v3 (`unicode-org/icu4x` tag `icu@2.3.0`, commit `b1cec62`; R-01 B3), pulled in by `url` through `idna`. The license is permissive with no copyleft: it grants use, copying, modification and distribution on condition that the copyright and permission notice accompany the copies. Its notice duty is met by `api/THIRD_PARTY_NOTICES.md` with the license text, copied into both API image stages. `scripts/license_policy.py` allows `Unicode-3.0` directly. Because the nh3 wheel declares only MIT, the bundled crates are recorded in the component register row and R-01 rather than found by the scan.
+

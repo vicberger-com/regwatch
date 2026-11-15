@@ -34,6 +34,7 @@ ALLOWED = {
     "BlueOak-1.0.0",  # ADR-0003 amendment 2, BL-59
     "Python-2.0",  # ADR-0003 amendment 2, BL-59
     "MPL-2.0",
+    "Unicode-3.0",  # ADR-0003 amendment 3, BL-78 (ICU4X crates bundled in nh3)
 }
 FONT_ONLY = {"OFL-1.1"}  # ADR-0003 amendment, BL-57: font files only
 FONT_SUFFIXES = {".woff", ".woff2", ".ttf", ".otf", ".eot"}

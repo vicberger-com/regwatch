@@ -155,7 +155,7 @@ Read from the project's own repository at the release tag over HTTPS (`raw.githu
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | B1 | nh3 | messense/nh3 | v0.3.7 | 74f36b850c5cb36435b7d9774fe20d1ba3dd663e | LICENSE | MIT | allowed; bundled crates below |
 | B2 | ammonia (bundled in nh3) | rust-ammonia/ammonia | v4.1.4 | fba751216ad8eb7a4e71882350016f810e4d925a | LICENSE-MIT, LICENSE-APACHE | MIT OR Apache-2.0 | allowed |
-| B3 | ICU4X crates (bundled in nh3 through url and idna) | unicode-org/icu4x | icu@2.3.0 | b1cec62bb76ddd8f1f7f52616997f0f243d5eb9e | LICENSE | Unicode-3.0 | **not on the allow-list: BL-78** |
+| B3 | ICU4X crates (bundled in nh3 through url and idna) | unicode-org/icu4x | icu@2.3.0 | b1cec62bb76ddd8f1f7f52616997f0f243d5eb9e | LICENSE | Unicode-3.0 | allowed (BL-78, ADR-0003 amendment 3) |
 | B4 | markdown-it-py | executablebooks/markdown-it-py | v4.3.0 | d504583a458edfa399ee800074244fceec288862 | LICENSE | MIT | allowed |
 | B5 | mdurl | executablebooks/mdurl | 0.1.2 | 596bf1c8752de45fa576a52c315d6d8cc5bb1a4e | LICENSE | MIT | allowed |
 | B6 | defusedxml | tiran/defusedxml | v0.7.1 | ebff1b493751e2f0775314bdd4188d64f07ea184 | LICENSE | PSF-2.0 | allowed (BL-53) |
