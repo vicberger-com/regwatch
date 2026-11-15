@@ -101,7 +101,7 @@ export function AuditPage() {
       )}
       {audit.isPending ? (
         <p>Loading audit log…</p>
-      ) : audit.data ? (
+      ) : audit.data && !audit.isError ? (
         <>
           <p role="status">
             {total} entries · page {page} of {pages}
@@ -176,13 +176,19 @@ function Row({ entry }: { entry: Entry }) {
   );
 }
 
+// One value shows at most this many characters, so a page of large rows stays usable.
+export const VALUE_MAX = 10_000;
+
 /** Before and after values as indented JSON text (rendered as text, never as markup). */
 function Value({ value }: { value: unknown }) {
   if (value === null || value === undefined)
     return <span className="text-text-muted">none</span>;
+  const text = JSON.stringify(value, null, 2);
+  const cut = text.length > VALUE_MAX;
   return (
     <pre className="max-w-md overflow-x-auto whitespace-pre-wrap text-xs">
-      {JSON.stringify(value, null, 2)}
+      {cut ? text.slice(0, VALUE_MAX) : text}
+      {cut && `\n… ${String(text.length - VALUE_MAX)} more characters`}
     </pre>
   );
 }

@@ -13,7 +13,10 @@ function save(blob: Blob, name: string) {
   link.href = url;
   link.download = name;
   link.click();
-  URL.revokeObjectURL(url);
+  // Revoked a little later: some browsers cancel a download whose URL goes at once.
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 10_000);
 }
 
 /** Export for every reader; import (a YAML file, merged by key) for managers. */
@@ -25,7 +28,7 @@ export function TaxonomyTransfer({ canManage }: { canManage: boolean }) {
     },
   });
   const upload = useImportTaxonomy();
-  const [tooBig, setTooBig] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
 
   async function choose(event: ChangeEvent<HTMLInputElement>) {
     const input = event.target;
@@ -33,15 +36,30 @@ export function TaxonomyTransfer({ canManage }: { canManage: boolean }) {
     input.value = "";
     if (!file) return;
     upload.reset();
-    setTooBig(file.size > MAX_IMPORT_BYTES);
-    if (file.size > MAX_IMPORT_BYTES) return;
+    setRefused(null);
+    if (file.size > MAX_IMPORT_BYTES) {
+      setRefused("The file is larger than 2 MB, the most one import accepts.");
+      return;
+    }
     if (
       !window.confirm(
         `Import ${file.name}? Facets and terms with matching keys are updated; others are added.`,
       )
     )
       return;
-    upload.mutate(await file.text());
+    let text: string;
+    try {
+      // Strict decoding: a file in another encoding is refused, not silently altered.
+      text = new TextDecoder("utf-8", { fatal: true }).decode(
+        await file.arrayBuffer(),
+      );
+    } catch {
+      setRefused(
+        "The file is not UTF-8 text. Save it as UTF-8 and import it again.",
+      );
+      return;
+    }
+    upload.mutate(text);
   }
 
   const summary = upload.data;
@@ -75,13 +93,12 @@ export function TaxonomyTransfer({ canManage }: { canManage: boolean }) {
         {summary &&
           `Imported: ${String(summary.facets_created ?? 0)} facets added, ${String(summary.facets_updated ?? 0)} updated; ${String(summary.terms_created ?? 0)} terms added, ${String(summary.terms_updated ?? 0)} updated.`}
       </p>
-      {(tooBig || upload.isError || download.isError) && (
+      {(refused !== null || upload.isError || download.isError) && (
         <p role="alert" className="w-full text-critical">
-          {tooBig
-            ? "The file is larger than 2 MB, the most one import accepts."
-            : upload.isError
+          {refused ??
+            (upload.isError
               ? problemText(upload.error, "The import failed.")
-              : problemText(download.error, "The export failed.")}
+              : problemText(download.error, "The export failed."))}
         </p>
       )}
     </div>

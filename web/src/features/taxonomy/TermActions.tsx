@@ -27,6 +27,7 @@ export function TermActions({
   );
   const target = targets.find(({ term: t }) => t.id === into)?.term;
   const failed = merge.error ?? remove.error;
+  const busy = merge.isPending || remove.isPending;
 
   function doMerge() {
     if (!target) return;
@@ -89,7 +90,7 @@ export function TermActions({
       <button
         type="button"
         className={button}
-        disabled={!target || merge.isPending}
+        disabled={!target || busy}
         onClick={doMerge}
       >
         Merge
@@ -97,7 +98,7 @@ export function TermActions({
       <button
         type="button"
         className={`${button} border-critical text-critical`}
-        disabled={remove.isPending}
+        disabled={busy}
         onClick={doDelete}
       >
         Delete term

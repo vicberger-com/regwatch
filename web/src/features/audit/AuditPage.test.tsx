@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADMIN, fakeApi, problem } from "@/test/api";
 import { renderAt } from "@/test/render";
 
+import { VALUE_MAX } from "./AuditPage";
+
 const ME = { ...ADMIN, permissions: ["audit.read"] };
 const ROW = {
   id: "a1",
@@ -105,5 +107,50 @@ describe("audit log screen", () => {
     });
     renderAt("/admin/audit");
     expect(await screen.findByRole("alert")).toHaveTextContent("Boom");
+  });
+  it("hides earlier rows once a later page fails, such as after the session ends", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ME],
+      "GET /admin/audit": [
+        200,
+        { items: [ROW], total: 120, page: 1, page_size: 50 },
+      ],
+    });
+    const fake = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) =>
+      new URL(request.url).searchParams.get("page") === "2"
+        ? Promise.resolve(
+            new Response(JSON.stringify(problem(401, "Sign in again.")), {
+              status: 401,
+              headers: { "Content-Type": "application/problem+json" },
+            }),
+          )
+        : fake(request),
+    );
+    renderAt("/admin/audit");
+    const user = userEvent.setup();
+    await screen.findByRole("table", { name: "Audit entries" });
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("Sign in again.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Audit entries" })).toBeNull();
+    expect(screen.queryByText("role.update")).toBeNull();
+  });
+
+  it("shortens a very large value", async () => {
+    const big = {
+      ...ROW,
+      before: null,
+      after: { text: "x".repeat(VALUE_MAX * 2) },
+    };
+    fakeApi({
+      "GET /auth/me": [200, ME],
+      "GET /admin/audit": [
+        200,
+        { items: [big], total: 1, page: 1, page_size: 50 },
+      ],
+    });
+    renderAt("/admin/audit");
+    const more = await screen.findByText(/more characters/);
+    expect(more.textContent.length).toBeLessThan(VALUE_MAX + 100);
   });
 });

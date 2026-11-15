@@ -42,6 +42,7 @@ describe("taxonomy import and export", () => {
       "URL",
       Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }),
     );
+    const timers = vi.spyOn(window, "setTimeout");
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
       .mockImplementation(() => undefined);
@@ -53,6 +54,9 @@ describe("taxonomy import and export", () => {
       expect(click).toHaveBeenCalled();
     });
     expect(await create.mock.calls[0]?.[0].text()).toBe(YAML);
+    expect(revoke).not.toHaveBeenCalled(); // revoked later, so the download is not cut off
+    const later = timers.mock.calls.find(([, delay]) => delay === 10_000)?.[0];
+    if (typeof later === "function") later();
     expect(revoke).toHaveBeenCalledWith("blob:taxonomy");
     expect(screen.queryByLabelText("Import YAML")).toBeNull();
   });
@@ -136,5 +140,27 @@ describe("taxonomy import and export", () => {
       .setup()
       .click(await screen.findByRole("button", { name: "Export YAML" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Boom");
+  });
+  it("refuses a file that is not UTF-8 instead of altering it", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, MANAGER],
+      "GET /taxonomy/facets": [200, []],
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderAt("/admin/taxonomy");
+    const latin1 = new File(
+      [new Uint8Array([0x6b, 0x65, 0x79, 0x3a, 0x20, 0xe9])],
+      "latin1.yaml",
+    );
+    await userEvent
+      .setup()
+      .upload(await screen.findByLabelText("Import YAML"), latin1);
+    expect(await screen.findByText(/not UTF-8 text/)).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(api.calls.some((c) => c.key === "POST /taxonomy/import")).toBe(
+      false,
+    );
   });
 });

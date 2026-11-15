@@ -117,18 +117,25 @@ function SettingRow({ setting }: { setting: Setting }) {
         className={field}
       />
     );
+  } else if (setting.type === "string") {
+    // A text area, so values such as the legal page keep their line breaks.
+    input = (
+      <textarea
+        id={id}
+        value={text}
+        rows={Math.min(8, text.split("\n").length)}
+        onChange={(e) => {
+          edit(e.target.value);
+        }}
+        className={`${field} min-w-72`}
+      />
+    );
   } else {
     input = (
       <input
         id={id}
         value={text}
-        inputMode={
-          setting.type === "integer"
-            ? "numeric"
-            : setting.type === "number"
-              ? "decimal"
-              : undefined
-        }
+        inputMode={setting.type === "integer" ? "numeric" : "decimal"}
         onChange={(e) => {
           edit(e.target.value);
         }}

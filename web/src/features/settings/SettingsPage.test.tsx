@@ -132,4 +132,30 @@ describe("settings screen", () => {
     renderAt("/admin/settings");
     expect(await screen.findByRole("alert")).toHaveTextContent("Boom");
   });
+  it("keeps the line breaks of a multi-line text setting", async () => {
+    const legal = {
+      key: "legal.page_markdown",
+      type: "string",
+      value: "# Legal\n\nLine two",
+    };
+    const api = fakeApi({
+      "GET /auth/me": [200, ME],
+      "GET /admin/settings": [200, [legal]],
+      "PUT /admin/settings/legal.page_markdown": [200, legal],
+    });
+    renderAt("/admin/settings");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", {
+      name: "legal.page_markdown",
+    });
+    const box = within(form).getByRole("textbox");
+    expect(box.tagName).toBe("TEXTAREA");
+    await user.type(box, "!");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(api.calls.find((c) => c.key.startsWith("PUT"))?.body).toEqual({
+        value: "# Legal\n\nLine two!",
+      });
+    });
+  });
 });
