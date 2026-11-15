@@ -86,3 +86,47 @@ async def test_slow_pages_are_refused_and_their_render_is_killed() -> None:
     with pytest.raises(LegalTooComplexError):
         await check_budget("![" * 100_000 + "x", budget=0.2)
     assert time.monotonic() - started < 10  # not the 12 s a full render takes
+
+
+def test_a_child_that_dies_without_an_answer_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification 2, N6: EOF from the child is an error, not a pass."""
+    from regwatch.admin import legal
+
+    class Conn:
+        def __init__(self) -> None:
+            self.sent = ["ready"]
+
+        def poll(self, timeout: float) -> bool:
+            return True
+
+        def recv(self) -> str:
+            if self.sent:
+                return self.sent.pop()
+            raise EOFError
+
+        def close(self) -> None:
+            pass
+
+    class Proc:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+        def kill(self) -> None:
+            pass
+
+        def join(self) -> None:
+            pass
+
+    class Context:
+        def Pipe(self, duplex: bool) -> tuple[Conn, Conn]:  # noqa: N802 - mirrors multiprocessing
+            return Conn(), Conn()
+
+        def Process(self, **kwargs: object) -> Proc:  # noqa: N802 - mirrors multiprocessing
+            return Proc()
+
+    monkeypatch.setattr(legal.multiprocessing, "get_context", lambda method: Context())
+    with pytest.raises(RuntimeError, match="without a result"):
+        legal._within_budget("x" * 2000, 1.0)

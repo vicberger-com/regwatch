@@ -255,3 +255,9 @@ Against `sec/M1-bl68-followups` at `8539557` (diff `c5e0a84..8539557`, 10 files)
 - No critical, high or medium findings are open.
 
 · BL-68 independent review · 2026-11-15
+
+## Author follow-up 3 (re-verification 2: N4 to N6)
+- **N5 (low):** an SVG that repeats an id is refused before references are followed, so the check and the browser always resolve a reference to the same element. Test: `test_repeated_ids_are_refused`. The reviewer's three duplicate-id files in `reverify_svg2.py` are refused.
+- **N6 (info):** `_within_budget` now reads the child's answer. A child that ends without one raises, so the save fails closed with a 500 and nothing is stored. Test: `test_a_child_that_dies_without_an_answer_fails_closed`.
+- **N4 (info):** budget checks run in their own two-thread pool (`legal-check`), so `GET /legal` renders in `legal-render` never wait behind them. Checks and child processes stay bounded at two at a time.
+- **N3 leftovers:** `@` in ids and the "version attribute" message for `inkscape:version` are cosmetic. They are recorded with BL-81 (e).

@@ -15,8 +15,8 @@ finding 4 and re-verification N1):
 - every save, through ``PUT /admin/legal`` or the settings API, first renders the page in a
   separate process that is killed after ``SAVE_BUDGET`` seconds; a page that does not finish is
   refused, so only pages that render quickly are ever stored;
-- ``GET /legal`` renders in a dedicated two-thread pool, never on the event loop and never in the
-  shared default pool, and caches the result.
+- ``GET /legal`` renders in a dedicated two-thread pool, never on the event loop, never in the
+  shared default pool and never behind a budget check, and caches the result.
 """
 
 from __future__ import annotations
@@ -61,6 +61,9 @@ def render(markdown: str) -> str:
 
 
 _POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="legal-render")
+# Budget checks wait on child processes; their own pool keeps GET /legal from queueing behind
+# them (review 2, N4) and bounds the checks, and so the processes, to two at a time.
+_CHECKS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="legal-check")
 _STARTUP = 20.0  # seconds a fresh process may take to import before the budget starts
 
 
@@ -84,7 +87,13 @@ def _within_budget(markdown: str, budget: float) -> bool:
     try:
         if not parent.poll(_STARTUP) or parent.recv() != "ready":
             raise RuntimeError("the legal page check could not start")
-        return parent.poll(budget)
+        if not parent.poll(budget):
+            return False
+        try:
+            parent.recv()  # a child that died without an answer has not passed (review 2, N6)
+        except EOFError:
+            raise RuntimeError("the legal page check ended without a result") from None
+        return True
     finally:
         proc.kill()  # finished or not, the child goes now
         proc.join()
@@ -95,7 +104,6 @@ async def check_budget(markdown: str, budget: float = SAVE_BUDGET) -> None:
     """``LegalTooComplexError`` unless ``markdown`` renders within ``budget`` seconds."""
     if len(markdown) < 1000:
         return  # far below any input that is slow to render
-    # The two-thread pool also bounds the checks, and so the child processes, to two at a time.
-    ok = await asyncio.get_running_loop().run_in_executor(_POOL, _within_budget, markdown, budget)
+    ok = await asyncio.get_running_loop().run_in_executor(_CHECKS, _within_budget, markdown, budget)
     if not ok:
         raise LegalTooComplexError

@@ -140,7 +140,16 @@ def _check_use_chains(root: Element) -> None:
         while node is not None and node not in holds:
             holds.add(node)
             node = parent.get(node)
-    by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
+    # Browsers resolve a repeated id to its first element; refusing repeats means the check and
+    # the browser always agree on what a reference points at (re-verification 2, N5).
+    by_id: dict[str, Element] = {}
+    for el in root.iter():
+        el_id = el.get("id")
+        if el_id is None:
+            continue
+        if el_id in by_id:
+            raise LogoRejectedError(f'An SVG logo may not repeat the id "{el_id}".')
+        by_id[el_id] = el
     for el in root.iter():
         for target_id in _references(el):
             target = by_id.get(target_id)

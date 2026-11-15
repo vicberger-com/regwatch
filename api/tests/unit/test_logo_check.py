@@ -179,3 +179,14 @@ def test_gradients_may_inherit_and_one_level_patterns_pass() -> None:
         '<rect width="10" height="10" fill="url(#g)"/><rect width="5" height="5" fill="url(#p)"/>'
     )
     assert check(svg(body)) == SVG
+
+
+def test_repeated_ids_are_refused() -> None:
+    """Re-verification 2, N5: a same-id decoy after the real target hid a <use> chain."""
+    uses = '<use href="#dot"/>' * 10
+    decoy = (
+        f'<defs><circle id="dot" r="1"/><g id="ten">{uses}</g><rect id="ten"/></defs>'
+        '<use href="#ten"/>'
+    )
+    with pytest.raises(LogoRejectedError, match='repeat the id "ten"'):
+        check(svg(decoy))
