@@ -60,7 +60,13 @@ export function useLogin() {
         throw failure(result);
       return result.data;
     },
-    onSuccess: (me) => client.setQueryData(meQuery.queryKey, me),
+    // A new sign-in starts from an empty cache, so nothing of a previous user is shown
+    // (web review finding 3), and the typed password is not kept (finding 2).
+    onSuccess: (me) => {
+      forgetEverything(client);
+      client.setQueryData(meQuery.queryKey, me);
+    },
+    gcTime: 0,
   });
 }
 
@@ -68,13 +74,24 @@ export function useLogout() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await api.POST("/auth/logout");
+      const result = await api.POST("/auth/logout");
+      // 401: the session had already ended, which is what signing out wants.
+      if (!result.response.ok && result.response.status !== 401)
+        throw failure(result);
     },
-    onSettled: () => {
+    // Only a confirmed sign-out clears the screen (web review finding 1); on failure the user
+    // stays signed in and is told so, rather than seeing a sign-in card over a live session.
+    onSuccess: () => {
+      forgetEverything(client);
       client.setQueryData(meQuery.queryKey, null);
-      client.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
     },
   });
+}
+
+/** Drop every cached query and mutation, passwords in mutation variables included. */
+export function forgetEverything(client: QueryClient): void {
+  client.getMutationCache().clear();
+  client.clear();
 }
 
 export function useChangePassword() {
@@ -87,6 +104,7 @@ export function useChangePassword() {
       const result = await api.POST("/auth/password", { body: input });
       if (!result.response.ok) throw failure(result);
     },
+    gcTime: 0, // the current and new passwords are not kept once the form is gone
     onSuccess: () => client.invalidateQueries({ queryKey: meQuery.queryKey }),
   });
 }

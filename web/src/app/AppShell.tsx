@@ -41,9 +41,10 @@ export function AppShell() {
           <button
             type="button"
             className="rounded border border-border px-2 py-1"
+            disabled={logout.isPending}
             onClick={() => {
               logout.mutate(undefined, {
-                onSettled: () => {
+                onSuccess: () => {
                   void navigate({ to: "/login", search: {} });
                 },
               });
@@ -53,6 +54,15 @@ export function AppShell() {
           </button>
         </div>
       </header>
+      {logout.isError && (
+        <p
+          role="alert"
+          className="border-b border-critical bg-surface px-4 py-2 text-critical"
+        >
+          Sign-out failed, so you are still signed in. Try again; if it keeps
+          failing, close the browser.
+        </p>
+      )}
       <main id="main" className="flex-1 p-6">
         <Outlet />
       </main>

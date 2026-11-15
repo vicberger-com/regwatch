@@ -35,6 +35,7 @@ function useAdminMutation<T, R>(call: (input: T) => Promise<R>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: call,
+    gcTime: 0, // results can hold a temporary password (web review finding 2)
     onSuccess: () =>
       client.invalidateQueries({ queryKey: usersQuery.queryKey }),
   });
