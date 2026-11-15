@@ -207,3 +207,51 @@ The BL-81 row cites findings 6, 7, 9 and 10, its decision is `open`, and its mod
 - **N3 (info), in part:** colour functions are accepted in any case and in the modern space-and-slash syntax with angle units (`RGB(1 2 3 / 50%)`, `hsl(120deg 50% 50%)`). Inkscape-style `style=` exports, ids starting with a digit, and `@` in ids are still refused, which is the conservative choice. They are recorded under BL-81 (e).
 - **Test change:** `test_gated_api_conforms` now also accepts 413. A fuzzed body over the 2 MB cap is refused before the session gate, which is correct, and one random run had produced one.
 - **Checks:** `make lint` clean; `make test-api` 521 unit and 99 database tests passed, 96.70% coverage; `make test-web` 96 passed; `scripts/tests` 32 passed; license scan 0 failing.
+
+
+## Re-verification 2 (BL-68 independent review, 2026-11-15)
+Against `sec/M1-bl68-followups` at `8539557` (diff `c5e0a84..8539557`, 10 files).
+
+**Method.**
+- Read the whole diff.
+- Re-ran `reverify_legal.py`, `reverify_svg.py` and `use_bomb.py` from `/tmp/bl68poc/`.
+- Added three new PoCs:
+  - `reverify_legal2.py`: the child's lifetime and leftover processes, inputs under 1,000 characters, and ten concurrent refused saves (with the legal pool, the default pool and the event loop measured during them);
+  - `reverify_crash.py`: inputs that make the renderer raise;
+  - `reverify_svg2.py`: the gradient exemption, `href` between paint servers, duplicate ids, and `href` together with `xlink:href`.
+- Searched `api/src` for every writer of `legal.page_markdown`.
+- Ran `make lint test-web`, `make test-api` and `scripts/tests`.
+- Only this record was changed, and the dev stack was not used.
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| N1: no route stores an unchecked page | fixed | Only `put_legal` (`services.py:303-312`) and `put_setting` (`:200-201`) write `legal.page_markdown`, and both now call `_check_legal_budget`. `put_branding` writes branding keys only, and `seed.py` inserts the registry default (`""`) only when the row is missing. The new integration test refuses the slow page on both routes. |
+| N1: the child is killed at the budget | fixed | A refused check returns after 2.11 s, where the full render takes 12 s. `proc.kill()` and `join()` run in `finally`. Child processes alive after a check, after ten concurrent checks, and after the full `make test-api` run: none, apart from multiprocessing's single `resource_tracker` for the parent, which exits with the parent. The `resource_tracker` with PID 131466 seen on the host runs from `/opt/venv` and started hours earlier; it is not part of this test. |
+| N1: the startup wait and the under-1,000 shortcut | fine | Spawning plus rendering a 2,400-character page took 0.23 s. Page content cannot lengthen the import phase: the argument is only an unpickled string of at most 200,000 characters. A start slower than 20 s raises `RuntimeError`, so the save fails with a 500 and nothing is stored; that fails closed. The slowest inputs under 1,000 characters take 0.8 to 56 ms (`"![" * 499` 56 ms, `"[" * 999` 39 ms), far below the budget, so the shortcut cannot be abused. |
+| N1: process and pool exhaustion | fixed; see N4 | Ten concurrent slow saves were all refused. At most two checks ran at once (3 children at peak, counting the tracker), the maximum event-loop lag was 12 ms, and a default-pool `to_thread` call waited 0.004 s, against 96 s at re-verification 1. So the public logo route and the upload check are no longer starved. `GET /legal` is the exception: N4. |
+| N1: `GET /legal` and checks sharing a pool | open; see N4 | The `GET /legal`-style `render_async` call, made 0.3 s after the ten saves began, waited 10.3 s. |
+| N2: paint-server chains | partly fixed; see N5 | The pattern and mask chains from re-verification 1 are refused, and `use_bomb.py` still is. The gradient exemption cannot be used directly:<br>• a gradient holding a `<use>` passes, but gradient content is not drawn (only `stop`, `animate`, `set` and descriptive elements are);<br>• a gradient whose `href` points at a pattern is refused;<br>• a pattern whose `href` points at another pattern is refused (conservative).<br>Duplicate ids defeat the check, which also reopens finding 3 (N5). |
+| N3: colour forms | fixed | `RGB(1,2,3)`, `rgb(31 90 166 / 50%)` and `hsl(210deg, 60%, 40%)` now pass. No new `(` form can fetch: the same 13 bypass cases give the same verdicts. |
+| N3: the rest | deferred, partly covered | BL-81 (e) covers Inkscape `style=` and ids that start with a digit. It does not mention `@` in ids or the misleading refusal for namespaced attributes (`inkscape:version` is still named "the version attribute"). Both are cosmetic, and BL-81 can take them. |
+| Test change: Schemathesis 413 | accepted | `BodySizeLimitMiddleware` sits in front of the app and answers 413 only for bodies over 2 MiB, before any handler or gate runs. So a 413 means nothing was processed, and it cannot hide a gate that let a request through. The live document lists 413 on every operation with a body (CHANGELOG, BL-64), so the response conforms. The set still excludes every 2xx and 5xx. |
+
+### New at re-verification 2
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| N4 | info | **Saves can delay `GET /legal`** (`api/src/regwatch/admin/legal.py:63-70`, `:94-101`). Checks and `GET /legal` renders share the two-thread `_POOL`, and its queue has no bound. Each check holds a thread for the spawn time plus at most 2 s. Ten slow saves sent at once kept a `GET /legal` render waiting 10.3 s. A `settings.manage` session that keeps sending them can keep `GET /legal` waiting on that worker for as long as it continues, but nothing else is affected (the default pool and the event loop were fine). **Fix:** give `GET /legal` its own executor, separate from checks, or refuse a save with 429 or 409 while a check is already running. | open (proposal) | reviewer PoC R3 (`reverify_legal2.py`) |
+| N5 | low | **Duplicate ids bypass the chain check** (`api/src/regwatch/admin/logo.py:142-150`). `by_id = {el.get("id"): el …}` keeps the last element with each id. Browsers resolve `href` and `url(#id)` to the first element in document order. Each level of the chain is a `<g id="gK">` holding 10 `<use href="#g(K-1)">`, followed by a decoy with the same id: an empty `<linearGradient id="gK"/>`, which is exempt, or a plain `<rect id="gK"/>`, which holds no reference. The check then looks at the decoy and accepts a 10^10 chain. Both variants passed. This is a regression from `c5e0a84`, which marked ids through a set and refused this file, so finding 3 is open again. **Scenario:** the same as finding 3 and N2 (sign-in page and every header). It was not run in a browser; that first-in-tree-order resolution is standard DOM behaviour. **Fix:** refuse any SVG in which an id appears twice; legitimate exports do not repeat ids. If duplicates must be allowed, mark an id as holding a reference when any element with that id does. Add the duplicate-id chain as a test. A related point: a file that has both `href` and `xlink:href` passes, with only `href` checked. Current engines prefer `href` too, so this is consistent today, but refusing both together is simpler. | open | reviewer PoC R4 (`reverify_svg2.py`: "duplicate-id gradient decoys, use chain 10^10" and "plain-rect decoy last" both give `image/svg+xml`) |
+| N6 | info | **The budget check fails open if the child dies** (`api/src/regwatch/admin/legal.py:87-88`). `parent.poll(budget)` is also true at end of file. A child that raises or is killed (for example by the out-of-memory killer) therefore counts as "within budget", and the page is stored. No input found today does this. The one input that makes `render` raise, a lone surrogate (`UnicodeEncodeError` in nh3), is refused earlier by `LegalWrite` and `has_control` on both routes, and could not be encoded for PostgreSQL anyway. **Fix:** `recv()` the result, or check `proc.exitcode` before killing, and count EOF or an error as a refusal. | open (proposal) | reviewer PoC R5 (`reverify_crash.py`) |
+
+**Repository suites at `8539557`:**
+- `make lint test-web`: Ruff check and format clean (153 files), mypy clean (92 files), ESLint, Prettier and `tsc -b` clean; Vitest 18 files and 96 tests passed; 98.3% lines.
+- `make test-api`: unit tests 521 passed, with every security-critical module at its 100% floor; integration tests 99 passed; 96.70% combined coverage.
+- `scripts/tests`: 32 passed.
+
+**Sign-off:** **signed off.**
+- **Verified fixed:** N1 for storage, killing the child, process limits and the shared pool; N3 for colour forms; the Schemathesis change is accepted.
+- **Open, low:** N5, which reopens finding 3. It should be fixed before the external audience is admitted, because one `settings.manage` session could make the public sign-in page unusable. The fix is small: refuse duplicate ids.
+- **Open, info:** N4 and N6 are proposals for BACKLOG.
+- **Carried in BL-81:** the rest of N3.
+- No critical, high or medium findings are open.
+
+· BL-68 independent review · 2026-11-15
