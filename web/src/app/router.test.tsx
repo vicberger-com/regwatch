@@ -76,6 +76,81 @@ describe("sign-in flow", () => {
     );
   });
 
+  it("forces a temporary password to be changed, checking it first", async () => {
+    let me: unknown = { ...ADMIN, must_change_password: true };
+    fakeApi({
+      "GET /auth/me": () => [200, me],
+      "POST /auth/login": () => [200, me],
+      "POST /auth/password": () => {
+        me = { ...ADMIN, must_change_password: false };
+        return [204, undefined];
+      },
+    });
+    renderAt("/login");
+    const user = await signIn("temporary-pass");
+    await screen.findByRole("heading", { name: "Change password" });
+    expect(screen.getByText(/temporary password/)).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Current password"),
+      "temporary-pass",
+    );
+    await user.type(screen.getByLabelText(/New password/), "short");
+    await user.type(screen.getByLabelText("Repeat new password"), "short");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "at least 12 characters",
+    );
+    await user.clear(screen.getByLabelText(/New password/));
+    await user.type(
+      screen.getByLabelText(/New password/),
+      "a long new passphrase",
+    );
+    await user.clear(screen.getByLabelText("Repeat new password"));
+    await user.type(
+      screen.getByLabelText("Repeat new password"),
+      "a different passphrase",
+    );
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("do not match");
+    await user.clear(screen.getByLabelText("Repeat new password"));
+    await user.type(
+      screen.getByLabelText("Repeat new password"),
+      "a long new passphrase",
+    );
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(
+      await screen.findByText(/Signed in as Ada Admin/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the server's reason when a password change is refused", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "POST /auth/password": [
+        400,
+        problem(400, "The current password is incorrect."),
+      ],
+    });
+    renderAt("/change-password");
+    const user = userEvent.setup();
+    await user.type(
+      await screen.findByLabelText("Current password"),
+      "not it at all",
+    );
+    await user.type(
+      screen.getByLabelText(/New password/),
+      "a long new passphrase",
+    );
+    await user.type(
+      screen.getByLabelText("Repeat new password"),
+      "a long new passphrase",
+    );
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The current password is incorrect.",
+    );
+  });
+
   it("signs out and returns to the login page", async () => {
     let me: unknown = ADMIN;
     fakeApi({

@@ -21,9 +21,12 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     login.mutate(
       { email, password },
       {
-        onSuccess: () => {
+        onSuccess: (me) => {
           setPassword("");
-          void navigate({ to: safeNext(next) });
+          const target = me.must_change_password
+            ? "/change-password"
+            : safeNext(next);
+          void navigate({ to: target });
         },
       },
     );

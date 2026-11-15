@@ -1,6 +1,6 @@
 /**
  * The signed-in user (#31): `GET /auth/me` through TanStack Query, plus sign-in, sign-out and
- * the redirect target. A 401 from `/auth/me` means "not signed in" and is cached as `null`; the
+ * password change. A 401 from `/auth/me` means "not signed in" and is cached as `null`; the
  * API's session gate is the authority, this only decides what the UI shows.
  */
 import {
@@ -71,6 +71,20 @@ export function useLogout() {
       client.setQueryData(meQuery.queryKey, null);
       client.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
     },
+  });
+}
+
+export function useChangePassword() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      current_password: string;
+      new_password: string;
+    }) => {
+      const result = await api.POST("/auth/password", { body: input });
+      if (!result.response.ok) throw failure(result);
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: meQuery.queryKey }),
   });
 }
 
