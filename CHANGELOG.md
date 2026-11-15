@@ -28,6 +28,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- M2 web taxonomy screen `/admin/taxonomy`: facet list with system and hidden markers, the selected facet's details and nested term tree with synonyms, for `taxonomy.read` holders; not permitted otherwise; a "Taxonomy" header link (REQ-03, REQ-11, REQ-18)
 - M1 web create-user form on `/admin/users`: email, name and role checkboxes (from `GET /admin/roles`); the temporary password appears once in the same live region; the API's field errors are shown (M1 acceptance 2) (#32, REQ-16)
 - M1 web users screen `/admin/users` for `users.manage` holders: table of users with roles, status and last sign-in; reset password, with the one-time temporary password in a live region, dropped at the next action; disable and enable (not on one's own row); field-level API errors; a "Users" link in the header, and a not-permitted message for everyone else (#32, REQ-16, REQ-18)
 - M1 web password change: `/change-password` with length and repeat checks and the server's reason on refusal; users with a temporary password are sent there before any other screen (#31, REQ-14)

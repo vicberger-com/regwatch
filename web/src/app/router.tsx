@@ -16,6 +16,7 @@ import {
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AppShell } from "./AppShell";
@@ -104,9 +105,24 @@ const usersRoute = createRoute({
   },
 });
 
+const taxonomyRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/taxonomy",
+  component: function Taxonomy() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
+    return <TaxonomyPage />;
+  },
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
-  authedRoute.addChildren([homeRoute, changePasswordRoute, usersRoute]),
+  authedRoute.addChildren([
+    homeRoute,
+    changePasswordRoute,
+    usersRoute,
+    taxonomyRoute,
+  ]),
 ]);
 
 export function createAppRouter(queryClient: QueryClient) {
