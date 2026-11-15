@@ -197,6 +197,8 @@ async def put_setting(
         current = await values(db, list(HOSTED))
         if any(current[k] == v for k, v in HOSTED.items()):
             raise invalid("value", "a hosted provider is selected; the basis cannot be emptied")
+    if key == "legal.page_markdown":  # the same budget as PUT /admin/legal (review N1)
+        await _check_legal_budget("value", value)
     row = await _write(db, key, value, actor, ip)
     await db.commit()
     return _setting_out(defn, row)
@@ -284,6 +286,13 @@ async def logo_file(db: AsyncSession) -> tuple[bytes, str, str] | None:
     return (data, LOGO_TYPES[match["ext"]], match["sha"]) if data is not None else None
 
 
+async def _check_legal_budget(field: str, markdown: str) -> None:
+    try:
+        await legal_page.check_budget(markdown)
+    except legal_page.LegalTooComplexError:
+        raise invalid(field, "takes too long to render; simplify the page") from None
+
+
 async def legal(db: AsyncSession) -> Legal:
     """The legal page as sanitized HTML, with the footer markings (BL-68)."""
     current = await values(db, list(LEGAL_KEYS.values()))
@@ -299,10 +308,7 @@ async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: st
         if has_control(value, allow_newlines=True):
             raise invalid(field, "must not contain control characters")
         if field == "page_markdown":
-            try:  # rendered now, off the event loop, so GET /legal is served from the cache
-                await legal_page.render_async(value, budget=legal_page.SAVE_BUDGET)
-            except legal_page.LegalTooComplexError:
-                raise invalid(field, "takes too long to render; simplify the page") from None
+            await _check_legal_budget(field, value)
         await _write(db, LEGAL_KEYS[field], value, actor, ip, action="legal.update")
     await db.commit()
 

@@ -372,3 +372,14 @@ async def test_legal_page_is_sanitized_and_needs_a_session(admin: httpx.AsyncCli
     assert '<a href="https://example.org" rel="noopener noreferrer nofollow">ok</a>' in html
     async with httpx.AsyncClient(base_url=admin.base_url, transport=admin._transport) as anon:
         assert (await anon.get(_api("/legal"))).status_code == 401
+
+
+async def test_slow_legal_pages_are_refused_on_both_routes(admin: httpx.AsyncClient) -> None:
+    """BL-68 review N1: the settings API applies the same render budget as PUT /admin/legal."""
+    slow = "![" * 99_000 + "x"  # under the 200,000-character limit, about 12 s to render
+    resp = await admin.put(_api("/admin/legal"), json={"page_markdown": slow})
+    assert resp.status_code == 400 and "too long to render" in resp.text
+    resp = await admin.put(_api("/admin/settings/legal.page_markdown"), json={"value": slow})
+    assert resp.status_code == 400 and "too long to render" in resp.text
+    fine = await admin.put(_api("/admin/settings/legal.page_markdown"), json={"value": "# Ok"})
+    assert fine.status_code == 200

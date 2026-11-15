@@ -142,8 +142,40 @@ def test_use_chains_are_refused_but_single_references_pass() -> None:
     single = '<defs><circle id="c" r="1"/></defs>' + '<use href="#c"/>' * 50
     assert check(svg(single)) == SVG
     chain = '<defs><circle id="a0" r="1"/><g id="a1"><use href="#a0"/><use href="#a0"/></g></defs>'
-    with pytest.raises(LogoRejectedError, match="another <use>"):
+    with pytest.raises(LogoRejectedError, match="points further"):
         check(svg(chain + '<use href="#a1"/>'))
     direct = '<defs><circle id="c" r="1"/><use id="u" href="#c"/></defs><use xlink:href="#u"/>'
-    with pytest.raises(LogoRejectedError, match="another <use>"):
+    with pytest.raises(LogoRejectedError, match="points further"):
         check(svg(direct))
+
+
+def test_chains_through_patterns_and_masks_are_refused() -> None:
+    """Re-verification N2: url(#id) references multiply like <use> ones."""
+    chain = (
+        '<defs><circle id="dot" r="1"/>'
+        '<pattern id="p1" width="2" height="2"><use href="#dot"/></pattern>'
+        '<pattern id="p2" width="4" height="4">'
+        '<rect width="4" height="4" fill="url(#p1)"/></pattern>'
+        "</defs>"
+        '<rect width="10" height="10" fill="url(#p2)"/>'
+    )
+    with pytest.raises(LogoRejectedError, match="points further"):
+        check(svg(chain))
+    masks = (
+        '<defs><mask id="m1"><rect width="1" height="1" fill="url(#p)"/></mask>'
+        '<pattern id="p" width="1" height="1"><rect width="1" height="1"/></pattern></defs>'
+        '<rect width="10" height="10" mask="url(#m1)"/>'
+    )
+    with pytest.raises(LogoRejectedError, match="points further"):
+        check(svg(masks))
+
+
+def test_gradients_may_inherit_and_one_level_patterns_pass() -> None:
+    body = (
+        '<defs><linearGradient id="base"><stop offset="0" stop-color="RGB(1 2 3 / 50%)"/>'
+        '</linearGradient><linearGradient id="g" href="#base"/>'
+        '<pattern id="p" width="2" height="2"><circle r="1" fill="hsl(120deg 50% 50%)"/></pattern>'
+        "</defs>"
+        '<rect width="10" height="10" fill="url(#g)"/><rect width="5" height="5" fill="url(#p)"/>'
+    )
+    assert check(svg(body)) == SVG

@@ -76,7 +76,8 @@ def test_gated_api_conforms(case: schemathesis.Case) -> None:
     case.cookies = {}  # a fuzzed rw_session would be looked up in a database
     _validate(case)
     if case.operation.definition.raw.get("security") != []:
-        assert case.call().status_code in {401, 403, 405, 422}
+        # 413: a fuzzed body over the 2 MB cap is refused before the gate, as it should be.
+        assert case.call().status_code in {401, 403, 405, 413, 422}
 
 
 @open_stubs.parametrize()

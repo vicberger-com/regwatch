@@ -9,16 +9,23 @@ Two layers, so neither alone is the security boundary:
    http, https and mailto, every link given ``rel="noopener noreferrer nofollow"``, and no
    images, so the page never loads anything from another site (CSP ``img-src 'self'``).
 
-Rendering runs in a worker thread, never on the event loop: markdown-it-py is quadratic on some
-inputs (``"![" * 100000`` takes seconds), so a save must render within ``SAVE_BUDGET`` or it is
-refused, and the result is cached for ``GET /legal`` (BL-68 review finding 4). A refused render
-still finishes in its thread, once; it cannot be stored, so it cannot recur.
+markdown-it-py is quadratic on some inputs (``"![" * 100000`` takes seconds), so (BL-68 review
+finding 4 and re-verification N1):
+
+- every save, through ``PUT /admin/legal`` or the settings API, first renders the page in a
+  separate process that is killed after ``SAVE_BUDGET`` seconds; a page that does not finish is
+  refused, so only pages that render quickly are ever stored;
+- ``GET /legal`` renders in a dedicated two-thread pool, never on the event loop and never in the
+  shared default pool, and caches the result.
 """
 
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
+from multiprocessing.connection import Connection
 
 import nh3
 from markdown_it import MarkdownIt
@@ -53,12 +60,42 @@ def render(markdown: str) -> str:
     )
 
 
-async def render_async(markdown: str, budget: float | None = None) -> str:
-    """``render`` in a worker thread; with a budget, ``LegalTooComplexError`` past it."""
-    work = asyncio.to_thread(render, markdown)
-    if budget is None:
-        return await work
+_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="legal-render")
+_STARTUP = 20.0  # seconds a fresh process may take to import before the budget starts
+
+
+async def render_async(markdown: str) -> str:
+    """``render`` in the legal pool, off the event loop and out of the shared pool."""
+    return await asyncio.get_running_loop().run_in_executor(_POOL, render, markdown)
+
+
+def _child(conn: Connection, markdown: str) -> None:  # pragma: no cover - runs in the child
+    conn.send("ready")  # imports are done; the budget starts now
+    conn.send(render(markdown))
+
+
+def _within_budget(markdown: str, budget: float) -> bool:
+    parent, child = multiprocessing.get_context("spawn").Pipe(duplex=False)
+    proc = multiprocessing.get_context("spawn").Process(
+        target=_child, args=(child, markdown), daemon=True
+    )
+    proc.start()
+    child.close()
     try:
-        return await asyncio.wait_for(work, timeout=budget)
-    except TimeoutError:
-        raise LegalTooComplexError from None
+        if not parent.poll(_STARTUP) or parent.recv() != "ready":
+            raise RuntimeError("the legal page check could not start")
+        return parent.poll(budget)
+    finally:
+        proc.kill()  # finished or not, the child goes now
+        proc.join()
+        parent.close()
+
+
+async def check_budget(markdown: str, budget: float = SAVE_BUDGET) -> None:
+    """``LegalTooComplexError`` unless ``markdown`` renders within ``budget`` seconds."""
+    if len(markdown) < 1000:
+        return  # far below any input that is slow to render
+    # The two-thread pool also bounds the checks, and so the child processes, to two at a time.
+    ok = await asyncio.get_running_loop().run_in_executor(_POOL, _within_budget, markdown, budget)
+    if not ok:
+        raise LegalTooComplexError

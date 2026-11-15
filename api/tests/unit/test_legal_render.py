@@ -68,10 +68,21 @@ def test_empty_page() -> None:
     assert render("") == ""
 
 
-async def test_render_runs_off_the_event_loop_and_enforces_a_budget() -> None:
-    """BL-68 review finding 4: a slow page is refused at save time, not served slowly."""
-    from regwatch.admin.legal import LegalTooComplexError, render_async
+async def test_render_runs_off_the_event_loop() -> None:
+    from regwatch.admin.legal import render_async
 
     assert await render_async("# Fine") == "<h1>Fine</h1>\n"
+
+
+async def test_slow_pages_are_refused_and_their_render_is_killed() -> None:
+    """BL-68 review finding 4 and N1: the check runs in a process that is killed at the budget."""
+    import time
+
+    from regwatch.admin.legal import LegalTooComplexError, check_budget
+
+    await check_budget("# Short page")  # below the size where a check is needed
+    await check_budget("Plain text. " * 1000, budget=5)
+    started = time.monotonic()
     with pytest.raises(LegalTooComplexError):
-        await render_async("![" * 30_000 + "x", budget=0.01)
+        await check_budget("![" * 100_000 + "x", budget=0.2)
+    assert time.monotonic() - started < 10  # not the 12 s a full render takes

@@ -199,3 +199,11 @@ The BL-81 row cites findings 6, 7, 9 and 10, its decision is `open`, and its mod
 - N3 is a usability proposal.
 
 · BL-68 independent review · 2026-11-15
+
+## Author follow-up 2 (re-verification N1 to N3, pending re-verification)
+- **N1 (low):** `PUT /admin/settings/legal.page_markdown` now applies the same check as `PUT /admin/legal`. The check (`legal.check_budget`) renders in a separate spawned process, waits until the child reports that its imports are done, and then gives it `SAVE_BUDGET` (2 s). It kills the child when the result arrives or when the budget runs out, so a refused render no longer keeps running. Both the checks and `GET /legal` renders use a dedicated two-thread pool, not the shared default pool, so the logo route and the upload check cannot be starved. Pages under 1,000 characters skip the check.
+  - Tests: `test_slow_pages_are_refused_and_their_render_is_killed` (unit; it returns in under a second for a page that takes about 12 s to render) and `test_slow_legal_pages_are_refused_on_both_routes` (integration, both routes).
+- **N2 (low):** the chain check now treats `url(#id)` like `href`. No reference may point at an element that is, or contains, a referencing element, except a gradient (gradients only inherit stops). The reviewer's pattern and mask chains in `reverify_svg.py` are refused. Tests: `test_chains_through_patterns_and_masks_are_refused` and `test_gradients_may_inherit_and_one_level_patterns_pass`.
+- **N3 (info), in part:** colour functions are accepted in any case and in the modern space-and-slash syntax with angle units (`RGB(1 2 3 / 50%)`, `hsl(120deg 50% 50%)`). Inkscape-style `style=` exports, ids starting with a digit, and `@` in ids are still refused, which is the conservative choice. They are recorded under BL-81 (e).
+- **Test change:** `test_gated_api_conforms` now also accepts 413. A fuzzed body over the 2 MB cap is refused before the session gate, which is correct, and one random run had produced one.
+- **Checks:** `make lint` clean; `make test-api` 521 unit and 99 database tests passed, 96.70% coverage; `make test-web` 96 passed; `scripts/tests` 32 passed; license scan 0 failing.

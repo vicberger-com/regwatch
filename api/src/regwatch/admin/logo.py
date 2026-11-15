@@ -10,8 +10,9 @@ handler. A ``href`` may only point inside the document (``#id``). Attribute valu
 CSS escapes (backslashes), comments (``/*``) or at-rules (``@``), and a ``(`` is allowed only as
 ``url(#id)``, a colour function (``rgb``, ``rgba``, ``hsl``, ``hsla``) with numeric arguments,
 or, in transform attributes, an SVG transform function with numbers (BL-68 review finding 2).
-A ``<use>`` may not point at an element that holds a ``<use>`` itself, so references cannot
-multiply into billions of drawn copies (review finding 3). The logo is shown only through
+No reference (``href`` or ``url(#id)``) may point at an element that holds a reference itself,
+except a gradient, so references cannot multiply into billions of drawn copies (review finding 3
+and re-verification N2). The logo is shown only through
 ``<img>`` (where scripts never run) and served with its own strict CSP, so this check is the
 second of two layers.
 """
@@ -55,12 +56,13 @@ ATTRIBUTES = frozenset({
     "font-family", "font-size", "font-weight", "font-style", "text-anchor",
     "dominant-baseline", "letter-spacing", "href", _XLINK_HREF, _XML_SPACE,
 })  # fmt: skip
-_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?%?"
-_ARGS = rf"\(\s*{_NUMBER}(?:\s*[,\s]\s*{_NUMBER})*\s*\)"
+_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?(?:%|deg|rad|grad|turn)?"
+_ARGS = rf"\(\s*{_NUMBER}(?:\s*[,/\s]\s*{_NUMBER})*\s*\)"
 # The only parenthesised forms a value may contain; anything else with "(" is refused.
-_LOCAL_URL = re.compile(r"url\(\s*(['\"]?)#[A-Za-z_][\w.-]*\1\s*\)")
+_LOCAL_URL = re.compile(r"url\(\s*(['\"]?)#([A-Za-z_][\w.-]*)\1\s*\)")
+_GRADIENTS = frozenset({f"{_SVG_NS}linearGradient", f"{_SVG_NS}radialGradient"})
 _FRAGMENT = re.compile(r"#[A-Za-z_][\w.-]*")
-_COLOUR_FN = re.compile(rf"(?:rgba?|hsla?){_ARGS}")
+_COLOUR_FN = re.compile(rf"(?:rgba?|hsla?){_ARGS}", re.IGNORECASE)
 _TRANSFORM_FN = re.compile(rf"(?:matrix|translate|scale|rotate|skewX|skewY){_ARGS}")
 _TRANSFORM_ATTRS = frozenset({"transform", "gradientTransform", "patternTransform"})
 _FORBIDDEN = ("\\", "/*", "@")
@@ -117,21 +119,35 @@ def _check_svg(data: bytes) -> None:
     _check_use_chains(root)
 
 
+def _references(el: Element) -> list[str]:
+    """The ids an element points at: its ``href`` and every ``url(#id)`` in its attributes."""
+    out = [m.group(2) for v in el.attrib.values() for m in _LOCAL_URL.finditer(v)]
+    href = (el.get("href") or el.get(_XLINK_HREF) or "").strip()
+    return [*out, href[1:]] if href.startswith("#") else out
+
+
 def _check_use_chains(root: Element) -> None:
-    use = f"{_SVG_NS}use"
+    """No reference may point at something that itself holds a reference (review 3 and N2).
+
+    ``<use>``, ``pattern``, ``mask``, ``clipPath`` and ``symbol`` draw their content again at every
+    reference, so a chain multiplies: ten levels of ten give 10^10 drawn copies. Gradients only
+    inherit stops from the gradient they point at, so a reference to a gradient is always fine.
+    """
     parent = {child: el for el in root.iter() for child in el}
-    # Mark every <use> and its ancestors, stopping at the first one already marked: linear.
-    holds_use: set[Element] = set()
-    for el in root.iter(use):
-        node: Element | None = el
-        while node is not None and node not in holds_use:
-            holds_use.add(node)
+    holds: set[Element] = set()  # elements that are, or contain, a referencing element
+    for el in root.iter():
+        node: Element | None = el if _references(el) else None
+        while node is not None and node not in holds:
+            holds.add(node)
             node = parent.get(node)
-    marked_ids = {el.get("id") for el in holds_use if el.get("id")}
-    for el in root.iter(use):
-        target = (el.get("href") or el.get(_XLINK_HREF) or "").strip()[1:]
-        if target in marked_ids:
-            raise LogoRejectedError("A <use> in an SVG logo may not point at another <use>.")
+    by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
+    for el in root.iter():
+        for target_id in _references(el):
+            target = by_id.get(target_id)
+            if target is not None and target in holds and target.tag not in _GRADIENTS:
+                raise LogoRejectedError(
+                    "An SVG logo may not point at a shape, pattern or mask that points further."
+                )
 
 
 def _check_element(element: Element) -> None:
