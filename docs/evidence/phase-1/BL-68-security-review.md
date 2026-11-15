@@ -261,3 +261,54 @@ Against `sec/M1-bl68-followups` at `8539557` (diff `c5e0a84..8539557`, 10 files)
 - **N6 (info):** `_within_budget` now reads the child's answer. A child that ends without one raises, so the save fails closed with a 500 and nothing is stored. Test: `test_a_child_that_dies_without_an_answer_fails_closed`.
 - **N4 (info):** budget checks run in their own two-thread pool (`legal-check`), so `GET /legal` renders in `legal-render` never wait behind them. Checks and child processes stay bounded at two at a time.
 - **N3 leftovers:** `@` in ids and the "version attribute" message for `inkscape:version` are cosmetic. They are recorded with BL-81 (e).
+
+
+## Re-verification 3 (BL-68 independent review, 2026-11-15)
+Against `sec/M1-bl68-followups` at `d79b6cf` (diff `8539557..d79b6cf`, 7 files).
+
+**Method.**
+- Read the whole diff.
+- Re-ran `reverify_svg2.py`, `reverify_svg.py`, `reverify_legal2.py` and `reverify_crash.py` from `/tmp/bl68poc/`.
+- Added `reverify_recv.py`, which tests the new path in `_within_budget` with a real spawned child: one that crashes, and two that return about 1 MB and 1.7 MB of HTML. It also tests repeated ids in export-like files.
+- Ran `make lint test-web`, `make test-api` and `scripts/tests`.
+- Only this record was changed, and the dev stack was not used.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| N4 | fixed | Checks run in their own `_CHECKS` pool (2 threads), and `GET /legal` renders in `_POOL`. With ten concurrent slow saves, all refused, the `GET /legal`-style render waited 0.0 s (10.3 s at re-verification 2). The default pool waited 0.000 s and the maximum loop lag was 21 ms. There were 3 children at peak: two checks and the tracker. |
+| N5 | fixed | All three duplicate-id files are refused (`repeat the id "g1"`): gradient decoy last, gradient first, and plain-`rect` decoy last. So are the pattern and mask chains and `use_bomb.py`. Single references, Figma-style unique ids (`paint0_linear_1_2`), legacy and modern colour functions, and one-level patterns still pass. The id map is built before any reference is followed, so the check and the browser can no longer disagree about a target. Finding 3 is closed again. |
+| N6 | fixed | With a real child that raises inside `render` (a lone surrogate passed straight to `_within_budget`), the check raised `RuntimeError("the legal page check ended without a result")` after 0.10 s, so it fails closed and nothing would be stored. `reverify_crash.py` is unchanged: that input is still refused earlier on both routes. |
+| N3 leftovers | deferred, covered | BL-81 (e) now also names `@` in ids and the refusal message for editor attributes such as `inkscape:version`. |
+
+**The new path in `_within_budget`:**
+- After `poll(budget)` succeeds, `recv()` reads the whole answer with no timeout. That is safe: the child sends only after `render` has returned, so the wait is a pipe transfer. 1 MB of output was received in 0.48 s and 1.7 MB in 0.74 s, both including the spawn, and both passed.
+- Any other error in `recv` (`OSError`, unpickling) propagates and gives a 500, which also fails closed.
+- `kill()` and `join()` still run in `finally`. No children were left after the PoCs or the full suites, apart from each parent's single `resource_tracker`. PID 131466 is unrelated, as before.
+- The mocked unit test exercises the EOF branch, and the real-child run above confirms it.
+
+**Repeated ids and legitimate exports:**
+- Figma, SVGO-minified and Illustrator or Inkscape files with unique ids are unaffected.
+- Refused, as R6:
+  - a file that repeats an id nothing references (an editor-style `<path id="Path">` twice);
+  - two files merged by hand, each with a `linearGradient id="a"`.
+  Some editors repeat ids taken from layer names; this was not checked against real exports, since none are available offline. The message names the repeated id, so the user can fix it.
+- The repeat rule could be loosened to refuse only ids that some reference points at. That is equally safe, because the bypass needs a referenced duplicate.
+
+### New at re-verification 3
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| N7 | info | **Repeated ids that nothing references are refused too** (`api/src/regwatch/admin/logo.py:143-152`). This is stricter than N5 needs, and it may refuse some editor exports and hand-merged files. **Fix (optional):** collect every referenced id first, and refuse a repeat only if it is one of them. Alternatively, keep the strict rule and say in the upload hint that an optimizer such as SVGO fixes it. This could be added to BL-81 (e). | open (proposal) | reviewer PoC R6 (`reverify_recv.py`) |
+
+**Repository suites at `d79b6cf`:**
+- `make lint test-web`: Ruff check and format clean (153 files), mypy clean (92 files), ESLint, Prettier and `tsc -b` clean; Vitest 18 files and 96 tests passed; 98.3% lines.
+- `make test-api`: unit tests 523 passed, with every security-critical module at its 100% floor; integration tests 99 passed; 96.71% combined coverage.
+- `scripts/tests`: 32 passed.
+
+**Sign-off:**
+- **Signed off.** No critical, high, medium or low findings are open.
+- **Verified fixed:** findings 1 to 5 and 8, and N1, N2, N4, N5 and N6. N3 is fixed for colour forms.
+- **Carried in BL-81:** finding 7's MIT and Apache notices (a); findings 9, 10 and 6 (b) to (d); and the rest of N3 (e).
+- **Open:** N7 is an info-level proposal.
+- **Before the external audience:** nothing in this record blocks admitting it. The production header set (M10, BL-76 a) must keep the conditional CSP rule from finding 1.
+
+· BL-68 independent review · 2026-11-15
