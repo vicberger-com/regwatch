@@ -37,6 +37,9 @@ export function AppShell() {
           {hasPermission(me, "settings.manage") && (
             <Link to="/admin/flags">Flags</Link>
           )}
+          {hasPermission(me, "audit.read") && (
+            <Link to="/admin/audit">Audit</Link>
+          )}
           {hasPermission(me, "taxonomy.read") && (
             <Link to="/admin/taxonomy">Taxonomy</Link>
           )}

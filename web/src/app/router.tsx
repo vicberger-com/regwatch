@@ -16,6 +16,7 @@ import {
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
 import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
+import { AuditPage } from "@/features/audit/AuditPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { FlagsPage } from "@/features/settings/FlagsPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
@@ -137,6 +138,16 @@ const flagsRoute = createRoute({
   },
 });
 
+const auditRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/audit",
+  component: function Audit() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "audit.read")) return <NotPermitted />;
+    return <AuditPage />;
+  },
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   authedRoute.addChildren([
@@ -146,6 +157,7 @@ export const routeTree = rootRoute.addChildren([
     taxonomyRoute,
     rolesRoute,
     flagsRoute,
+    auditRoute,
   ]),
 ]);
 
