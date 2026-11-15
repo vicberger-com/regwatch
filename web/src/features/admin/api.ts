@@ -9,6 +9,7 @@ import { api, type Schemas } from "@/lib/api/client";
 import { failure } from "@/lib/auth/session";
 
 export type User = Schemas["User"];
+export type Role = Schemas["Role"];
 
 export const usersQuery = queryOptions({
   queryKey: ["admin", "users"],
@@ -21,12 +22,29 @@ export const usersQuery = queryOptions({
   },
 });
 
+export const rolesQuery = queryOptions({
+  queryKey: ["admin", "roles"],
+  queryFn: async (): Promise<Role[]> => {
+    const result = await api.GET("/admin/roles");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+});
+
 function useAdminMutation<T, R>(call: (input: T) => Promise<R>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: call,
     onSuccess: () =>
       client.invalidateQueries({ queryKey: usersQuery.queryKey }),
+  });
+}
+
+export function useCreateUser() {
+  return useAdminMutation(async (body: Schemas["UserCreate"]) => {
+    const result = await api.POST("/admin/users", { body });
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
   });
 }
 

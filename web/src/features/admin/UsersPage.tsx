@@ -1,15 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 import { problemText } from "@/lib/auth/session";
 
-import { usersQuery, useResetPassword, useUpdateUser, type User } from "./api";
+import {
+  rolesQuery,
+  usersQuery,
+  useCreateUser,
+  useResetPassword,
+  useUpdateUser,
+  type User,
+} from "./api";
 
+const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
 
-/** `/admin/users` (screens.md): table, reset password, enable and disable. */
+/** `/admin/users` (screens.md): table, create form, reset password, enable and disable. */
 export function UsersPage({ selfId }: { selfId: string }) {
   const users = useQuery(usersQuery);
+  const roles = useQuery(rolesQuery);
   const update = useUpdateUser();
   const reset = useResetPassword();
   // A temporary password is shown once, here, and dropped when the next action starts.
@@ -28,6 +37,12 @@ export function UsersPage({ selfId }: { selfId: string }) {
       <h1 id="users-heading" className="text-2xl font-semibold">
         Users
       </h1>
+      <CreateUser
+        roleKeys={(roles.data ?? []).map((r) => r.key)}
+        onCreated={(email, password) => {
+          setSecret({ email, password });
+        }}
+      />
       <div role="status" aria-live="polite">
         {secret && (
           <p className="rounded border border-warning bg-surface p-3">
@@ -132,5 +147,98 @@ function Row(props: {
         )}
       </td>
     </tr>
+  );
+}
+
+function CreateUser(props: {
+  roleKeys: string[];
+  onCreated: (email: string, password: string) => void;
+}) {
+  const create = useCreateUser();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [chosen, setChosen] = useState<string[]>([]);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    create.mutate(
+      { email, display_name: name, roles: chosen },
+      {
+        onSuccess: (user) => {
+          props.onCreated(user.email, user.temporary_password ?? "");
+          setEmail("");
+          setName("");
+          setChosen([]);
+        },
+      },
+    );
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      noValidate
+      aria-labelledby="create-user-heading"
+      className="flex flex-col gap-2 rounded border border-border bg-surface p-4"
+    >
+      <h2 id="create-user-heading" className="text-lg font-semibold">
+        Create user
+      </h2>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex flex-col gap-1">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+            }}
+            className={field}
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span>Name</span>
+          <input
+            value={name}
+            maxLength={120}
+            onChange={(e) => {
+              setName(e.target.value);
+            }}
+            className={field}
+          />
+        </label>
+      </div>
+      <fieldset className="flex flex-wrap gap-3">
+        <legend>Roles</legend>
+        {props.roleKeys.map((key) => (
+          <label key={key} className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={chosen.includes(key)}
+              onChange={(e) => {
+                setChosen(
+                  e.target.checked
+                    ? [...chosen, key]
+                    : chosen.filter((k) => k !== key),
+                );
+              }}
+            />
+            {key}
+          </label>
+        ))}
+      </fieldset>
+      <p role="alert" className="text-critical">
+        {problemText(create.error, "The user could not be created.")}
+      </p>
+      <div>
+        <button
+          type="submit"
+          className={button}
+          disabled={create.isPending || !email || !name.trim()}
+        >
+          {create.isPending ? "Creating…" : "Create user"}
+        </button>
+      </div>
+    </form>
   );
 }

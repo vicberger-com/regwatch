@@ -2,9 +2,13 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ADMIN, fakeApi } from "@/test/api";
+import { ADMIN, fakeApi, problem } from "@/test/api";
 import { renderAt } from "@/test/render";
 
+const ROLES = [
+  { id: "r1", key: "admin", label: "Admin", permissions: [], system: true },
+  { id: "r2", key: "viewer", label: "Viewer", permissions: [], system: true },
+];
 const VIEWER = {
   id: "0190a000-0000-7000-8000-000000000002",
   email: "vic@example.org",
@@ -27,6 +31,7 @@ describe("users screen", () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
       "GET /admin/users": [200, users([ADMIN, VIEWER])],
+      "GET /admin/roles": [200, ROLES],
     });
     renderAt("/admin/users");
     const table = await screen.findByRole("table", { name: "Users" });
@@ -40,10 +45,64 @@ describe("users screen", () => {
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
   });
 
+  it("creates a user with roles and shows the temporary password once", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": [200, users([ADMIN])],
+      "GET /admin/roles": [200, ROLES],
+      "POST /admin/users": [
+        201,
+        { ...VIEWER, temporary_password: "tmp-SECRET-123" },
+      ],
+    });
+    renderAt("/admin/users");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Create user" });
+    await user.type(within(form).getByLabelText("Email"), "vic@example.org");
+    await user.type(within(form).getByLabelText("Name"), "Vic Viewer");
+    await user.click(await within(form).findByLabelText("viewer"));
+    await user.click(within(form).getByRole("button", { name: "Create user" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Temporary password for vic@example.org: tmp-SECRET-123",
+    );
+    expect(api.calls.find((c) => c.key === "POST /admin/users")?.body).toEqual({
+      email: "vic@example.org",
+      display_name: "Vic Viewer",
+      roles: ["viewer"],
+    });
+  });
+
+  it("names the field when the API refuses a new user", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": [200, users([ADMIN])],
+      "GET /admin/roles": [200, ROLES],
+      "POST /admin/users": [
+        422,
+        {
+          ...problem(422, "The request failed validation."),
+          errors: [{ field: "email", message: "must be an email address" }],
+        },
+      ],
+    });
+    renderAt("/admin/users");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Create user" });
+    await user.type(within(form).getByLabelText("Email"), "nope");
+    await user.type(within(form).getByLabelText("Name"), "N");
+    await user.click(within(form).getByRole("button", { name: "Create user" }));
+    await vi.waitFor(() => {
+      expect(within(form).getByRole("alert")).toHaveTextContent(
+        "email: must be an email address",
+      );
+    });
+  });
+
   it("resets a password and disables an account", async () => {
     const api = fakeApi({
       "GET /auth/me": [200, ADMIN],
       "GET /admin/users": [200, users([ADMIN, VIEWER])],
+      "GET /admin/roles": [200, ROLES],
       [`POST /admin/users/${VIEWER.id}/reset-password`]: [
         200,
         { temporary_password: "reset-777" },
