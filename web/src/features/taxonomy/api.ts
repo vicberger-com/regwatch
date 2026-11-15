@@ -130,3 +130,23 @@ export function lines(text: string): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+export function useMergeTerm() {
+  return useTaxonomyMutation(async (input: { id: string; into: string }) => {
+    const result = await api.POST("/taxonomy/terms/{id}/merge", {
+      params: { path: { id: input.id } },
+      body: { into_term_id: input.into },
+    });
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  });
+}
+
+export function useDeleteTerm() {
+  return useTaxonomyMutation(async (id: string) => {
+    const result = await api.DELETE("/taxonomy/terms/{id}", {
+      params: { path: { id } },
+    });
+    if (!result.response.ok) throw failure(result);
+  });
+}

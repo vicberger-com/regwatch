@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { problemText } from "@/lib/auth/session";
 
 import { TaxonomyTransfer } from "./TaxonomyTransfer";
+import { TermActions } from "./TermActions";
 import { TermEditor } from "./TermEditor";
 import {
   facetsQuery,
@@ -75,6 +76,7 @@ function FacetDetail({
 }) {
   const terms = facet.terms ?? [];
   const [editing, setEditing] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
   const editable = flatten(terms).find(({ term }) => term.id === editing)?.term;
   const onEdit = canManage ? setEditing : undefined;
   return (
@@ -95,14 +97,26 @@ function FacetDetail({
         ) : (
           <p>No terms yet.</p>
         ))}
+      <p role="status">{notice}</p>
       {editable && (
-        <TermEditor
-          key={editable.id}
-          term={editable}
-          onClose={() => {
-            setEditing(null);
-          }}
-        />
+        <>
+          <TermEditor
+            key={editable.id}
+            term={editable}
+            onClose={() => {
+              setEditing(null);
+            }}
+          />
+          <TermActions
+            key={`actions-${editable.id}`}
+            term={editable}
+            terms={terms}
+            onDone={(message) => {
+              setEditing(null);
+              setNotice(message);
+            }}
+          />
+        </>
       )}
       {canManage && facet.value_type === "term" && <CreateTerm facet={facet} />}
     </div>
