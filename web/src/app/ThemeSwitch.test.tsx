@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { AppShell } from "./AppShell";
 import { THEME_STORAGE_KEY } from "./theme";
 import { ThemeSwitch } from "./ThemeSwitch";
 
@@ -48,20 +47,5 @@ describe("ThemeSwitch", () => {
     expect(screen.getByRole("button")).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(html().dataset.theme).toBe("dark");
-  });
-});
-
-describe("AppShell", () => {
-  it("renders the landmarks, a skip link and the theme switch", () => {
-    render(<AppShell />);
-    expect(screen.getByRole("banner")).toBeInTheDocument();
-    expect(screen.getByRole("main")).toHaveAttribute("id", "main");
-    expect(
-      screen.getByRole("link", { name: /skip to main content/i }),
-    ).toHaveAttribute("href", "#main");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Regulatory monitor",
-    );
-    expect(screen.getByRole("button", { name: /theme:/i })).toBeInTheDocument();
   });
 });

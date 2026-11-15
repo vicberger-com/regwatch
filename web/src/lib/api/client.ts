@@ -15,11 +15,20 @@ export type Problem = Schemas["Problem"];
 
 export const API_BASE_URL = "/api/v1";
 
+/** Absolute, because a Request needs one outside the browser (tests, server rendering). */
+function defaultBaseUrl(): string {
+  const origin =
+    typeof location === "undefined" ? "http://localhost" : location.origin;
+  return new URL(API_BASE_URL, origin).toString();
+}
+
 export function createApiClient(options: ClientOptions = {}) {
   return createClient<paths>({
-    baseUrl: API_BASE_URL,
+    baseUrl: defaultBaseUrl(),
     credentials: "same-origin",
     headers: { Accept: "application/json, application/problem+json" },
+    // Looked up per request, so tests can stub globalThis.fetch.
+    fetch: (request: Request) => globalThis.fetch(request),
     ...options,
   });
 }
