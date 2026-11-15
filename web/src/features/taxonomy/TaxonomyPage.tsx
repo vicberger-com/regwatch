@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { problemText } from "@/lib/auth/session";
 
 import { TaxonomyTransfer } from "./TaxonomyTransfer";
+import { TermEditor } from "./TermEditor";
 import {
   facetsQuery,
   flatten,
@@ -73,6 +74,9 @@ function FacetDetail({
   canManage: boolean;
 }) {
   const terms = facet.terms ?? [];
+  const [editing, setEditing] = useState<string | null>(null);
+  const editable = flatten(terms).find(({ term }) => term.id === editing)?.term;
+  const onEdit = canManage ? setEditing : undefined;
   return (
     <div className="flex min-w-72 flex-1 flex-col gap-3">
       <h2 className="text-lg font-semibold">{facet.label}</h2>
@@ -83,10 +87,23 @@ function FacetDetail({
       </p>
       {facet.value_type === "term" &&
         (terms.length > 0 ? (
-          <TermTree terms={terms} label={`Terms of ${facet.label}`} />
+          <TermTree
+            terms={terms}
+            label={`Terms of ${facet.label}`}
+            onEdit={onEdit}
+          />
         ) : (
           <p>No terms yet.</p>
         ))}
+      {editable && (
+        <TermEditor
+          key={editable.id}
+          term={editable}
+          onClose={() => {
+            setEditing(null);
+          }}
+        />
+      )}
       {canManage && facet.value_type === "term" && <CreateTerm facet={facet} />}
     </div>
   );
@@ -100,10 +117,12 @@ function TermTree({
   terms,
   label,
   depth = 0,
+  onEdit,
 }: {
   terms: Term[];
   label?: string;
   depth?: number;
+  onEdit?: ((id: string) => void) | undefined;
 }) {
   if (depth >= MAX_DEPTH) {
     return (
@@ -115,6 +134,19 @@ function TermTree({
       {terms.map((t) => (
         <li key={t.id}>
           {t.label} <code className="text-text-muted">{t.key}</code>
+          {t.active ? "" : " (inactive)"}
+          {onEdit && (
+            <button
+              type="button"
+              aria-label={`Edit ${t.label}`}
+              className="ml-2 text-sm underline"
+              onClick={() => {
+                onEdit(t.id);
+              }}
+            >
+              Edit
+            </button>
+          )}
           {t.synonyms && t.synonyms.length > 0 && (
             <span className="text-text-muted">
               {" "}
@@ -122,7 +154,7 @@ function TermTree({
             </span>
           )}
           {t.children && t.children.length > 0 && (
-            <TermTree terms={t.children} depth={depth + 1} />
+            <TermTree terms={t.children} depth={depth + 1} onEdit={onEdit} />
           )}
         </li>
       ))}

@@ -10,6 +10,7 @@ import { failure } from "@/lib/auth/session";
 
 export type Facet = Schemas["Facet"];
 export type Term = Schemas["Term"];
+export type MatchRules = Schemas["MatchRules"];
 
 export const facetsQuery = queryOptions({
   queryKey: ["taxonomy", "facets"],
@@ -86,4 +87,26 @@ export async function exportTaxonomy(): Promise<Blob> {
   const result = await api.GET("/taxonomy/export", { parseAs: "blob" });
   if (!result.response.ok || result.data === undefined) throw failure(result);
   return result.data;
+}
+
+export function useUpdateTerm() {
+  return useTaxonomyMutation(
+    async (input: { id: string; body: Schemas["TermWrite"] }) => {
+      const result = await api.PATCH("/taxonomy/terms/{id}", {
+        params: { path: { id: input.id } },
+        body: input.body,
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+  );
+}
+
+/** Lines of a text area as a list: trimmed, blank lines dropped. */
+export function lines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
