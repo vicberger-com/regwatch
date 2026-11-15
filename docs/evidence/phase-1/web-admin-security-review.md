@@ -105,3 +105,34 @@
 - **Findings 3, 8, 9 and 10:** deferred to BL-77.
 - **Checks:** `make lint-web` clean; `make test-web` 85 tests passed, 98.71% lines.
 
+
+## Re-verification (Web UI independent review, 2026-11-15)
+Against `sec/web-admin-followups` at `f0a51be` (diff `1ae3c4e..f0a51be`).
+- **Repository suites:** `make lint-web test-web`: lint, Prettier and typecheck clean; 16 test files and 85 tests passed; 98.71% lines.
+- **Proofs of concept:** P1 to P3 re-run unchanged from a fresh copy of `web/` in `/tmp/rwpoc4`.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | fixed | P1: the field is now a `TEXTAREA` showing `"# Legal\n\nLine two\nLine three"`. After one typed character it sends `{"value":"# Legal\n\nLine two\nLine three!"}`. |
+| 2 | fixed | P2: after the 401 refetch, the row is no longer shown (`STILL SHOWN after 401: false`) and the alert is. The table renders only when `!audit.isError` (`AuditPage.tsx:104`). There is still no global 401 handler; this is accepted, because every screen now shows only the error when its own query fails. |
+| 3 | deferred, covered | BL-77 (a): confirm flags and settings that send data out or widen fetching. |
+| 4 | fixed | P3: Delete is disabled while the merge is in flight (`DELETE disabled during merge: true`). Only the merge request was sent; the PoC's own assertion of two calls now fails, as intended. One `busy` state is shared by both buttons (`TermActions.tsx:30`). |
+| 5 | fixed | `TextDecoder("utf-8", { fatal: true })` on the file's bytes (`TaxonomyTransfer.tsx:50-62`). Node check: Latin-1 `Caf\xe9` and a UTF-16LE file are refused; UTF-8 `Café` is accepted; a UTF-8 BOM is stripped, which is what the API's `decode("utf-8")` would otherwise leave as U+FEFF, so this is no worse. |
+| 6 | fixed | Revoked after 10 s (`TaxonomyTransfer.tsx:17-19`); covered by the author's fake-timer test. The URL is local and same-origin, so a blob that outlives a sign-out by up to 10 s exposes nothing. |
+| 7 | fixed | Each value is cut at `VALUE_MAX` = 10 000 characters, with a count of what was cut (`AuditPage.tsx:180-194`). This bounds one page to about 1 MB of text. |
+| 8 | deferred, covered | BL-77 (b): the API marks read-only settings. |
+| 9 | deferred, covered | BL-77 (c): refresh the user's permissions after saving their own role. |
+| 10 | deferred, covered | BL-77 (d): a version or `If-Match` check, flagged as a CP. |
+
+The BL-77 row cites findings 3, 8, 9 and 10, its decision is `open`, and its modules are M1 and M2. That matches how BL-75 and BL-76 were recorded.
+
+Checked for regressions:
+- **Textarea for every `string` setting:** single-line keys (`general.site_title`, `capture.user_agent`, `branding.primary_color`, `general.contact_email`) can now take a typed newline. The API refuses it: `has_control` without `allow_newlines` (`core/schemas.py:36`, `admin/services.py:128`), and the error is shown as text. Enter no longer submits those rows; that is a usability point only. The `inputMode` branch now covers only `integer` and `number`, because every other type has its own control.
+- **TextDecoder path:** the 2 MiB size check still runs before the file is read. A refused file sends nothing, and the error replaces the old size-only message without hiding upload or download errors.
+- **Audit gating:** an error on a later page hides the rows and the page buttons together. Applying the filters again returns to page 1, which is cached, so the user is not stuck. Cutting a value in the middle of a surrogate pair can show one replacement character; this is cosmetic.
+- **TermActions:** no change to the confirmations; a cancelled dialog still sends nothing.
+- **Other files:** none in `web/` changed beyond the five above; the CHANGELOG and BACKLOG entries match the code.
+
+New at re-verification: none.
+
+**Sign-off:** signed off. Findings 1, 2 and 4 to 7 are verified fixed; 3 and 8 to 10 are carried in BL-77. No critical, high, medium or low findings are open. · Web UI independent review · 2026-11-15
