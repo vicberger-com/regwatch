@@ -103,6 +103,26 @@ export function useUpdateTerm() {
   );
 }
 
+/** Runs a term's saved rules against sample text; changes nothing, so no cache refresh. */
+export function useTestRules() {
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      text: string;
+      language?: string;
+    }) => {
+      const { id, ...body } = input;
+      const result = await api.POST("/taxonomy/terms/{id}/test-rules", {
+        params: { path: { id } },
+        body,
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+  });
+}
+
 /** Lines of a text area as a list: trimmed, blank lines dropped. */
 export function lines(text: string): string[] {
   return text

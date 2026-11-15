@@ -2,12 +2,13 @@ import { useState, type FormEvent, type ReactNode } from "react";
 
 import { problemText } from "@/lib/auth/session";
 
+import { RuleTest } from "./RuleTest";
 import { lines, useUpdateTerm, type MatchRules, type Term } from "./api";
 
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
 
-/** Edit a term's label, synonyms and match rules. */
+/** Edit a term's label, synonyms and match rules, and try the saved rules on sample text. */
 export function TermEditor({
   term,
   onClose,
@@ -148,6 +149,7 @@ export function TermEditor({
           </button>
         </div>
       </form>
+      <RuleTest term={term} />
     </div>
   );
 }

@@ -134,4 +134,46 @@ describe("term editor", () => {
       screen.queryByRole("form", { name: "Edit term Privacy" }),
     ).toBeNull();
   });
+  it("tests the saved rules and shows evidence as text", async () => {
+    const api = fakeApi({
+      ...BASE,
+      "POST /taxonomy/terms/t1/test-rules": [
+        200,
+        { matched: true, confidence: 0.8, evidence: ["<b>GDPR</b>"] },
+      ],
+    });
+    const { user } = await openEditor();
+    const test = screen.getByRole("form", { name: "Test rules" });
+    await user.type(
+      within(test).getByLabelText("Sample text"),
+      "The GDPR applies.",
+    );
+    await user.type(within(test).getByLabelText(/Language/), "en");
+    await user.click(within(test).getByRole("button", { name: "Test" }));
+    expect(
+      await within(test).findByText("Matched, confidence 0.80"),
+    ).toBeInTheDocument();
+    expect(within(test).getByText("<b>GDPR</b>")).toBeInTheDocument();
+    expect(api.calls.at(-1)?.body).toEqual({
+      text: "The GDPR applies.",
+      language: "en",
+    });
+  });
+
+  it("reports a failed test", async () => {
+    fakeApi({
+      ...BASE,
+      "POST /taxonomy/terms/t1/test-rules": [
+        400,
+        problem(400, "text: too long"),
+      ],
+    });
+    const { user } = await openEditor();
+    const test = screen.getByRole("form", { name: "Test rules" });
+    await user.type(within(test).getByLabelText("Sample text"), "x");
+    await user.click(within(test).getByRole("button", { name: "Test" }));
+    expect(await within(test).findByRole("alert")).toHaveTextContent(
+      "too long",
+    );
+  });
 });
