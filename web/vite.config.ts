@@ -6,6 +6,10 @@ import { defineConfig } from "vite";
 
 import tailwindConfig from "./tailwind.config";
 
+// Optional: the host name of an HTTPS proxy in front of the stack, such as a DevSpaces URL
+// (deploy/README.md). The dev server then accepts that Host and runs live reload over it.
+const publicHost = process.env.REGWATCH_DEV_PUBLIC_HOST?.trim() || undefined;
+
 // React JSX is compiled by Vite's built-in esbuild ("jsx": "react-jsx" in tsconfig.app.json).
 export default defineConfig({
   resolve: {
@@ -19,8 +23,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     // Requests arrive through the Caddy proxy (deploy/Caddyfile) as http://localhost.
-    allowedHosts: ["localhost", "web"],
-    hmr: { clientPort: 80 },
+    allowedHosts: ["localhost", "web", ...(publicHost ? [publicHost] : [])],
+    hmr: publicHost
+      ? { protocol: "wss", clientPort: 443 } // the browser connects to its own address
+      : { clientPort: 80 },
   },
   test: {
     environment: "jsdom",

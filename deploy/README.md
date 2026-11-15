@@ -12,6 +12,18 @@ make stop
 - Only `proxy` publishes ports (80, 443) and `mailpit` publishes 8025, all on 127.0.0.1, so the stack is reachable from this machine only; from elsewhere use an SSH tunnel (`ssh -L 8080:127.0.0.1:80 host`). All other services sit on the internal `regwatch` network, which has no route to the internet.
 - The `regwatch` network is pinned to `10.89.0.0/24` with `proxy` at `10.89.0.2`, and `make env` sets `REGWATCH_TRUSTED_PROXIES=10.89.0.2/32`, so the API trusts `X-Forwarded-For` from Caddy and from nothing else, and sees each client's address for login limits and audit rows (BL-73). If the subnet collides with a host network, change the subnet, the proxy address and the variable together; a unit test checks that they agree.
 
+## Opening the stack through an HTTPS proxy (DevSpaces, AgentSpaces)
+
+The proxy publishes only on 127.0.0.1. To use it from your own browser on a cloud devbox, open
+it through the devbox's owner-only, Midway-authenticated proxy URL instead of widening the bind:
+
+1. Open the devbox's proxy URL for port 80: `https://$(cat /etc/devspace/id)--80.$(cat /etc/devspace/http-proxy-base-domain)/`. That address stays in your browser's address bar, but the proxy delivers requests to the devbox under another host name (`e-…--80.…`); the dev server's "Blocked request" page names it.
+2. In `deploy/.env`, set `REGWATCH_BASE_URL` to the address-bar URL (the browser sends it as `Origin`, and the API accepts mutating requests only from that origin), and `REGWATCH_DEV_PUBLIC_HOST` to the delivered `e-…` host name alone, so the Vite dev server accepts it. Live reload then runs over `wss:443` to the address-bar host.
+3. Restart the web and api containers: `docker compose -f deploy/compose.yaml up -d --build --wait web api`.
+
+Pages then open only through that URL for sign-in: `http://localhost` sends a different Origin, so
+the API refuses its sign-in until `REGWATCH_BASE_URL` is set back.
+
 ## Database logins (BL-61)
 
 - The API, workers and `regwatch-seed` log in as `regwatch_api`, a member of `regwatch_app`. That role may read and write the application tables but only read and insert `audit_log`, so audit rows cannot be changed or deleted through the application's credentials.

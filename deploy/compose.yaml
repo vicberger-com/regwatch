@@ -80,6 +80,9 @@ services:
     volumes:
       - ../web/src:/app/src:ro
       - ../web/index.html:/app/index.html:ro
+    environment:
+      # Optional HTTPS proxy host for the dev server (deploy/README.md); empty means localhost.
+      REGWATCH_DEV_PUBLIC_HOST: ${REGWATCH_DEV_PUBLIC_HOST:-}
     networks: [regwatch]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
