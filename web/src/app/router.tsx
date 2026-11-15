@@ -21,6 +21,7 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { JurisdictionsPage } from "@/features/jurisdictions/JurisdictionsPage";
 import { FlagsPage } from "@/features/settings/FlagsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
+import { BrandingPage } from "@/features/branding/BrandingPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
@@ -162,6 +163,16 @@ const settingsRoute = createRoute({
   },
 });
 
+const brandingRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/branding",
+  component: function BrandingAdmin() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "settings.manage")) return <NotPermitted />;
+    return <BrandingPage />;
+  },
+});
+
 const auditRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/audit",
@@ -183,6 +194,7 @@ export const routeTree = rootRoute.addChildren([
     flagsRoute,
     jurisdictionsRoute,
     settingsRoute,
+    brandingRoute,
     auditRoute,
   ]),
 ]);
