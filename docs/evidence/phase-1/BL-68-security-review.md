@@ -147,3 +147,55 @@ All proof-of-concept scripts are in `/tmp/bl68poc/`, outside the repository.
 - **Finding 7:** the `pyproject.toml` comments are corrected. `api/THIRD_PARTY_NOTICES.md` gains the MPL-2.0 3.2(a) source statement for cssparser and dtoa-short, and R-01's reasoning is corrected. The MIT and Apache-2.0 notices for the other bundled crates are BL-81 (a), due before the first distribution of the API image.
 - **Finding 8:** new tests cover a signed-in user without `settings.manage` (403) and a foreign `Origin` (403, nothing stored). The object-store root check is no longer marked `pragma: no cover`; `test_a_symlink_out_of_the_store_is_refused` covers it.
 - **Findings 6, 9 and 10:** BL-81 (b) to (d).
+
+
+## Re-verification (BL-68 independent review, 2026-11-15)
+Against `sec/M1-bl68-followups` at `c5e0a84` (diff `75fd9c3..c5e0a84`, 16 files).
+
+**Method.**
+- Read the whole diff.
+- Re-ran PoCs S1, S2 and L2 unchanged from `/tmp/bl68poc/`. Added three new ones:
+  - `reverify_svg.py`: 20 legitimate exports and colour forms, 13 remaining `(` forms, and 2 paint-server chains;
+  - `reverify_legal.py`: the settings-route path, the event-loop lag, and the default executor under refused saves;
+  - `caddy2/Caddyfile`: the repository's `:80` block verbatim, with only the upstream addresses and the admin line changed (checked by `diff`), run in the pinned Caddy image with `--network none`.
+- Ran `make lint test-web`, `make test-api`, and `scripts/tests` the way CI does.
+- No repository file other than this record was changed. The dev stack was not used.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | fixed | C1 again, against the new `deploy/Caddyfile`. Through the proxy, `/api/v1/branding/logo` keeps `default-src 'none'; style-src 'unsafe-inline'; sandbox`. A response with no CSP (`/`, the SPA stub) still gets the site CSP. `nosniff` and `X-Frame-Options: DENY` are still set on both. No other upstream sets a CSP (`grep` over `api/src`, `web/vite.config.*` and `web/index.html`), so the `?` cannot keep a weaker policy. `scripts/tests/test_caddyfile.py` is a static check of the file, and it runs in CI (`ci.yml:77`); 32 passed locally. Production (M10) must keep the rule, and the author's note says so. |
+| 2 | fixed | S1: every bypass from the review is refused: `\75 rl(`, all `style` forms, `image-set`, `@\69mport`, and `url(#a) url(https://…)`. No remaining `(` form can fetch. After the exact `url(#id)`, numeric colour functions and (in transform attributes only) numeric transform functions are removed, any `(` or `)` left is refused. That covers a rebuilt `uurl(#a)rl(https://…)` and an entity-encoded `url&#40;…&#41;`, which the XML parser decodes before the check. What still passes cannot fetch: `url(#a)` in `transform`, `rgb()` in `transform`, a full-width `（`, a bare word `image-set`, and `url( #a )`. CSS does not treat these as functions, or treats them as invalid. |
+| 3 | fixed for `<use>`; see N2 | S2 (`use_bomb.py`) is now refused: "A `<use>` in an SVG logo may not point at another `<use>`." 50 `<use>` of one shape still pass. Two elements sharing an id are handled, because any marked id refuses. |
+| 4 | partly fixed; see N1 | The event loop is no longer blocked. One `"![" * 100000` render in a thread gave a maximum loop lag of 26 ms, against 12 s before. `PUT /admin/legal` refuses a page that takes over 2 s. The budget can still be bypassed, and refused renders keep running (N1). |
+| 5 | fixed | `logo.check` runs in `asyncio.to_thread` (`services.py:266`). Parse memory is unchanged (41 MB peak for 1 MB), which the finding accepted. |
+| 6 | deferred, covered | BL-81 (d): keep table alignment and allow `tel:`. |
+| 7 | partly fixed, rest covered | The MPL-2.0 3.2(a) statement for cssparser 0.37.0 and dtoa-short 0.3.5 is in `api/THIRD_PARTY_NOTICES.md`, with crates.io and repository URLs. R-01 now states the 3.2(a) duty correctly, and the `pyproject.toml` comments are on the right lines. The MIT and Apache-2.0 notices are BL-81 (a), "before the first distribution of the API image", which is the point at which they are owed. |
+| 8 | fixed | The new tests cover 403 without `settings.manage`, 403 for a foreign `Origin` (and that nothing was stored), and the symlink case. The pragma is gone and the comment is correct. The 100% floors held (`make test-api`). |
+| 9 | deferred, covered | BL-81 (b): logo removal, and `?v=` on the sign-in page. |
+| 10 | deferred, covered | BL-81 (c): a CP listing 400 for malformed multipart. |
+
+The BL-81 row cites findings 6, 7, 9 and 10, its decision is `open`, and its modules are M1 and M10. That matches how BL-77 was recorded.
+
+### New at re-verification
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| N1 | low | **The legal save budget can be bypassed, and refused renders still occupy the shared thread pool** (`api/src/regwatch/admin/services.py:185-201` and `:294-306`; `api/src/regwatch/admin/legal.py:56-64`). There are two parts. (a) `PUT /admin/settings/legal.page_markdown` is still accepted. It runs `_check_owned_by_dedicated_route`, which validates `LegalWrite` (length only) and never renders. So a page that takes 12 s is stored without the budget, and every worker renders it on its next `GET /legal` with no budget. The settings screen edits this key in a text area since the admin web follow-ups. (b) `asyncio.wait_for` cancels only the await; the thread keeps running until the render ends. Every `asyncio.to_thread` call shares the loop's default executor (8 workers on this 4-CPU host), including `objectstore.get` for the public `GET /branding/logo` and the logo check. The renders are pure Python and hold the GIL. **Scenario:** a `settings.manage` holder, or a stolen admin session, submits ten different slow pages to `PUT /admin/legal`. Each one is refused at 2 s, but together they fill the pool. A `to_thread` call made 0.3 s later waited 96 s, so for about 1.5 minutes per burst the public logo and uploads hang on every worker the requests reach, and the loop lag rose to 357 ms. The module docstring says a refused render "cannot recur", but the same request can be repeated. **Fix:** check `legal.page_markdown` on the settings route with the same budget, or refuse that key there, since it has a dedicated route. Render in a dedicated executor with one or two workers, or in a subprocess that is killed at the budget. Refuse a save while a render for it is still running. Keep object-store I/O off that executor. Add a test that saves a slow page through `PUT /admin/settings/{key}`. | open | reviewer PoC R1 (`reverify_legal.py`) |
+| N2 | low | **Reference amplification through paint servers still passes** (`api/src/regwatch/admin/logo.py:120-134`). `_check_use_chains` follows only `href` on `<use>`. It does not follow `url(#id)` references from `fill`, `stroke`, `mask` and `clip-path`. Two files are accepted: a 10-level chain of `<use>` → `<g>` (a rect filled with a `<pattern>` that holds 10 `<use>` of the next `<g>`), and a 10-level `<mask>` chain with 10 masked rects per level. Each references 10^10 drawn copies if the engine does not cache the paint server. **Scenario:** the same as finding 3, on the sign-in page and every header, in any engine that draws pattern or mask content again for each reference. This was not run in a browser (none on the host), and engines that cache pattern or mask content per element are not affected. **Fix:** build one reference graph from `href` and `url(#id)`, and refuse when a referenced element is, or contains, an element that makes a reference. Alternatively, bound the expanded count over that graph. Add both chains as tests. | open | reviewer PoC R2 (`reverify_svg.py`, both accepted) |
+| N3 | info | **More legitimate exports are refused, and the reasons mislead** (`api/src/regwatch/admin/logo.py:56-66`, `:153-161`). Inkscape's default output (`style="fill:…;stroke:none"`) is now refused. Illustrator's `<style>` and `data-name`, and Inkscape's own namespaced attributes, were refused before; the message names `inkscape:version` as "the version attribute". Also refused: `rgb(31 90 166 / 50%)`, `hsl(210deg, …)`, upper-case `RGB(`, an `@` in an `id`, and a `#id` that starts with a digit. Colours are refused with "may not load anything from elsewhere". Figma-style files pass (`fill="none"`, `clip-path="url(#clip0_1_2)"`, `url('#g')`), as do legacy `rgb` and `hsl`, and `rotate(45 10 10)`. This is not a security issue: users will see refusals they cannot understand. **Fix:** say in the upload hint and the refusal that SVGs must use presentation attributes, and suggest the tool's "optimized" or "presentation attributes" export. Name namespaced attributes with their prefix. Accept function names case-insensitively, angle units and the `/` alpha form. Give colour refusals their own message. | open (proposal) | reviewer PoC R2 |
+
+**Regression checks:**
+- **`asyncio.to_thread` for the logo check:** each call takes at most about 0.6 s and needs `settings.manage`, so this adds no exposure of its own. The shared-pool issue is N1.
+- **Thread safety:** markdown-it builds a fresh state on each `render`, and `lru_cache` is thread-safe, so sharing `_markdown` across threads is fine.
+- **`href` grammar:** `href` must now be an exact `#[A-Za-z_][\w.-]*`, so a `#a'` or `#a https://…` value is refused, and a whitespace-padded `#a` still passes after `strip()`.
+
+**Repository suites at `c5e0a84`:**
+- `make lint test-web`: Ruff check and format clean (153 files), mypy clean (92 files), ESLint, Prettier and `tsc -b` clean; Vitest 18 files and 96 tests passed; 98.3% lines.
+- `make test-api`: unit tests 518 passed, with every security-critical module at its 100% floor; integration tests 98 passed; 96.67% combined coverage.
+- `scripts/tests` (as `ci.yml:77`): 32 passed.
+
+**Sign-off:** **signed off.** Findings 1, 2, 5 and 8 are verified fixed. Finding 3 is fixed for `<use>`. Finding 4 is fixed for the event loop. Findings 6, 9 and 10 and the rest of 7 are carried in BL-81. No critical, high or medium findings are open, and the condition from the first sign-off (finding 1 before the external audience) is met.
+- Low N1 and N2 are open. N1 is recommended before the external audience is admitted, because it lets one admin session stall the public logo route on every API worker.
+- N2 is recommended before M7 or M8 reuse the logo. Both can go to a follow-up `sec/` branch or a BACKLOG row.
+- N3 is a usability proposal.
+
+· BL-68 independent review · 2026-11-15
