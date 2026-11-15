@@ -183,6 +183,7 @@ async def _import_term(
                                                           Term.key == raw["parent"]))  # fmt: skip
         if parent_id is None:
             raise _bad("parent", f"no term {raw['parent']!r} earlier in this facet")
+        await services.check_parent(db, None, facet, parent_id)  # depth cap
     term = await db.scalar(select(Term).where(Term.facet_id == facet.id, Term.key == raw["key"]))
     fields = ("label", "synonyms", "match_rules", "color_token", "active")
     changes: dict[str, Any] = {k: raw[k] for k in fields if k in raw}

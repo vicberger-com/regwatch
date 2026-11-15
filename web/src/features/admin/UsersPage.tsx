@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { problemText } from "@/lib/auth/session";
 
 import {
+  MAX_USERS,
   rolesQuery,
   usersQuery,
   useCreateUser,
@@ -63,45 +64,54 @@ export function UsersPage({ selfId }: { selfId: string }) {
           {problemText(users.error, "Users could not be loaded.")}
         </p>
       ) : (
-        <table className="w-full border-collapse text-left">
-          <caption className="sr-only">Users</caption>
-          <thead>
-            <tr className="border-b border-border">
-              <th scope="col">Name</th>
-              <th scope="col">Email</th>
-              <th scope="col">Roles</th>
-              <th scope="col">Status</th>
-              <th scope="col">Last sign-in</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.data.map((u) => (
-              <Row
-                key={u.id}
-                user={u}
-                isSelf={u.id === selfId}
-                busy={update.isPending || reset.isPending}
-                onStatus={(status) => {
-                  const verb = status === "disabled" ? "Disable" : "Enable";
-                  if (!window.confirm(`${verb} ${u.email}?`)) return;
-                  setSecret(null);
-                  update.mutate({ id: u.id, body: { status } });
-                }}
-                onReset={() => {
-                  const ask = `Reset the password of ${u.email}? This ends all their sessions.`;
-                  if (!window.confirm(ask)) return;
-                  setSecret(null);
-                  reset.mutate(u.id, {
-                    onSuccess: (password) => {
-                      setSecret({ email: u.email, password });
-                    },
-                  });
-                }}
-              />
-            ))}
-          </tbody>
-        </table>
+        <>
+          {users.data.length >= MAX_USERS && (
+            <p role="status" className="text-warning">
+              Only the first {String(MAX_USERS)} users are listed
+              (re-verification N3).
+            </p>
+          )}
+          <table className="w-full border-collapse text-left">
+            <caption className="sr-only">Users</caption>
+            <thead>
+              <tr className="border-b border-border">
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Roles</th>
+                <th scope="col">Status</th>
+                <th scope="col">Last sign-in</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.data.map((u) => (
+                <Row
+                  key={u.id}
+                  user={u}
+                  isSelf={u.id === selfId}
+                  busy={update.isPending || reset.isPending}
+                  onStatus={(status) => {
+                    const verb = status === "disabled" ? "Disable" : "Enable";
+                    if (!window.confirm(`${verb} ${u.email}?`)) return;
+                    setSecret(null);
+                    update.mutate({ id: u.id, body: { status } });
+                  }}
+                  onReset={() => {
+                    const ask = `Reset the password of ${u.email}? This ends all their sessions.`;
+                    if (!window.confirm(ask)) return;
+                    setSecret(null);
+                    reset.mutate(u.id, {
+                      onSuccess: (password) => {
+                        setSecret({ email: u.email, password });
+                        reset.reset(); // the shown copy is the only one (re-verification N1)
+                      },
+                    });
+                  }}
+                />
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </section>
   );
@@ -174,6 +184,7 @@ function CreateUser(props: {
       {
         onSuccess: (user) => {
           props.onCreated(user.email, user.temporary_password ?? "");
+          create.reset(); // the shown copy is the only one (re-verification N1)
           setEmail("");
           setName("");
           setChosen([]);

@@ -351,9 +351,29 @@ async def _term_or_404(db: AsyncSession, term_id: uuid.UUID) -> tuple[Term, Face
     return found[0], found[1]
 
 
+# Deepest allowed hierarchy (levels from the top). Pydantic stops serialising nested terms at
+# a few hundred levels, which would turn GET /taxonomy/facets into a 500 for every reader
+# (web re-verification N4, BL-76 b); the web UI draws 16 levels.
+MAX_TERM_DEPTH = 32
+
+
+async def _height_below(db: AsyncSession, term_id: uuid.UUID) -> int:
+    """Levels under ``term_id`` (0 for a leaf)."""
+    query = text(
+        "WITH RECURSIVE below(id, depth) AS ("
+        "  SELECT id, 1 FROM term WHERE parent_id = :id"
+        "  UNION ALL SELECT t.id, b.depth + 1 FROM term t JOIN below b ON t.parent_id = b.id"
+        "  WHERE b.depth < :cap)"
+        " SELECT COALESCE(max(depth), 0) FROM below"
+    )
+    height = await db.scalar(query, {"id": term_id, "cap": MAX_TERM_DEPTH + 1})
+    return int(height or 0)
+
+
 async def check_parent(db: AsyncSession, term: Term | None, facet: Facet,
                         parent_id: uuid.UUID | None) -> None:  # fmt: skip
-    """The parent must be in the same facet and not the term itself or one of its descendants."""
+    """The parent must be in the same facet and not the term itself or one of its descendants,
+    and the term with everything under it must stay within ``MAX_TERM_DEPTH`` levels."""
     seen: set[uuid.UUID] = set()
     current = parent_id
     while current is not None:
@@ -367,6 +387,9 @@ async def check_parent(db: AsyncSession, term: Term | None, facet: Facet,
         if row is None or row[0] != facet.id:
             raise validation("parent_id", "the parent must be a term of the same facet")
         current = row[1]
+    below = await _height_below(db, term.id) if term is not None else 0
+    if len(seen) + 1 + below > MAX_TERM_DEPTH:
+        raise validation("parent_id", f"the hierarchy may be at most {MAX_TERM_DEPTH} levels deep")
 
 
 def apply_term_changes(term: Term, changes: dict[str, Any]) -> None:

@@ -237,3 +237,85 @@ describe("create form without roles.manage", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("re-verification follow-ups", () => {
+  it("keeps temporary passwords only in the visible notice, not in memory", async () => {
+    const { QueryClient, QueryClientProvider } =
+      await import("@tanstack/react-query");
+    const { createMemoryHistory, createRouter, RouterProvider } =
+      await import("@tanstack/react-router");
+    const { render } = await import("@testing-library/react");
+    const { routeTree } = await import("@/app/router");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": [200, users([ADMIN, VIEWER])],
+      "GET /admin/roles": [200, []],
+      [`POST /admin/users/${VIEWER.id}/reset-password`]: [
+        200,
+        { temporary_password: "MEM-SECRET-9" },
+      ],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createRouter({
+      routeTree,
+      context: { queryClient },
+      history: createMemoryHistory({ initialEntries: ["/admin/users"] }),
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+    await userEvent
+      .setup()
+      .click(
+        await screen.findByRole("button", {
+          name: "Reset password for vic@example.org",
+        }),
+      );
+    expect(await screen.findByRole("status")).toHaveTextContent("MEM-SECRET-9");
+    const kept = JSON.stringify(
+      queryClient
+        .getMutationCache()
+        .getAll()
+        .map((m) => m.state),
+    );
+    expect(kept).not.toContain("MEM-SECRET-9");
+  });
+
+  it("says when the list stops at the loading limit", async () => {
+    const many = Array.from({ length: 10_000 }, (_, i) => ({
+      ...VIEWER,
+      id: `m${String(i)}`,
+      email: `m${String(i)}@example.org`,
+    }));
+    let page = 0;
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /admin/users": () => {
+        page += 1;
+        return [
+          200,
+          {
+            items: many.slice((page - 1) * 200, page * 200),
+            total: 20_000,
+            page,
+            page_size: 200,
+          },
+        ];
+      },
+      "GET /admin/roles": [200, []],
+    });
+    renderAt("/admin/users");
+    expect(
+      await screen.findByText(
+        /Only the first 10000 users are listed/,
+        {},
+        { timeout: 15_000 },
+      ),
+    ).toBeInTheDocument();
+  }, 30_000);
+});

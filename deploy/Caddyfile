@@ -14,8 +14,9 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 		Cross-Origin-Opener-Policy "same-origin"
 		# Development CSP: Vite injects <style> for CSS imports and runs live reload over a
-		# websocket. Production drops 'unsafe-inline' and ws: (web review finding 5, BL-76).
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+		# websocket to its own origin, which connect-src 'self' covers in current browsers.
+		# Production drops 'unsafe-inline' (web review finding 5, re-verification N2, BL-76).
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 	}
 	handle /api/* {
 		reverse_proxy api:8000

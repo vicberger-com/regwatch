@@ -554,3 +554,27 @@ async def test_reverify_followups(admin: httpx.AsyncClient) -> None:
     rows = (await admin.get(_api("/admin/audit"), params=query)).json()["items"]
     assert rows[0]["before"] == {"label": "حریم‌خصوصی‏"}
     assert rows[0]["after"] == {"label": "Privacy", "key": "fa", "facet": "topic"}
+
+
+async def test_hierarchy_depth_is_capped(admin: httpx.AsyncClient) -> None:
+    """Web re-verification N4: deep chains would break serialising GET /taxonomy/facets."""
+    from regwatch.taxonomy.services import MAX_TERM_DEPTH
+
+    terms = _api("/taxonomy/facets/topic/terms")
+    parent = None
+    for i in range(MAX_TERM_DEPTH):
+        body = {"key": f"deep-{i}", "label": f"Deep {i}", "parent_id": parent}
+        resp = await admin.post(terms, json=body)
+        assert resp.status_code == 201, (i, resp.text)
+        parent = resp.json()["id"]
+    too_deep = await admin.post(terms, json={"key": "deep-x", "label": "X", "parent_id": parent})
+    assert too_deep.status_code == 422 and "32 levels" in too_deep.text
+    top = (await admin.post(terms, json={"key": "new-top", "label": "Top"})).json()
+    flat = {t["key"]: t for t in (await admin.get(terms, params={"flat": True})).json()}
+    move = await admin.patch(_api(f"/taxonomy/terms/{flat['deep-0']['id']}"),
+                             json={"parent_id": top["id"]})  # fmt: skip
+    assert move.status_code == 422  # the moved subtree would reach 33 levels
+    last = f"deep-{MAX_TERM_DEPTH - 1}"
+    imported = f"facets:\n  - {{key: topic, terms: [{{key: deep-y, label: Y, parent: {last}}}]}}"
+    assert (await _import(admin, imported)).status_code == 422
+    assert (await admin.get(_api("/taxonomy/facets"))).status_code == 200

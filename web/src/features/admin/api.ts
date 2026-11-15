@@ -13,6 +13,8 @@ export type Role = Schemas["Role"];
 
 const PAGE_SIZE = 200; // the API's maximum
 const MAX_PAGES = 50;
+/** The most users the screen loads; beyond it the screen says the list is incomplete. */
+export const MAX_USERS = PAGE_SIZE * MAX_PAGES;
 
 export const usersQuery = queryOptions({
   queryKey: ["admin", "users"],

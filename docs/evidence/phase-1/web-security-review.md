@@ -62,3 +62,34 @@ Checked and fine:
 - **Finding 9:** jsdom proof of concept at depths 3, 1000 and 5000.
 - **Finding 10:** `pnpm audit` and `pnpm audit --prod`.
 - **Repository suites:** 32 tests passed; lint and typecheck clean.
+
+## Re-verification (Web UI independent review, 2026-11-15)
+Against `sec/web-session-hygiene` and `sec/web-hardening`: 40 tests passed, lint and typecheck clean; proofs of concept in `/tmp/rwpoc2`.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | fixed | sign-out answered 500, network error and 502 HTML: the user stays signed in with the alert; 401 and 200 show the sign-in card |
+| 2 | fixed (N1) | after create, reset, disable and sign-out both caches are empty except `me` = null |
+| 3 | fixed | with A's refetch held in flight across sign-out and B's sign-in, B saw only "Loading users…" and then B's 403 |
+| 4 | fixed | confirmations shown; cancel sends nothing; no Reset or Disable on one's own row; framing denied |
+| 5 | fixed for development | headers on pages, API responses, problems and Vite paths; not checked in a real browser |
+| 6 | accepted | register row at S; LICENSE files at release (BL-76 c) |
+| 7 | fixed | leading dots, wildcards, lists, IPs and trailing dots refused; the real proxy host accepted |
+| 8 | fixed (N3) | a lying `total` of 1,000,000 stops after 50 requests; roles hint shown |
+| 9 | fixed (N4) | depth 1000 draws 17 levels in 166 ms; 8,191-node tree in 1.2 s |
+| 10 | carried | BL-60 |
+
+New at re-verification:
+- **N1 (info):** temporary passwords stayed in mutation state while `/admin/users` was open.
+- **N2 (info):** the development CSP allowed websockets to any host.
+- **N3 (info):** the list stopped silently at 10,000 users.
+- **N4 (info, API):** term trees about 255 or more levels deep would make the facet list fail to serialise.
+
+**Sign-off:** no high or critical open (findings 1 to 9 verified; 10 carried in BL-60) · Web UI independent review · 2026-11-15
+
+## Author follow-up (2026-11-15), branch `sec/web-reverify-followups`
+Covered by tests, not re-verified:
+- **N1:** the reset and create mutations are reset once the temporary password is copied into the notice (`keeps temporary passwords only in the visible notice, not in memory`).
+- **N2:** the development CSP now has `connect-src 'self'`, which covers the dev server's own websocket in current browsers. Checked on the running proxy; not checked in a browser.
+- **N3:** the screen says when it stops at 10,000 users (`says when the list stops at the loading limit`).
+- **N4 and BL-76 (b):** the API refuses a hierarchy deeper than 32 levels, counting a moved term's subtree, through the API and through imports (`test_hierarchy_depth_is_capped`).
