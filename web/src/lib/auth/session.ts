@@ -26,7 +26,10 @@ function toProblem(error: unknown, status: number): Problem {
 }
 
 /** The error body of a failed call, whatever the contract says the route can return. */
-function failure(result: { error?: unknown; response: Response }): ApiProblem {
+export function failure(result: {
+  error?: unknown;
+  response: Response;
+}): ApiProblem {
   return new ApiProblem(toProblem(result.error, result.response.status));
 }
 
@@ -104,4 +107,17 @@ export function loginErrorMessage(problem: Problem): string {
 
 export async function currentUser(client: QueryClient): Promise<Me | null> {
   return client.query(meQuery); // served from the cache while fresh (staleTime)
+}
+
+/** The text to show for a failed call: the problem's detail, else a fallback. */
+export function problemText(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiProblem)) return error ? fallback : "";
+  const fields = (error.problem.errors ?? [])
+    .map((e) =>
+      e.field ? `${e.field}: ${e.message ?? ""}` : (e.message ?? ""),
+    )
+    .filter(Boolean);
+  return fields.length > 0
+    ? fields.join("; ")
+    : (error.problem.detail ?? fallback);
 }

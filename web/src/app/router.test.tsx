@@ -1,35 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  createMemoryHistory,
-  createRouter,
-  RouterProvider,
-} from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { safeNext } from "@/features/auth/LoginPage";
 import { hasPermission, loginErrorMessage } from "@/lib/auth/session";
 import { ADMIN, fakeApi, problem } from "@/test/api";
-
-import { routeTree } from "./router";
-
-function renderAt(path: string) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    history: createMemoryHistory({ initialEntries: [path] }),
-  });
-  render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
-  return router;
-}
+import { renderAt } from "@/test/render";
 
 async function signIn(password = "correct horse battery") {
   const user = userEvent.setup();

@@ -14,8 +14,9 @@ import {
 } from "@tanstack/react-router";
 
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
+import { UsersPage } from "@/features/admin/UsersPage";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { currentUser } from "@/lib/auth/session";
+import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AppShell } from "./AppShell";
 
@@ -84,9 +85,28 @@ const changePasswordRoute = createRoute({
   },
 });
 
+/** Shown in place of a page the user's roles do not allow; the API refuses it too. */
+function NotPermitted() {
+  return (
+    <p role="alert" className="text-critical">
+      You do not have permission to see this page.
+    </p>
+  );
+}
+
+const usersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/users",
+  component: function Users() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "users.manage")) return <NotPermitted />;
+    return <UsersPage selfId={me.id} />;
+  },
+});
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
-  authedRoute.addChildren([homeRoute, changePasswordRoute]),
+  authedRoute.addChildren([homeRoute, changePasswordRoute, usersRoute]),
 ]);
 
 export function createAppRouter(queryClient: QueryClient) {

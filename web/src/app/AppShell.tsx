@@ -5,7 +5,7 @@ import {
   useRouteContext,
 } from "@tanstack/react-router";
 
-import { useLogout } from "@/lib/auth/session";
+import { hasPermission, useLogout } from "@/lib/auth/session";
 
 import { ThemeSwitch } from "./ThemeSwitch";
 
@@ -24,9 +24,14 @@ export function AppShell() {
         Skip to main content
       </a>
       <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-4 py-2">
-        <Link to="/" className="text-lg font-semibold">
-          regwatch
-        </Link>
+        <nav aria-label="Main" className="flex items-center gap-4">
+          <Link to="/" className="text-lg font-semibold">
+            regwatch
+          </Link>
+          {hasPermission(me, "users.manage") && (
+            <Link to="/admin/users">Users</Link>
+          )}
+        </nav>
         <div className="flex items-center gap-3">
           <ThemeSwitch />
           <span className="text-text-muted">{me.display_name}</span>
