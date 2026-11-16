@@ -85,7 +85,10 @@ async def test_concurrent_workers_never_share_a_slot(valkey: redis.Redis) -> Non
 
 async def test_acceptance_5_with_valkey_and_the_fixture_server(valkey: redis.Redis) -> None:
     """Acceptance 5 end to end, sped up: 30 pages at 600 a minute (one per 100 ms), robots.txt
-    included, through the real Valkey limiter and the fixture server; at most 10 a second."""
+    included, through the real Valkey limiter and the fixture server; at most 10 a second.
+
+    Residual 21: the arrival times are checked window by window, so requests bunched at the
+    end would fail, and 25 (a): one robots slot, so the crawl takes about 3 s, not 6."""
     from regwatch.capture.safe_fetch import CaptureFetcher
     from tests.support.fixture_server import FixtureServer
     from tests.unit.test_safe_fetch_fetch import FIXTURES, PinnedFetcher
@@ -102,6 +105,10 @@ async def test_acceptance_5_with_valkey_and_the_fixture_server(valkey: redis.Red
         ])  # fmt: skip
         elapsed = time.monotonic() - started
         assert len(server.state.requests) == 31  # robots.txt and 30 pages
-        assert elapsed >= 2.9  # 31 slots, 100 ms apart
+        assert 2.9 <= elapsed < 4.5  # 31 slots, 100 ms apart, none wasted
+        arrived = sorted(r.at for r in server.state.requests)
+        # Any 11 consecutive arrivals span at least 1 s (less 50 ms of scheduling jitter), so
+        # no window of 0.95 s holds more than 10 requests.
+        assert min(b - a for a, b in zip(arrived, arrived[10:], strict=False)) >= 0.95
     finally:
         server.stop()

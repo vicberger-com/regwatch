@@ -52,7 +52,13 @@ def interval(rate_per_minute: int, crawl_delay: float | None = None) -> float:
     never more than ``MAX_INTERVAL_S`` and never under a millisecond."""
     if rate_per_minute < 1:
         raise ValueError("a rate of at least 1 request per minute is needed")
-    seconds = max(60.0 / rate_per_minute, crawl_delay or 0.0)
+    return _clamp(max(60.0 / rate_per_minute, crawl_delay or 0.0))
+
+
+def _clamp(seconds: float) -> float:
+    """Every limiter clamps too, so none relies on its callers using ``interval`` (25 (b))."""
+    if seconds != seconds:  # NaN
+        return MAX_INTERVAL_S
     return min(max(seconds, 0.001), MAX_INTERVAL_S)
 
 
@@ -63,7 +69,8 @@ class ValkeyRateLimiter:
         self._script = client.register_script(_TAKE)  # type: ignore[attr-defined]
 
     async def take(self, host: str, interval_s: float, max_wait_s: float) -> float | None:
-        args = [math.ceil(interval_s * 1000), math.floor(max_wait_s * 1000)]  # ceil: never short
+        # ceil: an interval is never shortened
+        args = [math.ceil(_clamp(interval_s) * 1000), math.floor(max_wait_s * 1000)]
         wait_ms = int(await self._script(keys=[self._prefix + host], args=args))
         return None if wait_ms < 0 else wait_ms / 1000
 
@@ -77,7 +84,7 @@ class MemoryRateLimiter:
         free = max(self._free.get(host, now), now)
         if free - now > max_wait_s:
             return None
-        self._free[host] = free + interval_s
+        self._free[host] = free + _clamp(interval_s)
         return free - now
 
 

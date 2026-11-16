@@ -76,6 +76,7 @@ class RecordedRequest:
     headers: dict[str, str]
     listener: str = "app"
     client_port: int | None = None  # tells apart requests on separate connections
+    at: float = field(default_factory=time.monotonic)  # arrival, for rate-window checks
 
 
 @dataclass

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -13,6 +15,7 @@ from regwatch.capture.safe_fetch import (
     SafeFetcher,
 )
 from regwatch.capture.safe_fetch import rate as rate_module
+from regwatch.capture.safe_fetch.fetch import FetchLimits
 from tests.unit.test_safe_fetch_fetch import UA, dns
 
 
@@ -79,7 +82,8 @@ def test_huge_crawl_delays_and_rates_are_clamped() -> None:
 def allow_all_robots(fetcher: SafeFetcher) -> RobotsPolicy:
     policy = RobotsPolicy(fetcher)
 
-    async def check(url: str, override_reason: str | None = None) -> float | None:
+    async def check(url: str, override_reason: str | None = None,
+                    before_fetch: object = None) -> float | None:  # fmt: skip
         return None
 
     policy.check = check  # type: ignore[method-assign]
@@ -179,6 +183,20 @@ async def test_the_valkey_limiter_runs_one_script_per_slot() -> None:
     assert await limiter.take("example.org", 6.0004, 120) == 2.5
     assert calls == [(["regwatch:rate:example.org"], [6001, 120000])]  # ceil, never shorter
     assert await limiter.take("example.org", 6.0, 0.5) is None
+    await limiter.take("example.org", 1e20, 120)  # review finding 25 (b): clamped here too
+    await limiter.take("example.org", 0.0, 120)
+    assert [args[0] for _, args in calls[-2:]] == [3_600_000, 1]
+
+
+async def test_the_memory_limiter_clamps_intervals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review finding 25 (b): an hour at most, a millisecond at least, NaN as an hour."""
+    clock = Clock()
+    monkeypatch.setattr(rate_module.time, "monotonic", clock.monotonic)
+    limiter = MemoryRateLimiter()
+    for host, seconds, spacing in (("a", 1e20, 3600.0), ("b", float("nan"), 3600.0),
+                                   ("c", -5.0, 0.001)):  # fmt: skip
+        await limiter.take(host, seconds, 10)
+        assert limiter._free[host] == pytest.approx(clock.now + spacing)
 
 
 async def test_a_private_redirect_is_reported_as_such(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,6 +216,52 @@ async def test_a_private_redirect_is_reported_as_such(monkeypatch: pytest.Monkey
         await capture.fetch("https://example.org/", robots_override="reason")
     assert exc.value.reason == "private-address"
     assert "evil.example" not in limiter._free  # no slot was taken for the private host
+
+
+async def test_a_slow_name_server_is_cut_off_before_the_hop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review finding 23: ``check_url``'s lookup has the hop's deadline too."""
+    import time
+
+    async def slow_dns(host: str, port: int) -> list[str]:
+        await asyncio.sleep(1.0)
+        return ["93.184.215.14"]
+
+    fetcher = SafeFetcher(UA, FetchLimits(total_s=0.05), resolver=slow_dns,
+                          transport=httpx.MockTransport(lambda r: httpx.Response(200)))  # fmt: skip
+    capture = CaptureFetcher(fetcher, MemoryRateLimiter())
+    started = time.monotonic()
+    with pytest.raises(FetchRefusedError) as exc:
+        await capture.fetch("https://example.org/", robots_override="reason")
+    assert exc.value.reason == "timeout" and "DNS for example.org" in exc.value.detail
+    assert time.monotonic() - started < 0.5
+
+
+async def test_concurrent_first_requests_reserve_one_robots_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review finding 25 (a): 30 concurrent pages to an uncached site take 31 slots, not 60."""
+    clock = Clock()
+    monkeypatch.setattr(rate_module.time, "monotonic", clock.monotonic)
+    paths: list[str] = []
+
+    async def yielding_dns(host: str, port: int) -> list[str]:
+        await asyncio.sleep(0)  # as real DNS does, so the coroutines interleave
+        return await dns(host, port)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        body = b"User-agent: *\nAllow: /\n" if request.url.path == "/robots.txt" else b"page"
+        return httpx.Response(200, stream=httpx.ByteStream(body))
+
+    limiter = MemoryRateLimiter()
+    fetcher = SafeFetcher(UA, resolver=yielding_dns, transport=httpx.MockTransport(handler))
+    capture = CaptureFetcher(fetcher, limiter, rate_per_minute=600, sleep=clock.sleep)
+    await asyncio.gather(*[capture.fetch(f"https://example.org/p/{n}") for n in range(30)])
+    assert paths.count("/robots.txt") == 1 and len(paths) == 31
+    assert limiter._free["example.org"] == pytest.approx(1000.0 + 31 * 0.1)  # 31 slots taken
+    assert capture.robots._locks == {}
 
 
 async def test_robots_fetches_take_a_rate_slot(monkeypatch: pytest.MonkeyPatch) -> None:

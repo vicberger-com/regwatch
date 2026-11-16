@@ -111,7 +111,48 @@ async def test_large_robots_files_are_parsed_up_to_500_kib() -> None:
     policy = mocked(200, body)
     with pytest.raises(FetchRefusedError):
         await policy.check("https://example.org/private/x")
-    assert policy._held == robots_module.PARSE_BYTES
+    assert robots_module.PARSE_BYTES - 15 < policy._held <= robots_module.PARSE_BYTES
+
+
+async def test_a_rule_cut_by_the_parse_limit_is_dropped() -> None:
+    """Review finding 24: ``Allow: /public-docs`` cut to ``Allow: /`` must not allow the site."""
+    head, rule = b"User-agent: *\nDisallow: /\n", b"Allow: /public-docs\n"
+    pad = b"#" * (robots_module.PARSE_BYTES - len(head) - len(b"Allow: /") - 1) + b"\n"
+    body = head + pad + rule
+    assert body[: robots_module.PARSE_BYTES].endswith(b"Allow: /")
+    policy = mocked(200, body)
+    with pytest.raises(FetchRefusedError):
+        await policy.check("https://example.org/anything")
+
+
+async def test_a_file_without_a_line_break_in_the_limit_has_no_rules() -> None:
+    assert (
+        await mocked(200, b"#" * (robots_module.PARSE_BYTES + 10)).check("https://example.org/x")
+        is None
+    )
+
+
+async def test_one_robots_fetch_per_origin_at_a_time() -> None:
+    """Review finding 25 (a): concurrent checks share one fetch and one ``before_fetch``; a
+    failing ``before_fetch`` leaves the next check to try for itself."""
+    import asyncio
+
+    policy = mocked(200, b"User-agent: *\nDisallow: /private\n")
+    slots: list[int] = []
+
+    async def slot() -> None:
+        slots.append(1)
+        await asyncio.sleep(0)
+        if len(slots) == 1:
+            raise FetchRefusedError("rate-limited", "busy")
+
+    results = await asyncio.gather(
+        *[policy.check(f"https://example.org/{n}", before_fetch=slot) for n in range(5)],
+        return_exceptions=True,
+    )
+    assert isinstance(results[0], FetchRefusedError) and results[1:] == [None] * 4
+    assert len(slots) == 2 and policy.calls == ["/robots.txt"]  # type: ignore[attr-defined]
+    assert policy._locks == {}
 
 
 async def test_429_means_try_later() -> None:

@@ -182,9 +182,17 @@ class SafeFetcher:
         )
 
     async def check_url(self, url: str) -> Target:
-        """The URL's checks without fetching: parse it and check every resolved address."""
+        """The URL's checks without fetching: parse it and check every resolved address.
+
+        The lookup has the hop's deadline, like the one in ``_hop`` (review finding 23).
+        """
         target = parse_target(url)
-        await self._resolve(target)
+        try:
+            async with asyncio.timeout(self.limits.total_s):
+                await self._resolve(target)
+        except TimeoutError:
+            detail = f"DNS for {target.host} took longer than {self.limits.total_s:g} s"
+            raise FetchRefusedError("timeout", detail) from None
         return target
 
     def with_limits(self, limits: FetchLimits) -> SafeFetcher:

@@ -11,6 +11,13 @@ with reason ``robots``. The answers follow RFC 9309 section 2.3.1:
 - 5xx, or no answer at all (refused, timed out, unreachable, larger than the read limit):
   everything is disallowed, until the cache entry expires and the file is fetched again.
 
+A file longer than ``PARSE_BYTES`` is cut at the last line break before the limit, so a rule
+is never parsed half read: a cut ``Allow: /public`` would read as ``Allow: /`` (finding 24).
+
+Each origin's robots.txt is fetched once at a time: concurrent checks of an uncached origin
+wait for the one fetch in progress, and ``before_fetch`` (the caller's rate slot) is awaited
+only by the check that actually fetches (finding 25 (a)).
+
 Parsed rules are cached per origin in an LRU bounded by the bytes parsed, not by the number of
 origins, so hostile robots files cannot fill a worker's memory (review finding 16).
 
@@ -20,8 +27,10 @@ capture run audits; ``check`` takes the override and skips the rules then.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from protego import Protego
@@ -35,6 +44,15 @@ CACHE_BUDGET = 4 * 1024 * 1024  # bytes of robots.txt held parsed; about 100 MB 
 CACHE_SECONDS = 24 * 3600  # RFC 9309: caching for up to 24 hours is reasonable
 UNREACHABLE_SECONDS = 15 * 60  # retry sooner when the file could not be fetched
 PRODUCT = "regwatch"  # the user-agent token matched against robots.txt groups
+BeforeFetch = Callable[[], Awaitable[None]]
+
+
+def _parse_text(body: bytes) -> str:
+    """The part of the body that is parsed: whole lines only, at most ``PARSE_BYTES``."""
+    if len(body) > PARSE_BYTES:
+        cut = body.rfind(b"\n", 0, PARSE_BYTES + 1)
+        body = body[: cut + 1] if cut >= 0 else b""
+    return body.decode("utf-8", errors="replace")
 
 
 @dataclass(frozen=True)
@@ -51,6 +69,7 @@ class RobotsPolicy:
         self._product = product
         self._cache: OrderedDict[str, _Rules] = OrderedDict()
         self._held = 0
+        self._locks: dict[str, tuple[asyncio.Lock, int]] = {}  # origin: (lock, users)
 
     def is_cached(self, origin: str) -> bool:
         """Whether the origin's rules are known and fresh, so ``check`` will not fetch."""
@@ -67,39 +86,66 @@ class RobotsPolicy:
             _, dropped = self._cache.popitem(last=False)  # least recently used first
             self._held -= dropped.size
 
-    async def _rules(self, origin: str) -> _Rules:
-        now = time.monotonic()
+    def _fresh(self, origin: str) -> _Rules | None:
         cached = self._cache.get(origin)
-        if cached is not None and cached.expires > now:
-            self._cache.move_to_end(origin)
+        if cached is None or cached.expires <= time.monotonic():
+            return None
+        self._cache.move_to_end(origin)
+        return cached
+
+    async def _rules(self, origin: str, before_fetch: BeforeFetch | None) -> _Rules:
+        cached = self._fresh(origin)
+        if cached is not None:
             return cached
+        lock, users = self._locks.get(origin, (asyncio.Lock(), 0))
+        self._locks[origin] = (lock, users + 1)
+        try:
+            async with lock:
+                cached = self._fresh(origin)  # fetched while this check waited
+                if cached is not None:
+                    return cached
+                if before_fetch is not None:
+                    await before_fetch()
+                rules = await self._fetch(origin)
+                self._store(origin, rules)
+                return rules
+        finally:
+            lock, users = self._locks[origin]
+            if users > 1:
+                self._locks[origin] = (lock, users - 1)
+            else:
+                del self._locks[origin]
+
+    async def _fetch(self, origin: str) -> _Rules:
         try:
             got = await self._fetcher.fetch(origin + "/robots.txt")
         except FetchRefusedError:
-            rules = _Rules(None, True, now + UNREACHABLE_SECONDS)
-        else:
-            if 200 <= got.status < 300:
-                text = got.body[:PARSE_BYTES].decode("utf-8", errors="replace")
-                rules = _Rules(Protego.parse(text), False, now + CACHE_SECONDS, len(text))
-            elif 400 <= got.status < 500 and got.status != 429:
-                rules = _Rules(None, False, now + CACHE_SECONDS)
-            else:  # 429, 5xx, or a redirect SafeFetcher did not follow (no Location)
-                rules = _Rules(None, True, now + UNREACHABLE_SECONDS)
-        self._store(origin, rules)
-        return rules
+            return _Rules(None, True, time.monotonic() + UNREACHABLE_SECONDS)
+        now = time.monotonic()
+        if 200 <= got.status < 300:
+            text = _parse_text(got.body)
+            return _Rules(Protego.parse(text), False, now + CACHE_SECONDS, len(text))
+        if 400 <= got.status < 500 and got.status != 429:
+            return _Rules(None, False, now + CACHE_SECONDS)
+        # 429, 5xx, or a redirect SafeFetcher did not follow (no Location)
+        return _Rules(None, True, now + UNREACHABLE_SECONDS)
 
-    async def check(self, url: str, override_reason: str | None = None) -> float | None:
+    async def check(
+        self, url: str, override_reason: str | None = None,
+        before_fetch: BeforeFetch | None = None,
+    ) -> float | None:  # fmt: skip
         """Refuse a URL robots.txt disallows; return the site's Crawl-delay, if it gives one.
 
         ``override_reason`` is the admin's recorded reason for ignoring robots.txt on this
-        source; with it the rules are not consulted (acceptance 4).
+        source; with it the rules are not consulted (acceptance 4). ``before_fetch`` is
+        awaited just before robots.txt is fetched, and only then.
         """
         if override_reason is not None:
             if not override_reason.strip():
                 raise ValueError("a robots.txt override needs a reason")
             return None
         target = parse_target(url)
-        rules = await self._rules(target.origin)
+        rules = await self._rules(target.origin, before_fetch)
         if rules.disallow_all:
             raise FetchRefusedError(
                 "robots", f"{target.host} robots.txt could not be read, so nothing is fetched"
