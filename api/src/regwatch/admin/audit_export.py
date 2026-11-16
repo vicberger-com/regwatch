@@ -38,17 +38,32 @@ def field(value: Any) -> str:  # noqa: ANN401 - any JSON
     return '"' + text.replace('"', '""') + '"'
 
 
-def to_csv(entries: list[AuditEntry]) -> tuple[str, int, bool]:
-    """The CSV text, the number of entries written, and whether the size cap cut it short."""
-    lines = [",".join(COLUMNS)]
-    size = len(lines[0]) + 2
-    written = 0
-    for entry in entries:
+class CsvBuilder:
+    """Collects CSV lines until ``MAX_ROWS`` rows or ``MAX_BYTES`` bytes; ``add`` says when full."""
+
+    def __init__(self) -> None:
+        self.lines = [",".join(COLUMNS)]
+        self.size = len(self.lines[0]) + 2
+        self.rows = 0
+
+    def add(self, entry: AuditEntry) -> bool:
+        if self.rows >= MAX_ROWS:
+            return False
         data = entry.model_dump(mode="json")
         line = ",".join(field(data.get(c)) for c in COLUMNS)
-        if size + len(line.encode()) + 2 > MAX_BYTES:
-            return "\r\n".join(lines) + "\r\n", written, True
-        lines.append(line)
-        size += len(line.encode()) + 2
-        written += 1
-    return "\r\n".join(lines) + "\r\n", written, False
+        if self.size + len(line.encode()) + 2 > MAX_BYTES:
+            return False
+        self.lines.append(line)
+        self.size += len(line.encode()) + 2
+        self.rows += 1
+        return True
+
+    def text(self) -> str:
+        return "\r\n".join(self.lines) + "\r\n"
+
+
+def to_csv(entries: list[AuditEntry]) -> tuple[str, int, bool]:
+    """The CSV text, the number of entries written, and whether a cap cut it short."""
+    out = CsvBuilder()
+    cut = any(not out.add(e) for e in entries)
+    return out.text(), out.rows, cut

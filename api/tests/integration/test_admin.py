@@ -453,3 +453,30 @@ async def test_audit_export_needs_audit_read(admin: httpx.AsyncClient) -> None:
         assert (await viewer.get(_api("/admin/audit/export"))).status_code == 403
     finally:
         await viewer.aclose()
+
+
+async def test_audit_export_refuses_cross_site_requests(admin: httpx.AsyncClient) -> None:
+    """Re-verification R2: a link on another site cannot make an auditor's browser export."""
+    url = _api("/admin/audit/export")
+    assert (await admin.get(url, headers={"Sec-Fetch-Site": "cross-site"})).status_code == 403
+    assert (await admin.get(url, headers={"Sec-Fetch-Site": "same-site"})).status_code == 403
+    assert (await admin.get(url, headers={"Sec-Fetch-Site": "same-origin"})).status_code == 200
+    assert (
+        await admin.get(url, headers={"Sec-Fetch-Site": "none"})
+    ).status_code == 200  # typed URL
+
+
+async def test_audit_export_reads_in_batches(
+    admin: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-verification R1: rows come in keyset batches, and every matching row is exported."""
+    from regwatch.admin import services as admin_services
+
+    monkeypatch.setattr(admin_services, "EXPORT_BATCH", 2)
+    for i in range(5):
+        await admin.put(_api("/admin/settings/map.projection"),
+                        json={"value": "mercator" if i % 2 else "equal-earth"})  # fmt: skip
+    listed = (await admin.get(_api("/admin/audit"), params={"entity_type": "setting"})).json()
+    resp = await admin.get(_api("/admin/audit/export"), params={"entity_type": "setting"})
+    ids = [line.split(",")[0].strip('"') for line in resp.text.split("\r\n")[1:] if line]
+    assert len(ids) == len(set(ids)) == listed["total"]

@@ -231,3 +231,11 @@ A2, B3 and B4 are fixed; B2 is covered by R1, and A2's proxy rate limit is BL-86
 - `/tmp/g1addendum/export_gate.py`: `anonymous: 401 application/problem+json` for `GET /api/v1/admin/audit/export`.
 - Tests: `tests/unit/test_audit_export.py` with `tests/unit/test_contract_routes.py`, 22 passed; `tests/unit`, 551 passed.
 - R2 and R4: from reading the code (`samesite="lax"` at `identity/services.py:413`; `origin_allowed` returns `True` for GET; the default `fetch` cache mode in `lib/api/client.ts`). They were not run in a browser, since none is available on the host.
+
+## Author follow-up (`sec/M1-audit-export-followups`, pending re-verification)
+- **R1 (low):** the export reads in keyset-paged batches of `EXPORT_BATCH` (100) through `CsvBuilder` and stops at the row or size cap, so memory is bounded by one batch plus the 20 MB file. The event loop yields between batches. Test: `test_audit_export_reads_in_batches`, with a batch of 2, checks that every matching row is exported once.
+- **R2 (low):** the route refuses a request whose `Sec-Fetch-Site` is anything but `same-origin` or `none` (a typed URL) with 403 `cross-site`. Clients that send no such header (curl, tests) are treated as same-origin. Test: `test_audit_export_refuses_cross_site_requests`.
+- **R3 (info):** the per-user export limit and the indexes on `audit_log.action` and `actor_user_id` are BL-86 (e).
+- **R4 (info):** the legal editor's query sends `cache: "no-cache"`, so its preview revalidates instead of using the 60-second public cache.
+- **R5 (info):** the audit row no longer records `total`, which came from a second query. It records the rows written and whether a cap was reached.
+

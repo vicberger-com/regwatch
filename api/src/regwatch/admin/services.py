@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin import legal as legal_page
@@ -330,21 +330,84 @@ async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: st
     await db.commit()
 
 
+def _audit_conds(
+    actor: uuid.UUID | None = None,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    from_: datetime | None = None,
+    to: datetime | None = None,
+) -> list[Any]:
+    conds: list[Any] = []
+    if actor is not None:
+        conds.append(AuditLog.actor_user_id == actor)
+    if action:
+        conds.append(AuditLog.action == action)
+    if entity_type:
+        conds.append(AuditLog.entity_type == entity_type)
+    if entity_id:
+        conds.append(AuditLog.entity_id == entity_id)
+    if from_ is not None:
+        conds.append(AuditLog.occurred_at >= from_)
+    if to is not None:
+        conds.append(AuditLog.occurred_at < to)
+    return conds
+
+
+def _audit_entry(r: AuditLog, email: str | None) -> AuditEntry:
+    return AuditEntry(
+        id=r.id, occurred_at=r.occurred_at, actor_user_id=r.actor_user_id, actor_email=email,
+        action=r.action, entity_type=r.entity_type, entity_id=r.entity_id, before=r.before,
+        after=r.after, ip=str(r.ip) if r.ip else None, request_id=r.request_id,
+    )  # fmt: skip
+
+
+def _audit_select(conds: list[Any]) -> Any:  # noqa: ANN401 - a SQLAlchemy select
+    from regwatch.identity.models import User
+
+    return (
+        select(AuditLog, User.email)
+        .outerjoin(User, User.id == AuditLog.actor_user_id)
+        .where(*conds)
+        .order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
+    )
+
+
+EXPORT_BATCH = 100  # rows read at a time, so memory stays bounded by the batch (review R1)
+
+
 async def export_audit(
     db: AsyncSession, actor_id: uuid.UUID, ip: str | None, **filters: Any
 ) -> tuple[str, int, bool]:
-    """The filtered audit log as CSV, newest first, capped; the export itself is audited (CP-10)."""
+    """The filtered audit log as CSV, newest first, capped; the export itself is audited (CP-10).
+
+    Rows are read in keyset-paged batches of ``EXPORT_BATCH`` and written until the row or size
+    cap, so a log of huge values cannot load 10,000 of them at once (re-verification R1).
+    """
     from regwatch.admin import audit_export
 
-    page = await list_audit(db, 1, audit_export.MAX_ROWS, **filters)
-    text, written, size_cut = audit_export.to_csv(list(page.items))
-    truncated = size_cut or page.total > written
+    conds = _audit_conds(**filters)
+    out = audit_export.CsvBuilder()
+    last: tuple[datetime, uuid.UUID] | None = None
+    full = False
+    while not full:
+        stmt = _audit_select(conds)
+        if last is not None:
+            stmt = stmt.where(tuple_(AuditLog.occurred_at, AuditLog.id) < last)
+        batch = (await db.execute(stmt.limit(EXPORT_BATCH))).tuples().all()
+        for r, email in batch:
+            if not out.add(_audit_entry(r, email)):
+                full = True
+                break
+            last = (r.occurred_at, r.id)
+        if len(batch) < EXPORT_BATCH:
+            break
+        await asyncio.sleep(0)  # let other requests run between batches (review R3)
     recorded = {k: (str(v) if v is not None else None) for k, v in filters.items() if v is not None}
     audit(db, "audit.export", "audit_log", None, actor=actor_id, ip=ip,
-          after={"filters": recorded, "rows": written, "total": page.total,
-                 "truncated": truncated})  # fmt: skip
+          after={"filters": recorded, "rows": out.rows, "truncated": full})  # fmt: skip
     await db.commit()
-    return text, written, truncated
+    return out.text(), out.rows, full
 
 
 async def list_audit(
@@ -359,44 +422,8 @@ async def list_audit(
     from_: datetime | None = None,
     to: datetime | None = None,
 ) -> Page[AuditEntry]:
-    from regwatch.identity.models import User
-
-    conds: list[Any] = []
-    if actor is not None:
-        conds.append(AuditLog.actor_user_id == actor)
-    if action:
-        conds.append(AuditLog.action == action)
-    if entity_type:
-        conds.append(AuditLog.entity_type == entity_type)
-    if entity_id:
-        conds.append(AuditLog.entity_id == entity_id)
-    if from_ is not None:
-        conds.append(AuditLog.occurred_at >= from_)
-    if to is not None:
-        conds.append(AuditLog.occurred_at < to)
+    conds = _audit_conds(actor, action, entity_type, entity_id, from_, to)
     total = await db.scalar(select(func.count()).select_from(AuditLog).where(*conds)) or 0
-    rows = await db.execute(
-        select(AuditLog, User.email)
-        .outerjoin(User, User.id == AuditLog.actor_user_id)
-        .where(*conds)
-        .order_by(AuditLog.occurred_at.desc(), AuditLog.id.desc())
-        .limit(page_size)
-        .offset((page - 1) * page_size)
-    )
-    items = [
-        AuditEntry(
-            id=r.id,
-            occurred_at=r.occurred_at,
-            actor_user_id=r.actor_user_id,
-            actor_email=email,
-            action=r.action,
-            entity_type=r.entity_type,
-            entity_id=r.entity_id,
-            before=r.before,
-            after=r.after,
-            ip=str(r.ip) if r.ip else None,
-            request_id=r.request_id,
-        )  # fmt: skip
-        for r, email in rows.tuples().all()
-    ]
+    rows = await db.execute(_audit_select(conds).limit(page_size).offset((page - 1) * page_size))
+    items = [_audit_entry(r, email) for r, email in rows.tuples().all()]
     return Page[AuditEntry](items=items, total=total, page=page, page_size=page_size)

@@ -199,6 +199,10 @@ async def export_audit(
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: datetime | None = None,
 ) -> Response:
+    # A GET with a side effect (its audit row): browsers mark requests from other sites, and
+    # those are refused, so a link elsewhere cannot run an export (re-verification R2).
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        raise ProblemError(403, "cross-site", "Start the export from the audit screen.")
     text, rows, truncated = await services.export_audit(
         db, principal.user.id, client_ip(request), actor=actor, action=action,
         entity_type=entity_type, entity_id=entity_id, from_=from_, to=to,
