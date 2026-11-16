@@ -345,3 +345,59 @@ Findings 17 to 21 are low and 22 is info. Sign-off can follow when 14 to 16 are 
   - protego's substring matching of `User-agent` names stays as it is and is recorded in BL-87.
 - **21 (low):** `test_acceptance_5_with_valkey_and_the_fixture_server` runs 30 concurrent fetches plus robots.txt through the real Valkey limiter and the fixture server at 600 a minute, and asserts the 31 requests took at least 3 s.
 - **22 (info):** a rate of 0 is no longer read as "use the default"; it raises. The override's reason length, its permission and its audit row are checked when the source routes land (M3 routes slice).
+
+### Re-verification (slices 3 and 4, `sec/M3-capture-followups` at `22ceaef`)
+**Method:**
+- **Code and tests:** I read `git show 22ceaef`. All four SafeFetcher unit files pass (129 tests), and coverage of `regwatch.capture.safe_fetch` is 100 percent (425 statements, 116 branches). `tests/integration/test_valkey_rate.py` passes (4 tests); its container was removed.
+- **Probes rerun:** `robots_probe.py`. I also ran `capture_probe2.py` and `valkey_probe2.py`, copies adapted to the new `take(host, interval_s, max_wait_s)` signature.
+- **New probes:** `concurrency.py`, plus the LRU, deadline and truncation checks in `capture_probe2.py`.
+- **Isolation:** the Valkey probe ran against a throwaway container of my own, from the locally present pinned image, bound to 127.0.0.1 and removed afterwards. The `regwatch-qa-*` stacks were not touched. No external network was used, and no image was pulled. Only this record was changed.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 14 | closed | On Valkey, 50 refused attempts move next-free by **0 s** (it was 300 s). The boundary is right: a wait exactly equal to `max_wait` is accepted, and a wait over it returns -1 and leaves the stored value unchanged. `MemoryRateLimiter` does the same. |
+| 15 | closed | Five takes at 30 s leave next-free 150.0 s ahead with a TTL of 210.0 s, which is the horizon plus 60 s (`nxt - now + 60000`). With interval 1 s, 70 queued takes and 62 s of sleep, a new caller waits **7.9 s**, correctly behind the queue; before, it waited 0 s. The key can never expire before the slots it hands out. |
+| 16 | closed | `CACHE_BUDGET` bounds the text held, and the loop evicts the least recently used entries. 100 origins with 500 KiB files each leave 8 cached entries holding 3.91 MiB of text. Measured memory is 112 MiB at worst (wildcard rules), 45 MiB for `Allow:/` lines and 17 MiB for many groups, against 1,245 MiB before. The budget applies per `RobotsPolicy`, so connectors should share one per worker (22(e)). |
+| 17 | closed | `interval` clamps to between 1 ms and 3,600 s. A Crawl-delay of 1e20 reaches the script as 3,600,000 ms, with a key TTL of 3,660 s, and the `ResponseError` no longer occurs through `CaptureFetcher`. `ValkeyRateLimiter.take` itself still passes whatever it is given: called directly with 1e20 it still raises `ResponseError`. That is defence in depth only; see 25(b). |
+| 18 | closed, with a regression (25) | 30 pages at 10 a minute with a real robots.txt: 31 requests, with a worst minute of **10**. |
+| 19 | closed, with a regression (23) | A private redirect target is now reported as `private-address`, with or without an override, and no slot is taken for `evil.example`. |
+| 20 | (a) closed, with a regression (24); (b) deferred to BL-87, accepted; (c) closed | (a) A valid 600 KB `Allow: /` file is now honoured. Files over 2 MiB are still disallow-all, which is acceptable because the RFC requires parsing only 500 KiB. (c) A 429 answer gives `robots` ("could not be read"), and a 401 still allows everything. |
+| 21 | partly closed | Added: Valkey tests for findings 14 and 15, a private-redirect test, a robots-slot test, a byte-budget LRU test, and a CaptureFetcher test with the fixture server and real Valkey. **What is left:** `test_acceptance_5_with_valkey_and_the_fixture_server` asserts only the request count (31) and a total of at least 2.9 s, not "at most N in any window". The test would still pass if requests bunched at the end. Record a timestamp per request (the fixture server's `RecordedRequest` has none), or time them in a transport wrapper, and assert the sliding-window maximum. |
+| 22 | closed for (b) and the rate-0 fallback; (a) deferred to the M3 routes slice | A rate of 0 now raises, and intervals round up (`ceil`, 6.0004 s gives 6,001 ms). The override's permission, audit row and reason length are still to be checked when the source routes land. |
+
+### Regression checks requested
+- **`check_url`'s second DNS lookup:** it opens **no rebinding gap**. `check_url` (`fetch.py:184-188`) only decides whether to continue. `_hop` resolves again, checks every answer again, and connects to an address from its own lookup (`fetch.py:241`). A name that answers public to the first lookup and private to the second is refused at the hop. It is harmful in two smaller ways (finding 23). The lookup runs **outside any deadline**: with a 1 s resolver and a 0.2 s hop deadline, the fetch took 3.2 s before refusing. And the first hop to an uncached origin makes 3 lookups (check, robots fetch, hop).
+- **LRU accounting after `_store` replaces an entry:** correct. `_store` pops the old entry and subtracts its size before adding the new one, and evicts the least recently used while over budget or over 10,000 entries. A fuzz of 20,000 random stores, including replacements, over 300 origins and sizes from 0 to 500 KiB, found `_held` always equal to the sum of the cached sizes, never negative and never over budget.
+- **The rate slot taken for the robots.txt fetch:** it is right when fetches run one after another (the worst minute stays at 10). Under concurrency it wastes slots without exceeding the limit; see finding 25. Also, the gap between the robots fetch and the first page follows the job's rate, not the site's Crawl-delay, because the delay is not yet known when that slot is reserved. That is acceptable.
+- **The Lua script's `-1` path and the expiry arithmetic:** correct. `-1` is returned before any write, so neither the value nor the TTL changes. A legitimate wait is never negative, because `free` is raised to `now` first. `nxt - now + 60000` is always at least 60,001 ms, and with the clamps it is at most `max_wait + 3600 s + 60 s`, so keys from a flood of hosts expire within about an hour.
+
+### New findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 23 | low | **`check_url` puts a DNS lookup back outside the deadline (a regression of finding 3 on the CaptureFetcher path).** `before_hop` awaits `self.fetcher.check_url(hop_url)` (`capture.py:49`), which resolves with no timeout (`fetch.py:187`). **Failure case** (`capture_probe2.py` f): a 1 s resolver with a 0.2 s hop deadline took 3.2 s before refusing, with 3 lookups. A slow authoritative name server again holds a worker for the system resolver's full retry time on every hop. **Fix:** run `check_url`'s resolve under `asyncio.timeout(self.limits.total_s)`, mapped to `timeout` with "DNS for…". Optionally keep the checked target for the hop to cut the extra lookup. Add a slow-resolver test through `CaptureFetcher`. | open | reviewer PoC |
+| 24 | low | **Truncating robots.txt at 500 KiB can cut the last rule short and widen an Allow.** `got.body[:PARSE_BYTES]` (`robots.py:82`) cuts mid-line. **Failure case** (`capture_probe2.py` c): a file of `Disallow: /`, padding, and then `Allow: /public-docs` across the 500 KiB boundary. The last rule is parsed as `Allow: /`, which ties with `Disallow: /`, so **the whole site is allowed**. A cut Disallow only gets stricter, but a cut Allow gets looser. This is a politeness and legal issue (8.3, G12), not a security one. **Fix:** when the body is longer than `PARSE_BYTES`, drop everything after the last newline before the cut. Add a test with an `Allow` line straddling the boundary. | open | reviewer PoC |
+| 25 | low | (a) **Concurrent first requests to an uncached origin each reserve a robots slot, so the first wave runs at half speed.** `before_hop` checks `is_cached` and reserves a slot before any coroutine has fetched robots.txt (`capture.py:50`). Only the first one fetches; the others find the rules cached by the time their slot comes, so their slots go unused. **Failure case** (`concurrency.py`, with a resolver that yields as real DNS does): 30 concurrent pages at 600 a minute make 31 requests but reserve 60 slots, taking 5.9 s instead of about 3.0 s. With 40 jobs and a 20-interval `max_wait`, 20 jobs are refused, and half the reserved slots were never used. This is never over the limit, but it is wasted capacity, and more jobs are refused when many are due at once. **Fix:** fetch robots.txt once per origin (a per-origin `asyncio.Future`), and reserve the robots slot inside `RobotsPolicy` just before the fetch that actually happens, for example through a `before_fetch` callback. (b) Clamp the interval in `ValkeyRateLimiter.take` and `MemoryRateLimiter.take` as well, so the limiter does not rely on every caller using `interval()`. | open | reviewer PoC |
+
+**Sign-off at re-verification (slices 3 and 4):** signed off; no high or critical open, and no medium open. Findings 14 to 20 are closed; 20(b) is deferred to BL-87. Finding 21 is partly closed (the window assertion), 22(a) is deferred to the routes slice, and 23 to 25 are low and tracked for a follow-up. · M3 SafeFetcher independent review · 2026-11-16
+
+### Evidence (re-verification, slices 3 and 4)
+1. **Tests:** the four unit files: 129 passed, 100 percent (425 statements, 116 branches). Valkey integration: 4 passed, and no container was left behind.
+2. **`valkey_probe2.py`:**
+   - 50 refused attempts move next-free by 0 s, and the next caller waits 125.987 s.
+   - Five 30 s takes: next free in 150 s, TTL 210 s.
+   - 70 takes at 1 s, then 62 s of sleep: TTL 129.988 s, and the new caller waits 7.9 s.
+   - Boundary: waits 0.0 and 1.999 s are accepted with a 2.0 s maximum. With a 1.999 s maximum the take returns `None` and the value is unchanged.
+   - The clamped 1e20 gives a TTL of 3,660 s.
+   - Calling `take` directly with 1e20 still gives `ResponseError`, and 1e9 still gives 32 years (25(b)).
+3. **`capture_probe2.py`:**
+   - a: `private-address`, with no slot, with and without an override.
+   - b: 31 requests, worst minute 10.
+   - c: 429 refused as `robots`; 401 allows; 600 KB `Allow` allows; 2.5 MB refused. A boundary-straddling `Allow: /public-docs` is cut to `Allow: /` and allows the whole site (24).
+   - d: 8 entries, 3.91 MiB of text, 112, 45 and 17 MiB of memory.
+   - e: the LRU fuzz holds.
+   - f: 3.2 s with 3 lookups, against a 0.2 s deadline (23).
+   - g: 31 requests and 31 slots, but only because the stub resolver never yields.
+4. **`concurrency.py`** (resolver that yields):
+   - 30 jobs at 600 a minute: 31 requests, 60 slots, 5.9 s.
+   - 40 jobs at 600 a minute with `max_wait` 2 s: 21 requests, 41 slots, 20 refused, 4.0 s (25).
+5. **`robots_probe.py`:** RFC behaviour is unchanged. The Crawl-delay `1e20` now gives an interval of 3,600 s (3,600,000 ms).
