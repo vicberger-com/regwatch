@@ -22,11 +22,15 @@ from regwatch.identity.models import User
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
     services.password_changes.clear()
+    services.login_attempts_hourly.clear()
+    services.all_attempts.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
     yield
     services.login_attempts.clear()
     services.password_changes.clear()
+    services.login_attempts_hourly.clear()
+    services.all_attempts.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
 
@@ -146,14 +150,67 @@ def test_login_rate_limit_per_account_and_ip() -> None:
 
 def test_successful_attempts_are_given_back() -> None:
     """U-M1-1: a correct sign-in does not use up the account's or the address's budget."""
-    for _ in range(20):
-        services.forgive_login(services.check_login_rate("10.0.0.9", "ok@example.org"))
+    for _ in range(10):
+        services.forgive(services.check_login_rate("10.0.0.9", "ok@example.org"))
     assert services.login_attempts.count("acct:" + services.email_digest("ok@example.org")) == 0
+    assert services.login_attempts.count(services.address_key("10.0.0.9")) == 0
     services.check_login_rate("10.0.0.9", "ok@example.org")  # still allowed
 
 
+def test_failures_mixed_with_successes_keep_counting() -> None:
+    """Rate review 6: a success gives back only its own attempt."""
+    for _ in range(5):
+        services.check_login_rate("10.0.0.8", "victim@example.org")  # failures, never forgiven
+        services.forgive(services.check_login_rate("10.0.0.8", "mine@example.org"))
+    with pytest.raises(ProblemError):
+        services.check_login_rate("10.0.0.7", "victim@example.org")
+
+
+def test_a_refund_removes_only_its_own_count() -> None:
+    """Rate review 1: a late refund must not delete another request's failure."""
+    window = services.SlidingWindow(60.0)
+    mine = window.hit_at("k")
+    window.hit("k")  # someone else's failure, counted later
+    window.refund("k", mine)
+    assert window.count("k") == 1
+    window.refund("k", mine)  # twice, or after it left the window: nothing more is removed
+    assert window.count("k") == 1
+
+
+def test_every_attempt_is_capped_even_correct_ones() -> None:
+    """Rate review 2: correct passwords cost an Argon2 hash, so all attempts have a cap."""
+    for _ in range(services.LOGIN_ALL_RATE[0]):
+        services.forgive(services.check_login_rate(None, "busy@example.org"))
+    with pytest.raises(ProblemError):
+        services.check_login_rate(None, "busy@example.org")
+
+
+def test_addresses_group_ipv6_by_64_and_have_an_hourly_limit() -> None:
+    """Rate review 3: one client cannot rotate through its /64, or spray all day."""
+    assert services.address_key("2001:db8:1:2::1") == services.address_key("2001:db8:1:2:ffff::9")
+    assert services.address_key("2001:db8:1:3::1") != services.address_key("2001:db8:1:2::1")
+    assert services.address_key("::ffff:10.0.0.1") == services.address_key("10.0.0.1")
+    assert services.address_key("not an address").startswith("ip:")
+    key = services.address_key("10.0.0.6")
+    for _ in range(services.LOGIN_RATE_IP_HOURLY[0]):
+        services.login_attempts_hourly.hit(key)
+    with pytest.raises(ProblemError):
+        services.check_login_rate("10.0.0.6", "fresh@example.org")
+
+
+def test_password_change_limit_has_its_own_message() -> None:
+    import uuid
+
+    user = uuid.uuid4()
+    for _ in range(services.PASSWORD_CHANGE_RATE[0]):
+        services.check_password_change_rate(user)
+    with pytest.raises(ProblemError) as exc:
+        services.check_password_change_rate(user)
+    assert exc.value.detail is not None and "password-change" in exc.value.detail
+
+
 def test_refund_of_an_empty_window_is_harmless() -> None:
-    services.login_attempts.refund("ip:never-seen")
+    services.login_attempts.refund("ip:never-seen", 0.0)
 
 
 def test_sliding_window_expires_and_prunes(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -16,6 +16,7 @@ Authentication for every route (#31, ADR-0007):
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import time
 import uuid
 from collections import deque
@@ -46,7 +47,11 @@ LOCKOUT_WINDOW = timedelta(minutes=15)  # M1 spec; no settings key yet (BL-50)
 # successful sign-in or password change gives its attempt back, so only failures count.
 LOGIN_RATE_ACCOUNT = (5, 60.0)  # per account: guessing one account's password
 LOGIN_RATE_IP = (30, 60.0)  # per address: spraying many accounts, without blocking a shared office
+LOGIN_RATE_IP_HOURLY = (100, 3600.0)  # per address, so spraying stays slow over a day (review 3)
 PASSWORD_CHANGE_RATE = (5, 60.0)  # per signed-in user, separate from sign-in
+# Every attempt, never given back: correct passwords still cost an Argon2 hash (review 2).
+LOGIN_ALL_RATE = (20, 60.0)  # per account
+PASSWORD_CHANGE_ALL_RATE = (10, 60.0)  # per signed-in user
 TOUCH_INTERVAL = timedelta(seconds=60)
 
 AUTH_DEFAULTS: dict[str, int] = {
@@ -112,11 +117,19 @@ class SlidingWindow:
         hits = self._prune(key, time.monotonic())
         return max(1, int(hits[0] + self.window_s - time.monotonic()) + 1) if hits else 1
 
-    def refund(self, key: str) -> None:
-        """Give back the latest hit, for an attempt that turned out to succeed."""
+    def hit_at(self, key: str) -> float:
+        """Count an event and return its time, so ``refund`` can remove exactly that event."""
+        self.hit(key)
+        return self._hits[key][-1]
+
+    def refund(self, key: str, at: float) -> None:
+        """Give back the event counted at ``at``, if it is still in the window (review 1)."""
         hits = self._hits.get(key)
         if hits:
-            hits.pop()
+            try:
+                hits.remove(at)
+            except ValueError:
+                pass  # already outside the window
 
     def reset(self, key: str) -> None:
         self._hits.pop(key, None)
@@ -154,6 +167,8 @@ class LockTable:
 
 login_attempts = SlidingWindow(LOGIN_RATE_ACCOUNT[1])
 password_changes = SlidingWindow(PASSWORD_CHANGE_RATE[1])
+login_attempts_hourly = SlidingWindow(LOGIN_RATE_IP_HOURLY[1])
+all_attempts = SlidingWindow(LOGIN_ALL_RATE[1])
 unknown_failures = SlidingWindow(LOCKOUT_WINDOW.total_seconds())
 unknown_locks = LockTable()
 
@@ -167,33 +182,69 @@ def email_digest(email: str) -> str:
     return hashlib.sha256(email.strip().lower().encode()).hexdigest()
 
 
-def _too_many(window: SlidingWindow, key: str) -> ProblemError:
+def _too_many(window: SlidingWindow, key: str, kind: str = "sign-in") -> ProblemError:
     return ProblemError(
-        429, "rate-limited", "Too many sign-in attempts. Wait a minute and try again.",
+        429, "rate-limited", f"Too many {kind} attempts. Wait a minute and try again.",
         headers={"Retry-After": str(window.retry_after(key))},
     )  # fmt: skip
 
 
-def check_login_rate(ip: str | None, email: str) -> list[str]:
-    """429 past the account or address limit; otherwise count this attempt and return its keys.
+def address_key(ip: str) -> str:
+    """The rate-limit key of a client address; IPv6 by its /64, which one client controls."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return _key("ip", ip)
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return _key("ip", str(addr.ipv4_mapped))
+        return _key("ip6", str(ipaddress.ip_network(f"{addr}/64", strict=False)))
+    return _key("ip", str(addr))
 
-    The attempt is counted before the password is checked, so a burst of parallel requests
-    cannot all slip under the limit; ``forgive_login`` gives it back when the sign-in succeeds.
+
+RateTicket = list[tuple[SlidingWindow, str, float]]
+
+
+def _check(limits: list[tuple[SlidingWindow, str, int]], message: str) -> RateTicket:
+    for window, key, limit in limits:
+        if window.count(key) >= limit:
+            raise ProblemError(429, "rate-limited", message,
+                               headers={"Retry-After": str(window.retry_after(key))})  # fmt: skip
+    return [(window, key, window.hit_at(key)) for window, key, _ in limits]
+
+
+def check_login_rate(ip: str | None, email: str) -> RateTicket:
+    """429 past a limit; otherwise count this attempt and return what ``forgive`` gives back.
+
+    The attempt is counted before the password is checked, so a burst of parallel requests on
+    one API process cannot all slip under a limit (BL-65: the counters are per process). While
+    an attempt is in progress it counts, and at a limit even a correct password gets 429.
     """
-    limits = [(_key("acct", email), LOGIN_RATE_ACCOUNT[0])]
+    account = _key("acct", email)
+    all_attempts.hit(f"all:{account}")  # never given back
+    if all_attempts.count(f"all:{account}") > LOGIN_ALL_RATE[0]:
+        raise _too_many(all_attempts, f"all:{account}")
+    limits = [(login_attempts, account, LOGIN_RATE_ACCOUNT[0])]
     if ip:
-        limits.append((_key("ip", ip), LOGIN_RATE_IP[0]))
-    for key, limit in limits:
-        if login_attempts.count(key) >= limit:
-            raise _too_many(login_attempts, key)
-    for key, _ in limits:
-        login_attempts.hit(key)
-    return [key for key, _ in limits]
+        addr = address_key(ip)
+        limits += [(login_attempts, addr, LOGIN_RATE_IP[0]),
+                   (login_attempts_hourly, addr, LOGIN_RATE_IP_HOURLY[0])]  # fmt: skip
+    return _check(limits, "Too many sign-in attempts. Wait a minute and try again.")
 
 
-def forgive_login(keys: list[str]) -> None:
-    for key in keys:
-        login_attempts.refund(key)
+def check_password_change_rate(user_id: uuid.UUID) -> RateTicket:
+    key = f"pwchg:{user_id}"
+    all_attempts.hit(f"all:{key}")  # never given back
+    if all_attempts.count(f"all:{key}") > PASSWORD_CHANGE_ALL_RATE[0]:
+        raise _too_many(all_attempts, f"all:{key}", "password-change")
+    limits = [(password_changes, key, PASSWORD_CHANGE_RATE[0])]
+    return _check(limits, "Too many password-change attempts. Wait a minute and try again.")
+
+
+def forgive(ticket: RateTicket) -> None:
+    """Give back exactly the counts this attempt added, after it succeeded."""
+    for window, key, at in ticket:
+        window.refund(key, at)
 
 
 async def auth_settings(db: AsyncSession) -> dict[str, int]:
@@ -374,7 +425,7 @@ async def login(
     remember_me: bool,
 ) -> Me:
     ip = client_ip(request)
-    rate_keys = check_login_rate(ip, email)
+    rate_ticket = check_login_rate(ip, email)
     cfg = await auth_settings(db)
     threshold = cfg["auth.lockout_threshold"]
     now = _now()
@@ -422,7 +473,7 @@ async def login(
     await db.commit()
     lifetime = cfg["sessions.absolute_lifetime_hours"] * 3600
     set_session_cookie(response, settings, token, lifetime if remember_me else None)
-    forgive_login(rate_keys)  # only failures count toward the limits
+    forgive(rate_ticket)  # only failures count toward the failure limits
     roles, perms = await roles_and_permissions(db, user.id)
     return to_me(user, roles, perms)
 
@@ -450,16 +501,13 @@ async def change_password(
     new: str,
 ) -> None:
     ip = client_ip(request)
-    rate_key = f"pwchg:{principal.user.id}"
-    if password_changes.count(rate_key) >= PASSWORD_CHANGE_RATE[0]:
-        raise _too_many(password_changes, rate_key)
-    password_changes.hit(rate_key)
+    rate_ticket = check_password_change_rate(principal.user.id)
     cfg = await auth_settings(db)
     user = await db.scalar(select(User).where(User.id == principal.user.id).with_for_update())
     if user is None:
         raise unauthenticated()
     if await security.verify_password_async(user.password_hash, current):
-        password_changes.refund(rate_key)  # only a wrong current password counts
+        forgive(rate_ticket)  # only a wrong current password counts toward the failure limit
     else:
         # A wrong current password counts toward the lockout like a failed login, so a stolen
         # session cannot be used to guess it (M1 re-review).

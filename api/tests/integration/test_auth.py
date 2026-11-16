@@ -32,6 +32,8 @@ VIEWER_PW = "viewer password 1234"
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
     services.password_changes.clear()
+    services.login_attempts_hourly.clear()
+    services.all_attempts.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
     yield
@@ -265,7 +267,8 @@ async def test_wrong_current_password_counts_toward_lockout(client: httpx.AsyncC
     change = f"{API_PREFIX}/auth/password"
     wrong = {"current_password": "not my password!", "new_password": "a new pass 5678"}
     for _ in range(10):
-        services.password_changes.clear()  # past the per-user limit, to reach the lockout
+        services.password_changes.clear()  # past the per-user limits, to reach the lockout
+        services.all_attempts.clear()
         assert (await client.post(change, headers=ORIGIN, json=wrong)).status_code in (400, 401)
     assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401  # sessions ended
     services.login_attempts.clear()

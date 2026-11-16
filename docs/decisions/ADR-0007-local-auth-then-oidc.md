@@ -75,3 +75,11 @@ The owner changed the login rate limits after G1 use testing (BL-83, U-M1-1). As
 
 The counters remain in process memory (BL-65).
 
+Follow-up from the independent review of amendment 1 (`docs/evidence/phase-1/M1-login-rate-review.md`):
+
+- An attempt counts while it is in progress. At a limit even a correct password gets 429, so five failures a minute against a known email still keep its owner out for that minute, as before.
+- The counters live per API process, so the burst guarantee holds per process (BL-65).
+- A refund removes exactly the count its own attempt added.
+- Every attempt, correct or not, has a cap that is never given back, because each one costs an Argon2 hash: 20 a minute per account for sign-ins and 10 a minute per user for password changes.
+- Addresses also have an hourly cap of 100 failures. IPv6 clients are grouped by /64.
+
