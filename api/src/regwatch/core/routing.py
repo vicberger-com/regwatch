@@ -16,7 +16,7 @@ from typing import Annotated, Any, NoReturn
 from fastapi import Depends, Query
 from fastapi.responses import Response
 
-from regwatch.core.errors import PROBLEM_MEDIA_TYPE, NotImplementedProblem
+from regwatch.core.errors import PROBLEM_MEDIA_TYPE, NotImplementedProblem, ProblemError
 
 PROBLEM_REF = {"$ref": "#/components/schemas/Problem"}
 PERMISSION_KEY = "x-permission"
@@ -81,12 +81,21 @@ def not_implemented() -> NoReturn:
     raise NotImplementedProblem()
 
 
+MAX_PAGE = 1_000_000
+
+
 @dataclass
 class PageParams:
     """``components.parameters.page`` and ``page_size``."""
 
     page: Annotated[int, Query(ge=1)] = 1
     page_size: Annotated[int, Query(ge=1, le=200)] = 50
+
+    def __post_init__(self) -> None:
+        # A page past this offset would overflow PostgreSQL's bigint OFFSET and answer 500
+        # (M3 source routes review, finding 8); no list here is that long.
+        if self.page > MAX_PAGE:
+            raise ProblemError(422, "validation", f"page is at most {MAX_PAGE}.")
 
 
 Paging = Annotated[PageParams, Depends()]

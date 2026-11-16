@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 import httpx
 import pytest
 
 from regwatch.capture import services
+from regwatch.capture.safe_fetch.policy import _is_ip
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
 
@@ -16,11 +20,18 @@ HOSTS = {"feeds.example": ["93.184.215.14"], "inside.example": ["10.0.0.5"],
          "mixed.example": ["93.184.215.14", "169.254.169.254"]}  # fmt: skip
 
 
+SLOW = {"slow.example"}
+
+
 @pytest.fixture(autouse=True)
 def fixed_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     """Made-up names with fixed answers; every answer is still checked by SafeFetcher's policy."""
 
     async def resolver(host: str, port: int) -> list[str]:
+        if host in SLOW:
+            await asyncio.sleep(5)
+        if _is_ip(host):  # as getaddrinfo does: a literal resolves to itself (review finding 5)
+            return [host]
         if host not in HOSTS:
             raise OSError("no such host")
         return HOSTS[host]
@@ -100,6 +111,16 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
         (rss(default_term_ids=["00000000-0000-7000-8000-000000000001"]), "default_term_ids"),
         (rss(job={"max_items_per_run": 0}), "job.max_items_per_run"),
         (rss(job={"render_js": None}), "job.render_js"),
+        (rss(terms_url="javascript:alert(document.cookie)"), "terms_url"),
+        (rss(terms_url="https://[bad/"), "terms_url"),
+        (rss(language="x" * 100), "language"),
+        (rss(name="Feed \u202egnp.exe"), "name"),
+        (rss(robots_policy="override", override_reason="ok\x00"), "override_reason"),
+        (rss(job={"cron": "99 99 99 99 99"}), "job.cron"),
+        (rss(job={"cron": "5-1 * * * *"}), "job.cron"),
+        (rss(job={"cron": "*/0 * * * *"}), "job.cron"),
+        (rss(job={"cron": "* * * * " + "1," * 200 + "1"}), "job.cron"),
+        (rss(job={"interval_seconds": 2**31}), "job.interval_seconds"),
     ],
 )  # fmt: skip
 async def test_invalid_sources_are_refused_with_the_field(
@@ -110,8 +131,10 @@ async def test_invalid_sources_are_refused_with_the_field(
     assert got.status_code == 422, got.text
     errors = got.json()["errors"]
     assert field in [e["field"] for e in errors]
-    # A name that resolves privately is refused without saying what it resolved to.
+    # One message for private and unresolvable names: no address, no DNS oracle (findings 4).
     assert not any("10.0.0.5" in e["message"] or "169.254" in e["message"] for e in errors)
+    if field.startswith(("config.feed_url", "url", "config.seed")) and "{}" not in str(body):
+        assert services._NOT_PUBLIC in [e["message"] for e in errors]
     assert (await admin.get(_api("/sources"))).json()["total"] == 0
 
 
@@ -159,3 +182,58 @@ async def test_kind_is_fixed_and_unknown_ids_are_404(admin: httpx.AsyncClient) -
     job = (await admin.get(_api("/sources/" + sid))).json()["job"]["id"]
     neither = await admin.patch(_api(f"/capture-jobs/{job}"), json={"interval_seconds": None})
     assert neither.status_code == 422
+
+
+async def test_editors_cannot_move_or_restart_an_override(admin: httpx.AsyncClient) -> None:
+    """Review finding 1: on an overridden source, new URLs or turning it back on is a new
+    override, which needs the permission and gets its own audit row naming the URLs."""
+    editor = await _as_new_user(admin, "ed2@example.org", ["editor"])
+    body = rss(robots_policy="override", override_reason="Owner agreed in writing")
+    sid = (await admin.post(_api("/sources"), json=body)).json()["id"]
+    moved = {"config": {"feed_url": "https://feeds.example/other"}}
+    assert (await editor.patch(_api(f"/sources/{sid}"), json=moved)).status_code == 403
+    home = {"url": "https://feeds.example/"}
+    assert (await editor.patch(_api(f"/sources/{sid}"), json=home)).status_code == 403
+    same = {"config": {"feed_url": "https://feeds.example/rss"}}  # unchanged: allowed
+    assert (await editor.patch(_api(f"/sources/{sid}"), json=same)).status_code == 200
+    assert (await editor.delete(_api(f"/sources/{sid}"))).status_code == 204  # stopping is fine
+    restart = await editor.patch(_api(f"/sources/{sid}"), json={"enabled": True})
+    assert restart.status_code == 403
+
+    assert (await admin.patch(_api(f"/sources/{sid}"), json=moved)).status_code == 200
+    rows = (await admin.get(_api("/admin/audit"),
+                            params={"action": "source.robots_override"})).json()  # fmt: skip
+    assert rows["total"] == 2
+    assert rows["items"][0]["after"]["config"]["feed_url"] == "https://feeds.example/other"
+    assert rows["items"][0]["before"]["config"]["feed_url"] == "https://feeds.example/rss"
+
+
+async def test_lookups_have_one_deadline_and_run_before_the_lock(
+    admin: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding 2: a name server that never answers is cut off, and other saves of the
+    same source do not wait for it."""
+    monkeypatch.setattr(services, "DNS_DEADLINE_S", 0.5)
+    sid = (await admin.post(_api("/sources"), json=rss())).json()["id"]
+    seeds = {"seed_urls": [f"https://slow.example/{n}" for n in range(20)],
+             "allowed_domains": ["slow.example"]}  # fmt: skip
+    crawl = {"name": "Crawl", "kind": "web_crawl", "config": seeds}
+    started = time.monotonic()
+    slow, rename = await asyncio.gather(
+        admin.post(_api("/sources"), json=crawl),
+        admin.patch(_api(f"/sources/{sid}"), json={"name": "Renamed"}),
+    )
+    assert slow.status_code == 422 and rename.status_code == 200
+    assert time.monotonic() - started < 2.0  # 20 lookups together, not 20 after another
+
+
+async def test_the_config_is_stored_as_checked_and_pages_are_bounded(
+    admin: httpx.AsyncClient,
+) -> None:
+    """Review findings 6 and 8."""
+    made = await admin.post(_api("/sources"),
+                            json=rss(config={"feed_url": "HTTPS://Feeds.Example/rss"}))  # fmt: skip
+    assert made.status_code == 201
+    assert made.json()["config"]["feed_url"] == "https://feeds.example/rss"
+    assert (await admin.get(_api("/sources"), params={"page": 10**17})).status_code == 422
+    assert (await admin.get(_api("/admin/users"), params={"page": 10**17})).status_code == 422

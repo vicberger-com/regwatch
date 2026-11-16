@@ -8,9 +8,11 @@ audited as ``source.robots_override`` besides the usual create or update row (ac
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
@@ -23,7 +25,7 @@ from regwatch.capture.schemas import CaptureJob as JobOut
 from regwatch.capture.schemas import CaptureJobWrite, SourceWrite
 from regwatch.capture.schemas import Source as SourceOut
 from regwatch.core.errors import ProblemError, ProblemFieldError
-from regwatch.core.schemas import Page
+from regwatch.core.schemas import Page, has_control
 from regwatch.core.services import audit
 from regwatch.identity.services import Principal
 from regwatch.taxonomy.models import Jurisdiction, Term
@@ -31,49 +33,123 @@ from regwatch.taxonomy.models import Jurisdiction, Term
 RESOLVER: Resolver | None = None  # None: the system resolver; tests set a fixed answer
 OVERRIDE = "sources.override_robots"
 MAX_REASON = 1000
+MAX_URL = 2048
+MAX_INTERVAL = 366 * 86400  # a job runs at least once a year
+DNS_DEADLINE_S = 10.0  # all of a save's lookups together (review finding 2)
 DEFAULT_INTERVAL = 3600  # a job with neither cron nor interval runs hourly (ASSUMPTIONS M3)
 _URL_FIELDS = {"rss": ("feed_url",), "web_page": ("page_url",), "web_crawl": ("seed_urls",),
                "api_feed": ("endpoint_url",)}  # fmt: skip
-_CRON_FIELD = re.compile(r"^[0-9A-Za-z*/,\-]+$")
-# Refusals that describe what a host resolved to name no address, so a saved URL cannot be used
-# to learn internal addresses; the others describe only the URL as typed.
-_REASONS = {"private-address": "the host resolves to a private or reserved address",
-            "dns": "the host name could not be resolved"}  # fmt: skip
+# Fields whose change on an overridden source points the override somewhere new (finding 1).
+_OVERRIDE_TARGET = ("url", "config")
+# One message for every refusal about what a name resolves to, private or unresolvable, so
+# saving sources tells nothing about internal names or addresses (findings 4 and the record).
+_NOT_PUBLIC = "the host must resolve to public addresses only"
+_LANGUAGE = re.compile(r"^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}$")
+_CRON_RANGES = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
+_CRON_NAMES = {3: "JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(),
+               4: "SUN MON TUE WED THU FRI SAT".split()}  # fmt: skip
 
 
 def invalid(field: str, message: str) -> ProblemError:
-    errors = [ProblemFieldError(field=field, message=message)]
-    return ProblemError(422, "validation", "The source settings are not valid.", errors=errors)
+    return invalid_all([(field, message)])
+
+
+def invalid_all(errors: list[tuple[str, str]]) -> ProblemError:
+    fields = [ProblemFieldError(field=f, message=m) for f, m in errors]
+    return ProblemError(422, "validation", "The source settings are not valid.", errors=fields)
 
 
 def not_found(what: str) -> ProblemError:
     return ProblemError(404, "not-found", f"No such {what}.")
 
 
-async def check_url(field: str, url: str) -> None:
+def _refusal(exc: FetchRefusedError) -> str:
+    return _NOT_PUBLIC if exc.reason in ("private-address", "dns", "address") else exc.detail
+
+
+async def check_urls(kind: str, values: dict[str, Any]) -> None:
+    """Every URL the source names, checked together under one deadline, before the database
+    is touched, so slow name servers hold no connection or row lock (review finding 2). The
+    config is stored as parsed, so what is stored is what was checked (finding 6)."""
+    urls: list[tuple[str, str]] = []
+    if "config" in values:
+        parsed = validate_config(kind, values["config"])
+        values["config"] = parsed.model_dump(mode="json", exclude_unset=True)
+        for name in _URL_FIELDS.get(kind, ()):
+            value = getattr(parsed, name)
+            if isinstance(value, list):
+                urls += [(f"config.{name}.{n}", str(u)) for n, u in enumerate(value)]
+            elif value is not None:
+                urls.append((f"config.{name}", str(value)))
+    if values.get("url"):
+        urls.append(("url", values["url"]))
     try:
-        await validate_source_url(url, RESOLVER)
-    except FetchRefusedError as exc:
-        raise invalid(field, _REASONS.get(exc.reason, exc.detail)) from None
+        async with asyncio.timeout(DNS_DEADLINE_S):
+            results = await asyncio.gather(
+                *(validate_source_url(u, RESOLVER) for _, u in urls), return_exceptions=True
+            )
+    except TimeoutError:
+        raise invalid_all([(f, _NOT_PUBLIC) for f, _ in urls]) from None
+    errors = []
+    for (field, _), result in zip(urls, results, strict=True):
+        if isinstance(result, FetchRefusedError):
+            errors.append((field, _refusal(result)))
+        elif isinstance(result, BaseException):  # pragma: no cover - validate raises only that
+            raise result
+    if errors:
+        raise invalid_all(errors)
 
 
-async def check_config(kind: str, config: dict[str, Any]) -> dict[str, Any]:
-    parsed = validate_config(kind, config)
-    for name in _URL_FIELDS.get(kind, ()):
-        value = getattr(parsed, name)
-        for n, url in enumerate(value if isinstance(value, list) else [value]):
-            if url is not None:
-                await check_url(f"config.{name}" + (f".{n}" if isinstance(value, list) else ""),
-                                str(url))  # fmt: skip
-    return config
+def _text(values: dict[str, Any], key: str) -> None:
+    if values.get(key) is not None and has_control(values[key]):
+        raise invalid(key, "control and direction-changing characters are not allowed")
 
 
-def check_robots(values: dict[str, Any], source: Source | None, principal: Principal) -> None:
-    """The robots.txt override: the permission and a reason (M3 acceptance 4, review 22 (a))."""
+def _web_link(url: str) -> bool:
+    """A link the UI may show: http or https only, so never ``javascript:`` (finding 3)."""
+    if len(url) > MAX_URL or has_control(url):
+        return False
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
+
+
+def check_plain(values: dict[str, Any], kind: str | None) -> str:
+    """Checks that need neither the network nor the database; returns the source's kind."""
+    for key in ("name", "kind", "config", "default_jurisdiction_codes", "default_term_ids",
+                "credibility", "robots_policy", "enabled"):  # fmt: skip
+        if key in values and values[key] is None:
+            raise invalid(key, "may not be empty")
+    if kind is None:
+        for key in ("name", "kind"):
+            if not values.get(key):
+                raise invalid(key, f"{key} is required")
+        values.setdefault("config", {})
+    elif "kind" in values and values["kind"] != kind:
+        raise invalid("kind", "the kind of a source cannot change; create a new source")
+    if "name" in values and not values["name"].strip():
+        raise invalid("name", "name is required")
+    for key in ("name", "override_reason", "url"):
+        _text(values, key)
+    if values.get("language") is not None and not _LANGUAGE.match(values["language"]):
+        raise invalid("language", "a language tag such as en or pt-BR")
+    if values.get("terms_url") is not None and not _web_link(values["terms_url"]):
+        raise invalid("terms_url", f"an http or https URL of at most {MAX_URL} characters")
+    return str(values.get("kind", kind))
+
+
+def check_robots(values: dict[str, Any], source: Source | None, principal: Principal) -> bool:
+    """The robots.txt override: the permission and a reason (M3 acceptance 4, review 22 (a)).
+
+    Returns whether this save makes a new override: a new policy or reason, or new URLs, or
+    turning a disabled overridden source back on (review finding 1). Each needs the permission.
+    """
     policy = values.get("robots_policy", source.robots_policy if source else "respect")
     if policy != "override":
         values["override_reason"] = None
-        return
+        return False
     reason = values.get("override_reason", source.override_reason if source else None)
     reason = (reason or "").strip()
     if not reason:
@@ -81,10 +157,45 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     if len(reason) > MAX_REASON:
         raise invalid("override_reason", f"at most {MAX_REASON} characters")
     values["override_reason"] = reason
-    changed = source is None or (source.robots_policy, source.override_reason) != (
+    new = source is None or (source.robots_policy, source.override_reason) != (
         "override", reason)  # fmt: skip
-    if changed and OVERRIDE not in principal.permissions:
+    if source is not None and not new:
+        new = any(k in values and values[k] != getattr(source, k) for k in _OVERRIDE_TARGET) or (
+            values.get("enabled") is True and not source.enabled)  # fmt: skip
+    if new and OVERRIDE not in principal.permissions:
         raise ProblemError(403, "forbidden", "Overriding robots.txt needs its own permission.")
+    return new
+
+
+def _cron_value(index: int, text: str) -> int | None:
+    if text.isdigit():
+        return int(text)
+    names = _CRON_NAMES.get(index, [])
+    if text.upper() in names:
+        return names.index(text.upper()) + (1 if index == 3 else 0)
+    return None
+
+
+def cron_ok(expr: str) -> bool:
+    """Five fields of numbers, names, ``*``, ranges, lists and steps, each within its range."""
+    fields = expr.split()
+    if len(expr) > 200 or len(fields) != 5:
+        return False
+    for index, field in enumerate(fields):
+        low, high = _CRON_RANGES[index]
+        for part in field.split(","):
+            span, slash, step = part.partition("/")
+            if slash and not (step.isdigit() and 1 <= int(step) <= high):
+                return False
+            if span == "*":
+                continue
+            first, dash, last = span.partition("-")
+            ends = [_cron_value(index, first), *([_cron_value(index, last)] if dash else [])]
+            if any(e is None or not low <= e <= high for e in ends):
+                return False
+            if dash and ends[0] > ends[1]:  # type: ignore[operator]
+                return False
+    return True
 
 
 def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
@@ -97,9 +208,10 @@ def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
     interval = values.get("interval_seconds", job.interval_seconds if job else None)
     if cron is not None and interval is not None:
         raise invalid("job.cron", "give a cron expression or an interval, not both")
-    if cron is not None and (len(cron.split()) != 5 or not all(
-            _CRON_FIELD.match(f) for f in cron.split())):  # fmt: skip
-        raise invalid("job.cron", "a cron expression has five fields")
+    if cron is not None and not cron_ok(cron):
+        raise invalid("job.cron", "five cron fields, each within its range")
+    if interval is not None and interval > MAX_INTERVAL:
+        raise invalid("job.interval_seconds", f"at most {MAX_INTERVAL} seconds (a year)")
     if cron is None and interval is None:
         if job is not None:
             raise invalid("job.interval_seconds", "a job needs a cron expression or an interval")
@@ -135,34 +247,12 @@ async def check_terms(db: AsyncSession, ids: list[uuid.UUID]) -> list[uuid.UUID]
     return list(dict.fromkeys(ids))
 
 
-async def _source_values(db: AsyncSession, body: SourceWrite, source: Source | None,
-                         principal: Principal) -> dict[str, Any]:  # fmt: skip
-    values = body.model_dump(exclude_unset=True, exclude={"job"})
-    for key in ("name", "kind", "config", "default_jurisdiction_codes", "default_term_ids",
-                "credibility", "robots_policy", "enabled"):  # fmt: skip
-        if key in values and values[key] is None:
-            raise invalid(key, "may not be empty")
-    if source is None:
-        for key in ("name", "kind"):
-            if not values.get(key):
-                raise invalid(key, f"{key} is required")
-        values.setdefault("config", {})
-    elif "kind" in values and values["kind"] != source.kind:
-        raise invalid("kind", "the kind of a source cannot change; create a new source")
-    if "name" in values and not values["name"].strip():
-        raise invalid("name", "name is required")
-    kind = values.get("kind", source.kind if source else "")
-    if "config" in values:
-        await check_config(kind, values["config"])
-    if values.get("url"):
-        await check_url("url", values["url"])
+async def _db_checks(db: AsyncSession, values: dict[str, Any]) -> None:
     if "default_jurisdiction_codes" in values:
         values["default_jurisdiction_ids"] = await jurisdiction_ids(
             db, values.pop("default_jurisdiction_codes"))  # fmt: skip
     if "default_term_ids" in values:
         values["default_term_ids"] = await check_terms(db, values["default_term_ids"])
-    check_robots(values, source, principal)
-    return values
 
 
 def job_snapshot(job: CaptureJob) -> dict[str, Any]:
@@ -198,25 +288,29 @@ async def _source_and_job(db: AsyncSession, source_id: uuid.UUID,
     source = await db.scalar(query.with_for_update() if lock else query)
     if source is None:
         raise not_found("source")
-    job = await db.scalar(select(CaptureJob).where(CaptureJob.source_id == source_id))
+    job_query = select(CaptureJob).where(CaptureJob.source_id == source_id)
+    job = await db.scalar(job_query.with_for_update() if lock else job_query)  # finding 9
     return source, job
 
 
 def _audit_robots(db: AsyncSession, source: Source, before: dict[str, Any] | None,
                   actor: uuid.UUID, ip: str | None) -> None:  # fmt: skip
-    was = (before or {}).get("robots_policy"), (before or {}).get("override_reason")
-    if source.robots_policy == "override" and was != ("override", source.override_reason):
-        audit(db, "source.robots_override", "source", source.id, actor=actor, ip=ip,
-              before={"robots_policy": was[0], "override_reason": was[1]},
-              after={"robots_policy": "override",
-                     "override_reason": source.override_reason})  # fmt: skip
+    """The override's own row names what it applies to: the URL and config (finding 1)."""
+    keys = ("robots_policy", "override_reason", "url", "config", "enabled")
+    audit(db, "source.robots_override", "source", source.id, actor=actor, ip=ip,
+          before={k: before[k] for k in keys} if before else None,
+          after={k: getattr(source, k) for k in keys})  # fmt: skip
 
 
 async def create_source(db: AsyncSession, body: SourceWrite, principal: Principal,
                         ip: str | None) -> SourceOut:  # fmt: skip
-    values = await _source_values(db, body, None, principal)
+    values = body.model_dump(exclude_unset=True, exclude={"job"})
+    kind = check_plain(values, None)
     job_values = body.job.model_dump(exclude_unset=True) if "job" in body.model_fields_set else {}
     check_job(job_values, None)
+    new_override = check_robots(values, None, principal)
+    await check_urls(kind, values)  # before the first query: no connection is held
+    await _db_checks(db, values)
     actor = principal.user.id
     source = Source(owner_user_id=actor, **values)
     db.add(source)
@@ -228,7 +322,8 @@ async def create_source(db: AsyncSession, body: SourceWrite, principal: Principa
     await db.refresh(job)
     audit(db, "source.create", "source", source.id, actor=actor, ip=ip,
           after={**source_snapshot(source), "job": job_snapshot(job)})  # fmt: skip
-    _audit_robots(db, source, None, actor, ip)
+    if new_override:
+        _audit_robots(db, source, None, actor, ip)
     out = await source_out(db, source, job)
     await db.commit()
     return out
@@ -236,8 +331,16 @@ async def create_source(db: AsyncSession, body: SourceWrite, principal: Principa
 
 async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrite,
                         principal: Principal, ip: str | None) -> SourceOut:  # fmt: skip
+    kind = await db.scalar(select(Source.kind).where(Source.id == source_id))
+    await db.rollback()  # the kind never changes; end the read so DNS holds no connection
+    if kind is None:
+        raise not_found("source")
+    values = body.model_dump(exclude_unset=True, exclude={"job"})
+    check_plain(values, kind)
+    await check_urls(kind, values)
     source, job = await _source_and_job(db, source_id, lock=True)
-    values = await _source_values(db, body, source, principal)
+    await _db_checks(db, values)
+    new_override = check_robots(values, source, principal)
     job_values = body.job.model_dump(exclude_unset=True) if "job" in body.model_fields_set else {}
     if job is None and job_values:  # pragma: no cover - every source is created with its job
         raise not_found("capture job")
@@ -258,7 +361,8 @@ async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrit
     if (before, job_before) != (after, job_after):
         audit(db, "source.update", "source", source.id, actor=principal.user.id, ip=ip,
               before={**before, "job": job_before}, after={**after, "job": job_after})  # fmt: skip
-        _audit_robots(db, source, before, principal.user.id, ip)
+        if new_override:
+            _audit_robots(db, source, before, principal.user.id, ip)
     out = await source_out(db, source, job)
     await db.commit()
     return out
