@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -24,6 +24,11 @@ Resolver = Callable[[str, int], Awaitable[list[str]]]
 
 SCHEMES = {"http": 80, "https": 443}
 _NAT64 = ipaddress.ip_network("64:ff9b::/96")
+# Every IPv6 address whose top 64 bits are zero embeds IPv4 or is special: IPv4-compatible
+# (::/96), IPv4-mapped (::ffff:0:0/96) and IPv4-translated (::ffff:0:0:0/96). No public
+# unicast address starts that way (review finding 2). Site-local fec0::/10 is deprecated.
+_LOW64 = ipaddress.ip_network("::/64")
+_SITE_LOCAL = ipaddress.ip_network("fec0::/10")
 MAX_URL = 2048
 
 
@@ -90,9 +95,7 @@ def _is_ip(host: str) -> bool:
 def _embedded(ip: IPAddress) -> list[IPAddress]:
     if not isinstance(ip, ipaddress.IPv6Address):
         return []
-    found: list[IPAddress] = []
-    if ip.ipv4_mapped is not None:
-        found.append(ip.ipv4_mapped)
+    found: list[IPAddress] = []  # IPv4-mapped and -compatible are inside ::/64, refused above
     if ip.sixtofour is not None:
         found.append(ip.sixtofour)
     if ip.teredo is not None:
@@ -108,6 +111,10 @@ def check_address(address: str) -> IPAddress:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
         raise FetchRefusedError("address", f"{address!r} is not an IP address") from None
+    if isinstance(ip, ipaddress.IPv6Address) and (ip in _LOW64 or ip in _SITE_LOCAL):
+        raise FetchRefusedError(
+            "private-address", f"{ip} is not a public address and cannot be fetched"
+        )
     for candidate in (ip, *_embedded(ip)):
         if not candidate.is_global or candidate.is_multicast:
             raise FetchRefusedError(
@@ -123,20 +130,8 @@ async def _system_resolver(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in infos]
 
 
-async def resolve(
-    target: Target,
-    resolver: Resolver | None = None,
-    pinned_hosts: Mapping[str, str] | None = None,
-) -> list[IPAddress]:
-    """Every address of the target's host, all checked; refused if any one is not public.
-
-    ``pinned_hosts`` maps a host name to an address used without DNS and without the check.
-    Only tests pass it, so one made-up name can reach the local fixture server while every
-    other spelling of that address (``127.0.0.1``, ``localhost``, ``2130706433``) is still
-    refused, as the fixture contract requires. Configuration never sets it.
-    """
-    if pinned_hosts and target.host in pinned_hosts:
-        return [ipaddress.ip_address(pinned_hosts[target.host])]
+async def resolve(target: Target, resolver: Resolver | None = None) -> list[IPAddress]:
+    """Every address of the target's host, all checked; refused if any one is not public."""
     try:
         found = await (resolver or _system_resolver)(target.host, target.port)
     except (OSError, UnicodeError) as exc:

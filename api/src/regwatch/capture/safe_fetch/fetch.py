@@ -6,20 +6,24 @@ For every hop (the first request and each redirect, at most ``max_redirects``):
 2. The request goes to one checked address, not to the host name, so DNS cannot answer
    differently at connection time (rebinding). ``Host`` carries the name, and for https the
    TLS server name and certificate check use it too (httpcore's ``sni_hostname``).
-3. The body is read as a stream and stops at ``max_bytes`` after decompression, so a gzip
-   bomb or a lying ``Content-Length`` cannot exhaust memory. Each hop has a total deadline as
-   well as connect and read timeouts, so a slow server cannot hold a worker.
+3. The raw body is read as a stream and decompressed here, never by httpx, with an output
+   limit on every step, so neither a gzip bomb nor stacked encodings can grow past
+   ``max_bytes`` in memory (review finding 1). Only identity, gzip and deflate are accepted,
+   one at a time. A lying ``Content-Length`` cannot help either. Each hop, including its DNS
+   lookup, has a total deadline as well as connect and read timeouts, so a slow server or
+   name server cannot hold a worker (finding 3).
 
 Connections are not kept alive between hops, so every hop's TLS certificate is checked for its
 own name. Environment proxies are ignored (``trust_env=False``): a proxy would see the request
-instead of the checked address. ``pinned_hosts`` exists for tests that use the local fixture
-server (see ``policy.resolve``) and must never be set from configuration.
+instead of the checked address. Tests reach the local fixture server by overriding ``_resolve`` in a
+subclass; the class itself has no way to skip the address check (finding 4).
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+import ssl
+import zlib
 from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
@@ -35,6 +39,21 @@ from regwatch.capture.safe_fetch.policy import (
 )
 
 REDIRECTS = {301, 302, 303, 307, 308}
+
+
+def _decoder(encoding: str) -> zlib._Decompress | None:
+    """A bounded decompressor for one ``Content-Encoding``; stacked or unknown ones are refused."""
+    names = [e.strip().lower() for e in encoding.split(",") if e.strip()]
+    names = [n for n in names if n != "identity"]
+    if not names:
+        return None
+    if len(names) > 1:
+        raise FetchRefusedError("encoding", f"stacked content encodings are refused: {encoding}")
+    if names[0] in ("gzip", "x-gzip"):
+        return zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
+    if names[0] == "deflate":
+        return zlib.decompressobj()  # zlib-wrapped, as RFC 9110 defines deflate
+    raise FetchRefusedError("encoding", f"content encoding {names[0]!r} is not accepted")
 
 
 @dataclass(frozen=True)
@@ -67,13 +86,11 @@ class SafeFetcher:
         *,
         resolver: Resolver | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
-        pinned_hosts: Mapping[str, str] | None = None,
     ) -> None:
         self.user_agent = user_agent
         self.limits = limits or FetchLimits()
         self._resolver = resolver
         self._transport = transport
-        self._pinned = dict(pinned_hosts or {})
 
     def _request(self, client: httpx.AsyncClient, target: Target, ip: IPAddress,
                  method: str) -> httpx.Request:  # fmt: skip
@@ -92,27 +109,46 @@ class SafeFetcher:
             extensions=extensions,
         )
 
+    async def _resolve(self, target: Target) -> list[IPAddress]:
+        return await resolve(target, self._resolver)
+
+    def _tls(self) -> ssl.SSLContext | bool:
+        """Certificate checking with the system's trusted authorities; tests may add their own."""
+        return True
+
     async def _read(self, response: httpx.Response) -> bytes:
         limit = self.limits.max_bytes
         declared = response.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > limit:
             raise FetchRefusedError("too-large", f"the body is larger than {limit} bytes")
-        chunks: list[bytes] = []
-        size = 0
-        async for chunk in response.aiter_bytes():  # decoded: the cap applies after gzip
-            size += len(chunk)
-            if size > limit:
+        decoder = _decoder(response.headers.get("content-encoding", ""))
+        out = bytearray()
+
+        def take(data: bytes) -> None:
+            out.extend(data)
+            if len(out) > limit:
                 raise FetchRefusedError("too-large", f"the body is larger than {limit} bytes")
-            chunks.append(chunk)
-        return b"".join(chunks)
+
+        async for chunk in response.aiter_raw():  # undecoded: decompression happens below
+            if decoder is None:
+                take(chunk)
+                continue
+            data = chunk
+            while data:
+                # Never more output than the room left plus one byte, whatever the input.
+                take(decoder.decompress(data, limit - len(out) + 1))
+                data = decoder.unconsumed_tail
+        if decoder is not None:
+            take(decoder.flush())
+        return bytes(out)
 
     async def _hop(self, client: httpx.AsyncClient, url: str,
                    method: str) -> tuple[FetchResult | None, str | None, int]:  # fmt: skip
         """One request: the result, or the redirect location and status."""
         target = parse_target(url)
-        ip = (await resolve(target, self._resolver, self._pinned))[0]
         try:
-            async with asyncio.timeout(self.limits.total_s):
+            async with asyncio.timeout(self.limits.total_s):  # DNS included (finding 3)
+                ip = (await self._resolve(target))[0]
                 request = self._request(client, target, ip, method)
                 response = await client.send(request, stream=True)
                 try:
@@ -129,6 +165,10 @@ class SafeFetcher:
             raise FetchRefusedError("timeout", detail) from None
         except httpx.TimeoutException as exc:
             raise FetchRefusedError("timeout", f"{target.host}: {exc}") from None
+        except zlib.error as exc:
+            raise FetchRefusedError(
+                "encoding", f"{target.host}: a damaged compressed body: {exc}"
+            ) from None
         except httpx.HTTPError as exc:
             raise FetchRefusedError("connect", f"{target.host}: {exc}") from None
 
@@ -146,6 +186,7 @@ class SafeFetcher:
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
+            verify=self._tls(),
             limits=httpx.Limits(max_keepalive_connections=0),
         ) as client:
             current = url

@@ -76,3 +76,18 @@
    - Five redirects: 200 with 5 recorded.
    - A 302 after POST: methods `['POST', 'POST']`.
 4. **Tests:** `uv run pytest -q tests/unit/test_safe_fetch_policy.py tests/unit/test_safe_fetch_fetch.py`: 77 passed. With `--cov=regwatch.capture.safe_fetch --cov-branch`: 191 statements, 44 branches, 100 percent.
+
+## Author follow-up (`sec/M3-safe-fetch-followups`, pending re-verification)
+- **Finding 1 (high):** the body is read with `aiter_raw` and decompressed by SafeFetcher, never by httpx. Each `decompress` call is limited to the room left plus one byte (`max_length`), with `unconsumed_tail` fed back, so output never exceeds the cap whatever the input. Only identity, gzip and deflate are accepted, one at a time; stacked encodings (`gzip, gzip`), unknown ones (`br`) and damaged streams are refused with reason `encoding`. Test: `test_a_nested_gzip_bomb_never_grows_past_the_cap` fetches `/bomb/gzip?mib=400&nested=1` with a 1 MB cap and asserts a tracemalloc peak under 32 MiB. Also `test_stacked_and_unknown_encodings_are_refused`.
+- **Finding 2 (medium):** every IPv6 address in `::/64` is refused: IPv4-compatible, IPv4-mapped and IPv4-translated forms, plus `::` and `::1`. So is site-local `fec0::/10`. The IPv4-mapped unwrapping became unreachable and is removed. Tests: the policy cases `::169.254.169.254`, `::10.0.0.1`, `::ffff:0:a9fe:a9fe`, `::ffff:0:7f00:1`, `::8.8.8.8`, `fec0::1` and `fedc::1`.
+- **Finding 3 (low):** DNS resolution runs inside the per-hop deadline. Test: `test_dns_counts_against_the_deadline`.
+- **Finding 4 (low):** `pinned_hosts` is gone from `SafeFetcher` and `policy.resolve`. Tests reach the fixture server through a test-only subclass that overrides `_resolve`, so the production class has no way to skip the address check.
+- **Finding 5 (low):** `test_a_certificate_for_another_name_is_refused` runs a local TLS listener with a certificate for `good.example`, signed by a throwaway authority made with openssl. A fetch of `good.example` succeeds, `bad.example` on the same address is refused, and the system trust store refuses the throwaway authority. The new `_tls` hook lets the test trust that authority. Writing this test showed the hook had not been passed to the client; it is now.
+- **Finding 6 (low):**
+  - `test_hops_do_not_share_connections` uses the real transport; the fixture server now records each request's client port, and two hops show two ports.
+  - `test_environment_proxies_are_ignored` sets every proxy variable.
+  - `test_the_redirect_cap_is_exactly_five`: 5 redirects pass and 6 are refused.
+  - `test_misbehaving_servers_are_refusals` covers the raw listener's hang, slow-headers, garbage and short-body routes.
+  - `/lie/long` reads exactly the 10 declared bytes and ignores the rest (`test_a_body_longer_than_declared_is_cut_at_the_declared_length`).
+  - httpx is bounded `<1`.
+- **Info (7):** no change.

@@ -30,6 +30,8 @@ def resolver(*answers: str):  # noqa: ANN201 - a test resolver
         "::1", "::", "fe80::1", "fe80::1%eth0", "fc00::1", "ff02::1", "2001:db8::1",
         "::ffff:127.0.0.1", "::ffff:169.254.169.254", "2002:7f00:1::1", "64:ff9b::a9fe:a9fe",
         "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+        "::169.254.169.254", "::10.0.0.1", "::ffff:0:a9fe:a9fe", "::ffff:0:7f00:1",
+        "::8.8.8.8", "fec0::1", "fedc::1",
     ],
 )  # fmt: skip
 def test_private_and_special_addresses_are_refused(address: str) -> None:

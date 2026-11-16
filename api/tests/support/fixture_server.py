@@ -75,6 +75,7 @@ class RecordedRequest:
     query: str
     headers: dict[str, str]
     listener: str = "app"
+    client_port: int | None = None  # tells apart requests on separate connections
 
 
 @dataclass
@@ -163,7 +164,11 @@ def create_app(state: ServerState) -> FastAPI:  # noqa: C901 - one route table
     async def common(request: Request, call_next):  # type: ignore[no-untyped-def]
         state.requests.append(
             RecordedRequest(
-                request.method, request.url.path, request.url.query, dict(request.headers)
+                request.method,
+                request.url.path,
+                request.url.query,
+                dict(request.headers),
+                client_port=request.client.port if request.client else None,
             )
         )
         delay = request.query_params.get("delay_ms")
