@@ -20,7 +20,7 @@ The application ingests untrusted content from the internet and sends data out b
 
 ## 8.2 Controls checklist per module (enforced by the security review)
 
-Authentication on every non-public route; authorization by permission key; input validation with Pydantic on every request and task payload; output encoding in Jinja2 autoescape and React; size limits (request 2 MB, upload 25 MB, captured body 10 MB, export 50 000 rows); rate limits (login 5 per minute per IP and account, search 60 per minute per user, outputs 20 per hour per user); audit rows for every admin and output action; no sensitive data in logs (emails hashed, tokens never logged); security headers from Caddy (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, frame-ancestors none); TLS 1.2 minimum; dependencies pinned.
+Authentication on every non-public route; authorization by permission key; input validation with Pydantic on every request and task payload; output encoding in Jinja2 autoescape and React; size limits (request 2 MB, upload 25 MB, captured body 10 MB, export 50 000 rows); rate limits (login: failed attempts only, 5 per minute per account and 30 per minute per address; password changes 5 per minute per user; ADR-0007 amendment 1, search 60 per minute per user, outputs 20 per hour per user); audit rows for every admin and output action; no sensitive data in logs (emails hashed, tokens never logged); security headers from Caddy (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, frame-ancestors none); TLS 1.2 minimum; dependencies pinned.
 
 ## 8.3 Scraping legality and etiquette (G12)
 

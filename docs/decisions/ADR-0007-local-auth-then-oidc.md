@@ -63,3 +63,15 @@ The owner accepted the recommended default for every open question above:
 - Q3: no; roles stay managed in the application.
 - Q4: multi-factor authentication (TOTP) in Phase 5, before user evaluation, for local accounts.
 - Q5: not known yet; the owner names the identity provider before M1b.
+
+## Amendment 1 (2026-11-16)
+
+The owner changed the login rate limits after G1 use testing (BL-83, U-M1-1). As built, one person's mistyped passwords throttled everyone behind the same address (an office, a VPN or the proxy), and successful sign-ins and password changes used up the budget too. Now:
+
+- **Only failures count.** Each attempt is counted before the password is checked, so a burst of parallel requests cannot slip under the limit, and is given back when the sign-in succeeds.
+- **Per account:** 5 failed attempts a minute. The lockout (10 failures in 15 minutes, `auth.lockout_threshold`) is unchanged.
+- **Per address:** 30 failed attempts a minute. That slows password spraying across many accounts without blocking a shared office.
+- **Password changes** have their own limit: 5 wrong current passwords a minute per signed-in user. Wrong current passwords also still count toward the account lockout.
+
+The counters remain in process memory (BL-65).
+

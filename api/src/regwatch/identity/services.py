@@ -4,7 +4,8 @@ Authentication for every route (#31, ADR-0007):
 
 - The application-wide gate is :func:`regwatch.identity.permissions.authorize`; it uses
   :func:`resolve_session` from here.
-- :func:`login` applies the per-IP and per-account rate limits, the lockout (threshold and
+- :func:`login` applies the per-account and per-address limits on failed attempts (ADR-0007
+  amendment 1), the lockout (threshold and
   duration from the ``auth.*`` settings, 15-minute failure window from the M1 spec, BL-50),
   and answers the same way for unknown, disabled and wrong-password accounts.
 - Sessions live in the ``session`` table; the cookie holds a random token whose sha256 is
@@ -41,7 +42,11 @@ from regwatch.identity.schemas import User as UserOut
 from regwatch.identity.schemas import UserWithPassword as UserWithPasswordOut
 
 LOCKOUT_WINDOW = timedelta(minutes=15)  # M1 spec; no settings key yet (BL-50)
-LOGIN_RATE = (5, 60.0)  # attempts per seconds, per IP and per account (8.2)
+# Failed attempts allowed per window (8.2; use testing U-M1-1, owner decision 2026-11-16). A
+# successful sign-in or password change gives its attempt back, so only failures count.
+LOGIN_RATE_ACCOUNT = (5, 60.0)  # per account: guessing one account's password
+LOGIN_RATE_IP = (30, 60.0)  # per address: spraying many accounts, without blocking a shared office
+PASSWORD_CHANGE_RATE = (5, 60.0)  # per signed-in user, separate from sign-in
 TOUCH_INTERVAL = timedelta(seconds=60)
 
 AUTH_DEFAULTS: dict[str, int] = {
@@ -107,6 +112,12 @@ class SlidingWindow:
         hits = self._prune(key, time.monotonic())
         return max(1, int(hits[0] + self.window_s - time.monotonic()) + 1) if hits else 1
 
+    def refund(self, key: str) -> None:
+        """Give back the latest hit, for an attempt that turned out to succeed."""
+        hits = self._hits.get(key)
+        if hits:
+            hits.pop()
+
     def reset(self, key: str) -> None:
         self._hits.pop(key, None)
 
@@ -141,7 +152,8 @@ class LockTable:
         self._until.clear()
 
 
-login_attempts = SlidingWindow(LOGIN_RATE[1])
+login_attempts = SlidingWindow(LOGIN_RATE_ACCOUNT[1])
+password_changes = SlidingWindow(PASSWORD_CHANGE_RATE[1])
 unknown_failures = SlidingWindow(LOCKOUT_WINDOW.total_seconds())
 unknown_locks = LockTable()
 
@@ -155,16 +167,33 @@ def email_digest(email: str) -> str:
     return hashlib.sha256(email.strip().lower().encode()).hexdigest()
 
 
-def check_login_rate(ip: str | None, email: str) -> None:
-    keys = [_key("acct", email)] + ([_key("ip", ip)] if ip else [])
-    for key in keys:
-        if login_attempts.count(key) >= LOGIN_RATE[0]:
-            raise ProblemError(
-                429, "rate-limited", "Too many sign-in attempts. Wait a minute and try again.",
-                headers={"Retry-After": str(login_attempts.retry_after(key))},
-            )  # fmt: skip
-    for key in keys:
+def _too_many(window: SlidingWindow, key: str) -> ProblemError:
+    return ProblemError(
+        429, "rate-limited", "Too many sign-in attempts. Wait a minute and try again.",
+        headers={"Retry-After": str(window.retry_after(key))},
+    )  # fmt: skip
+
+
+def check_login_rate(ip: str | None, email: str) -> list[str]:
+    """429 past the account or address limit; otherwise count this attempt and return its keys.
+
+    The attempt is counted before the password is checked, so a burst of parallel requests
+    cannot all slip under the limit; ``forgive_login`` gives it back when the sign-in succeeds.
+    """
+    limits = [(_key("acct", email), LOGIN_RATE_ACCOUNT[0])]
+    if ip:
+        limits.append((_key("ip", ip), LOGIN_RATE_IP[0]))
+    for key, limit in limits:
+        if login_attempts.count(key) >= limit:
+            raise _too_many(login_attempts, key)
+    for key, _ in limits:
         login_attempts.hit(key)
+    return [key for key, _ in limits]
+
+
+def forgive_login(keys: list[str]) -> None:
+    for key in keys:
+        login_attempts.refund(key)
 
 
 async def auth_settings(db: AsyncSession) -> dict[str, int]:
@@ -345,7 +374,7 @@ async def login(
     remember_me: bool,
 ) -> Me:
     ip = client_ip(request)
-    check_login_rate(ip, email)
+    rate_keys = check_login_rate(ip, email)
     cfg = await auth_settings(db)
     threshold = cfg["auth.lockout_threshold"]
     now = _now()
@@ -393,6 +422,7 @@ async def login(
     await db.commit()
     lifetime = cfg["sessions.absolute_lifetime_hours"] * 3600
     set_session_cookie(response, settings, token, lifetime if remember_me else None)
+    forgive_login(rate_keys)  # only failures count toward the limits
     roles, perms = await roles_and_permissions(db, user.id)
     return to_me(user, roles, perms)
 
@@ -420,12 +450,17 @@ async def change_password(
     new: str,
 ) -> None:
     ip = client_ip(request)
-    check_login_rate(ip, principal.user.email)
+    rate_key = f"pwchg:{principal.user.id}"
+    if password_changes.count(rate_key) >= PASSWORD_CHANGE_RATE[0]:
+        raise _too_many(password_changes, rate_key)
+    password_changes.hit(rate_key)
     cfg = await auth_settings(db)
     user = await db.scalar(select(User).where(User.id == principal.user.id).with_for_update())
     if user is None:
         raise unauthenticated()
-    if not await security.verify_password_async(user.password_hash, current):
+    if await security.verify_password_async(user.password_hash, current):
+        password_changes.refund(rate_key)  # only a wrong current password counts
+    else:
         # A wrong current password counts toward the lockout like a failed login, so a stolen
         # session cannot be used to guess it (M1 re-review).
         await _count_failure(db, user, ip, cfg, _now(), "password_change")

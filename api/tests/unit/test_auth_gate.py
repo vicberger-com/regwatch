@@ -21,10 +21,12 @@ from regwatch.identity.models import User
 @pytest.fixture(autouse=True)
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
+    services.password_changes.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
     yield
     services.login_attempts.clear()
+    services.password_changes.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
 
@@ -127,15 +129,31 @@ def test_current_principal_without_gate_is_401() -> None:
 
 
 def test_login_rate_limit_per_account_and_ip() -> None:
+    """U-M1-1: 5 failures per account, 30 per address, in a minute."""
     for _ in range(5):
         services.check_login_rate("10.0.0.1", "a@example.org")
     with pytest.raises(ProblemError) as exc:
-        services.check_login_rate("10.0.0.2", "A@Example.org ")
+        services.check_login_rate("10.0.0.2", "A@Example.org ")  # the same account
     assert exc.value.status == 429
     assert exc.value.headers is not None and int(exc.value.headers["Retry-After"]) >= 1
+    for i in range(25):  # other accounts behind the same address: 30 in all
+        services.check_login_rate("10.0.0.1", f"user{i}@example.org")
     with pytest.raises(ProblemError):
-        services.check_login_rate("10.0.0.1", "b@example.org")
+        services.check_login_rate("10.0.0.1", "next@example.org")
+    services.check_login_rate("10.0.0.3", "next@example.org")  # another address is not affected
     services.check_login_rate(None, "c@example.org")
+
+
+def test_successful_attempts_are_given_back() -> None:
+    """U-M1-1: a correct sign-in does not use up the account's or the address's budget."""
+    for _ in range(20):
+        services.forgive_login(services.check_login_rate("10.0.0.9", "ok@example.org"))
+    assert services.login_attempts.count("acct:" + services.email_digest("ok@example.org")) == 0
+    services.check_login_rate("10.0.0.9", "ok@example.org")  # still allowed
+
+
+def test_refund_of_an_empty_window_is_harmless() -> None:
+    services.login_attempts.refund("ip:never-seen")
 
 
 def test_sliding_window_expires_and_prunes(monkeypatch: pytest.MonkeyPatch) -> None:

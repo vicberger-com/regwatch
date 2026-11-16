@@ -31,6 +31,7 @@ VIEWER_PW = "viewer password 1234"
 @pytest.fixture(autouse=True)
 def clear_limits() -> Iterator[None]:
     services.login_attempts.clear()
+    services.password_changes.clear()
     services.unknown_failures.clear()
     services.unknown_locks.clear()
     yield
@@ -193,6 +194,13 @@ async def test_rate_limit_answers_429(client: httpx.AsyncClient) -> None:
     assert codes[:5] == [401] * 5 and codes[5] == 429
 
 
+async def test_successful_sign_ins_do_not_count(client: httpx.AsyncClient) -> None:
+    """U-M1-1: one person signing in repeatedly is never throttled."""
+    codes = [(await _login(client, "admin@example.org", ADMIN_PW)).status_code
+             for _ in range(8)]  # fmt: skip
+    assert codes == [200] * 8
+
+
 async def test_logout_revokes_and_replay_is_401(client: httpx.AsyncClient, db_url: str) -> None:
     await _login(client, "admin@example.org", ADMIN_PW)
     token = client.cookies["rw_session"]
@@ -257,11 +265,23 @@ async def test_wrong_current_password_counts_toward_lockout(client: httpx.AsyncC
     change = f"{API_PREFIX}/auth/password"
     wrong = {"current_password": "not my password!", "new_password": "a new pass 5678"}
     for _ in range(10):
-        services.login_attempts.clear()
+        services.password_changes.clear()  # past the per-user limit, to reach the lockout
         assert (await client.post(change, headers=ORIGIN, json=wrong)).status_code in (400, 401)
     assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401  # sessions ended
     services.login_attempts.clear()
     assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 423
+
+
+async def test_password_changes_have_their_own_limit(client: httpx.AsyncClient) -> None:
+    """U-M1-1: 5 wrong current passwords a minute per user; sign-in keeps its own budget."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    change = f"{API_PREFIX}/auth/password"
+    wrong = {"current_password": "not my password!", "new_password": "a new pass 5678"}
+    codes = [(await client.post(change, headers=ORIGIN, json=wrong)).status_code
+             for _ in range(6)]  # fmt: skip
+    assert codes[:5] == [400] * 5 and codes[5] == 429
+    acct = "acct:" + services.email_digest("admin@example.org")
+    assert services.login_attempts.count(acct) == 0  # the sign-in was given back
 
 
 async def test_short_lockout_does_not_reveal_accounts(
