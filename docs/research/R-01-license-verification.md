@@ -163,6 +163,18 @@ Read from the project's own repository at the release tag over HTTPS (`raw.githu
 
 nh3 0.3.7 `Cargo.lock` (85 crates), declared licenses: 52 MIT OR Apache-2.0, 9 MIT, 2 MPL-2.0 (cssparser 0.37.0, dtoa-short 0.3.5; used unmodified. MPL-2.0 3.2(a) still applies to distribution in executable form: recipients must be told how to obtain the source, which `api/THIRD_PARTY_NOTICES.md` does (BL-68 review finding 7)), 18 Unicode-3.0 (icu_collections, icu_locale_core, icu_normalizer, icu_normalizer_data, icu_properties, icu_properties_data, icu_provider, litemap, potential_utf, tinystr, writeable, yoke, yoke-derive, zerofrom, zerofrom-derive, zerotrie, zerovec, zerovec-derive), 1 (MIT OR Apache-2.0) AND Unicode-3.0 (unicode-ident), 1 Apache-2.0 WITH LLVM-exception (target-lexicon, build time only, through pyo3-build-config). Proc-macro and build crates (syn, quote, the `*-derive` crates, ouroboros_macro) run at build time only, though their licenses are listed above anyway. The wheel's Python metadata says only MIT, so `scripts/license-scan.sh` cannot see the bundled crates; the register row carries them.
 
+## Addendum: M3 capture components (2026-11-16)
+
+Read the same way as the BL-68 addendum: from each project's own repository at the release tag over HTTPS, with commit SHAs from the GitHub API. The owner approved the rows on 2026-11-16.
+
+| # | Component | Repository | Tag | Commit | File | SPDX | Policy |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| C1 | protego | scrapy/protego | 0.7.0 | 06ccad42ec281e7fa2db213e5af907c9e83129c9 | LICENSE | BSD-3-Clause | allowed |
+| C2 | tenacity | jd/tenacity | 9.2.1 | 4410996dd9a96864a2733ce0778bcaa112b72811 | LICENSE | Apache-2.0 | allowed |
+| C3 | redis-py | redis/redis-py | v8.1.0 | e013126df18e476fbb8b8215f040f39bd3242683 | LICENSE | MIT | allowed |
+
+None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
+
 ## Exceptions (component evaluation records)
 
 Only the license criteria are in scope for R-01. Activity, tests, documentation, API fit and size are scored by each module's candidate research (3.8 step 1).

@@ -93,6 +93,9 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
 | SearXNG | metasearch | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
 | httpx | HTTP client with timeouts | BSD-3 | V `26d48e0` | dependency | M3 |
+| protego 0.7.0 | robots.txt parser for SafeFetcher (M3 design notes; acceptance 4) | BSD-3-Clause | V `06ccad4` (0.7.0) | dependency | M3 |
+| tenacity 9.2.1 | bounded retries for capture fetches (at most 3 per run, M3 design notes) | Apache-2.0 | V `4410996` (9.2.1) | dependency | M3 |
+| redis-py 8.1.0 | Valkey client: SafeFetcher's per-host rate limits, and the broker client Celery's Redis transport uses | MIT | V `e013126` (v8.1.0) | dependency | M3 |
 | langdetect or lingua-py | language detection | Apache-2.0 | V `d0c8e85`, `754ce21` | dependency | M4 |
 | spaCy (optional) | entity extraction | MIT | V `4331199` | dependency | M4 |
 | rapidfuzz | fuzzy dedupe | MIT | V `377d0c0` | dependency | M4 |
