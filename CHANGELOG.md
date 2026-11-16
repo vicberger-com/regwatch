@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Added
+- M3 SafeFetcher, part 1, `regwatch.capture.safe_fetch.policy`: only http and https URLs without user information are fetchable, and only when every address their host resolves to is a public unicast address. Private, loopback, link-local, shared, reserved, multicast and documentation ranges are refused, including when embedded in IPv6 (IPv4-mapped, 6to4, Teredo, NAT64), and numeric spellings such as `2130706433` resolve to the same refusal. Any private answer among several refuses the host. `validate_source_url` is the check when a source is saved (M3, M3 acceptance 3, REQ-05)
+
 ## [G1] - 2026-11-16
 
 Phase 1 Foundation (M0, M1, M2), approved by the owner on 2026-11-16 (`docs/evidence/phase-1/G1-gate-review.md`).
