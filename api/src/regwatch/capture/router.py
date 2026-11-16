@@ -1,12 +1,17 @@
-"""Source, capture job and run routes; mounted under /api/v1. Stubs answer 501 until M3."""
+"""Source, capture job and run routes; mounted under /api/v1.
+
+Sources and capture jobs are implemented (M3); the dry run, run-now, health and run history
+answer 501 until the scheduler slice.
+"""
 
 from __future__ import annotations
 
 from typing import NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
+from regwatch.capture import services
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
@@ -17,47 +22,60 @@ from regwatch.capture.schemas import (
     SourceTestResult,
     SourceWrite,
 )
+from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, not_implemented, spec
 from regwatch.core.schemas import Page
+from regwatch.identity.permissions import CurrentPrincipal
+from regwatch.identity.services import client_ip
 
 router = APIRouter(tags=["capture"])
 READ, MANAGE = "sources.read", "sources.manage"
 
 
-@router.get("/sources", **spec(Page[Source], desc="Sources", perm=READ))
+@router.get("/sources", **spec(Page[Source], desc="Sources", perm=READ, stub=False))
 async def list_sources(
     paging: Paging,
+    db: DbSession,
     kind: SourceKind | None = None,
     health: str | None = None,
     q: str | None = None,
-) -> NoReturn:
-    not_implemented()
+) -> Page[Source]:
+    return await services.list_sources(db, paging.page, paging.page_size, kind, health, q)
 
 
 @router.post(
     "/sources",
     **spec(Source, status=201, desc="Created with its capture job", perm=MANAGE, errors=(422,),
-           error_desc={422: "Config failed the connector schema or the URL is not allowed"}),
+           error_desc={422: "Config failed the connector schema or the URL is not allowed"},
+           stub=False),
 )  # fmt: skip
-async def create_source(body: SourceWrite) -> NoReturn:
-    not_implemented()
+async def create_source(
+    body: SourceWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Source:
+    return await services.create_source(db, body, principal, client_ip(request))
 
 
-@router.get("/sources/{id}", **spec(Source, desc="Source", perm=READ))
-async def get_source(id: UUID) -> NoReturn:
-    not_implemented()
+@router.get("/sources/{id}", **spec(Source, desc="Source", perm=READ, stub=False))
+async def get_source(id: UUID, db: DbSession) -> Source:
+    return await services.get_source(db, id)
 
 
-@router.patch("/sources/{id}", **spec(Source, desc="Updated", perm=MANAGE))
-async def update_source(id: UUID, body: SourceWrite) -> NoReturn:
-    not_implemented()
+@router.patch("/sources/{id}", **spec(Source, desc="Updated", perm=MANAGE, stub=False))
+async def update_source(
+    id: UUID, body: SourceWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Source:
+    return await services.update_source(db, id, body, principal, client_ip(request))
 
 
 @router.delete(
-    "/sources/{id}", **spec(status=204, desc="Disabled and archived; items are kept", perm=MANAGE)
+    "/sources/{id}",
+    **spec(status=204, desc="Disabled and archived; items are kept", perm=MANAGE, stub=False),
 )
-async def delete_source(id: UUID) -> NoReturn:
-    not_implemented()
+async def delete_source(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.disable_source(db, id, principal.user.id, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.post(
@@ -72,14 +90,16 @@ async def source_health(id: UUID) -> NoReturn:
     not_implemented()
 
 
-@router.get("/capture-jobs", **spec(list[CaptureJob], desc="Jobs", perm=READ))
-async def list_capture_jobs(source_id: UUID | None = None) -> NoReturn:
-    not_implemented()
+@router.get("/capture-jobs", **spec(list[CaptureJob], desc="Jobs", perm=READ, stub=False))
+async def list_capture_jobs(db: DbSession, source_id: UUID | None = None) -> list[CaptureJob]:
+    return await services.list_jobs(db, source_id)
 
 
-@router.patch("/capture-jobs/{id}", **spec(CaptureJob, desc="Updated", perm=MANAGE))
-async def update_capture_job(id: UUID, body: CaptureJobWrite) -> NoReturn:
-    not_implemented()
+@router.patch("/capture-jobs/{id}", **spec(CaptureJob, desc="Updated", perm=MANAGE, stub=False))
+async def update_capture_job(
+    id: UUID, body: CaptureJobWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> CaptureJob:
+    return await services.update_job(db, id, body, principal.user.id, client_ip(request))
 
 
 @router.post(

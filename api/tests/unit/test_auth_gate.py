@@ -109,7 +109,7 @@ async def test_permitted_user_reaches_the_handler(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _resolve_to(monkeypatch, _principal({"sources.read"}))
-    assert (await _get(app, "/sources", cookies={"rw_session": "t"})).status_code == 501
+    assert (await _get(app, "/capture-runs", cookies={"rw_session": "t"})).status_code == 501
 
 
 async def test_temporary_password_allows_only_the_change(
