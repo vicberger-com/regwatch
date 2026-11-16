@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Fixed
+- G1 use-testing fixes: the logo upload and Import YAML controls show the focus ring (U-M0-1); the browser title names the screen, as `<Screen> · <site title>`, and the sign-in page is `Sign in` (U-M0-4); the sign-in page has a `main` landmark (U-M0-8); the selected facet is marked visually, not only through `aria-current` (U-M2-5); the jurisdiction parent picker lists countries by name, as `Germany (DE)` (U-M2-1) (#32, BL-83, REQ-16, REQ-18)
+
 ### Security
 - `make security` passes again: tinypool, used by Vitest only, is pinned to 2.2.0 (two critical advisories); bandit's findings are cleared (exception handlers check their type explicitly instead of with `assert`, the safe YAML loader and a type-only XML import are annotated); semgrep falls back to its digest-pinned image where the host cannot run the wheel; `.gitleaksignore` records two reviewed fake secrets, a web test fixture and the M0 secret-scan demonstration (#29, REQ-25, BL-82)
 - BL-68 review follow-ups: the development proxy sets its CSP only when a route sent none, so the logo keeps its sandboxing policy; SVG logos may no longer use the `style` attribute, CSS escapes, comments or `@` rules, and `(` only as `url(#id)`, colour functions or transform functions; a `<use>` may not point at another `<use>`; links must be exact `#id` fragments; logo checks and legal-page rendering run off the event loop; a legal page that takes over two seconds to render is refused when saved through either route, by a check in a separate process that is stopped at the limit; references through `url(#id)` may not chain either, and an SVG may not repeat an id; colour functions are accepted in any case and in the space-and-slash syntax; the MPL-2.0 source statement for two crates bundled in nh3 is added to the notices (#32, BL-68, REQ-16, REQ-20)

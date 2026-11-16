@@ -76,7 +76,9 @@ export function TaxonomyTransfer({ canManage }: { canManage: boolean }) {
         Export YAML
       </button>
       {canManage && (
-        <label className={`${button} cursor-pointer`}>
+        <label
+          className={`${button} cursor-pointer focus-within:[outline:var(--focus-width)_solid_var(--focus)]`}
+        >
           Import YAML
           <input
             type="file"

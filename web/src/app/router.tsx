@@ -70,6 +70,7 @@ const authedRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
+  staticData: { title: "Home" },
   component: function Home() {
     const { me } = authedRoute.useRouteContext();
     return (
@@ -87,6 +88,7 @@ const homeRoute = createRoute({
 const changePasswordRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/change-password",
+  staticData: { title: "Change password" },
   component: function ChangePassword() {
     const { me } = authedRoute.useRouteContext();
     return <ChangePasswordPage forced={me.must_change_password ?? false} />;
@@ -105,6 +107,7 @@ function NotPermitted() {
 const usersRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/users",
+  staticData: { title: "Users" },
   component: function Users() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "users.manage")) return <NotPermitted />;
@@ -115,6 +118,7 @@ const usersRoute = createRoute({
 const taxonomyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/taxonomy",
+  staticData: { title: "Taxonomy" },
   component: function Taxonomy() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
@@ -125,6 +129,7 @@ const taxonomyRoute = createRoute({
 const jurisdictionsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/jurisdictions",
+  staticData: { title: "Jurisdictions" },
   component: function Jurisdictions() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "taxonomy.read")) return <NotPermitted />;
@@ -137,6 +142,7 @@ const jurisdictionsRoute = createRoute({
 const rolesRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/roles",
+  staticData: { title: "Roles" },
   component: function Roles() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "roles.manage")) return <NotPermitted />;
@@ -147,6 +153,7 @@ const rolesRoute = createRoute({
 const flagsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/flags",
+  staticData: { title: "Feature flags" },
   component: function Flags() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "settings.manage")) return <NotPermitted />;
@@ -157,6 +164,7 @@ const flagsRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/settings",
+  staticData: { title: "Settings" },
   component: function Settings() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "settings.manage")) return <NotPermitted />;
@@ -167,12 +175,14 @@ const settingsRoute = createRoute({
 const legalRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/legal",
+  staticData: { title: "Legal" },
   component: LegalPage,
 });
 
 const brandingRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/branding",
+  staticData: { title: "Branding and legal" },
   component: function BrandingAdmin() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "settings.manage")) return <NotPermitted />;
@@ -183,6 +193,7 @@ const brandingRoute = createRoute({
 const auditRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/audit",
+  staticData: { title: "Audit log" },
   component: function Audit() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "audit.read")) return <NotPermitted />;
@@ -214,5 +225,12 @@ export function createAppRouter(queryClient: QueryClient) {
 declare module "@tanstack/react-router" {
   interface Register {
     router: ReturnType<typeof createAppRouter>;
+  }
+}
+
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    /** The screen name shown in the browser title (use testing U-M0-4). */
+    title?: string;
   }
 }

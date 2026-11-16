@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useMatches } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { brandingQuery, COLOR } from "@/features/branding/api";
@@ -19,10 +19,15 @@ export function BrandMark() {
   const branding = useQuery(brandingQuery);
   const title = branding.data?.site_title || "regwatch";
   const color = branding.data?.primary_color;
+  // "<Screen> · <site title>", from the deepest route that names its screen (use testing U-M0-4).
+  const screen = useMatches()
+    .map((m) => m.staticData.title)
+    .filter(Boolean)
+    .at(-1);
 
   useEffect(() => {
-    document.title = title;
-  }, [title]);
+    document.title = screen ? `${screen} · ${title}` : title;
+  }, [screen, title]);
   useEffect(() => {
     // Only a checked hex value ever reaches the style; the API enforces the same pattern.
     const root = document.documentElement.style;

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { API_BASE_URL } from "@/lib/api/client";
 import { ApiProblem, loginErrorMessage, useLogin } from "@/lib/auth/session";
@@ -33,8 +33,15 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     );
   }
 
+  useEffect(() => {
+    document.title = "Sign in"; // outside the shell; branding is not public yet (BL-83, U-M1-4)
+  }, []);
+
   return (
-    <div className="mx-auto mt-16 max-w-sm rounded border border-border bg-surface p-6">
+    <main
+      id="main"
+      className="mx-auto mt-16 max-w-sm rounded border border-border bg-surface p-6"
+    >
       <LoginLogo />
       <h1 className="text-xl font-semibold">Sign in</h1>
       <form className="mt-4 flex flex-col gap-3" onSubmit={submit} noValidate>
@@ -75,7 +82,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
           {login.isPending ? "Signing in…" : "Sign in"}
         </button>
       </form>
-    </div>
+    </main>
   );
 }
 

@@ -32,7 +32,7 @@ describe("branding in the shell", () => {
     const nav = await screen.findByRole("navigation", { name: "Main" });
     expect(await within(nav).findByText("Policy Watch")).toBeInTheDocument();
     expect(nav.querySelector("img")).toHaveAttribute("src", BRANDING.logo_url);
-    expect(document.title).toBe("Policy Watch");
+    expect(document.title).toBe("Legal · Policy Watch"); // screen, then site title (U-M0-4)
     expect(
       document.documentElement.style.getPropertyValue("--brand-accent"),
     ).toBe("#123ABC");
@@ -88,6 +88,8 @@ describe("branding in the shell", () => {
     fakeApi({ "GET /auth/me": [401, problem(401)] });
     renderAt("/login");
     await screen.findByRole("heading", { name: "Sign in" });
+    expect(screen.getByRole("main")).toBeInTheDocument(); // U-M0-8
+    expect(document.title).toBe("Sign in");
     const logo = document.querySelector('img[src="/api/v1/branding/logo"]');
     expect(logo).not.toBeNull();
     if (logo) fireEvent.error(logo);

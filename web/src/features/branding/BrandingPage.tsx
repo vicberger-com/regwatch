@@ -82,7 +82,9 @@ function LogoForm({ branding }: { branding: Branding }) {
       ) : (
         <p className="text-text-muted">No logo yet.</p>
       )}
-      <label className={`${button} cursor-pointer self-start`}>
+      <label
+        className={`${button} cursor-pointer focus-within:[outline:var(--focus-width)_solid_var(--focus)] self-start`}
+      >
         Upload a PNG or SVG (at most 1 MB)
         <input
           type="file"

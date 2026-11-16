@@ -34,9 +34,11 @@ export function JurisdictionsPage({ canManage }: { canManage: boolean }) {
   const shown = list.data
     .filter((j) => !kind || j.kind === kind)
     .sort((a, b) => a.code.localeCompare(b.code));
+  // Named and sorted by name, so the parent picker reads "Germany (DE)" (use testing U-M2-1).
   const countries = list.data
     .filter((j) => j.kind === "country")
-    .map((j) => j.code);
+    .map((j) => ({ code: j.code, name: j.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <section aria-labelledby="jur-heading" className="flex flex-col gap-4">
@@ -141,7 +143,7 @@ function JurisdictionForm({
 }: {
   current: Jurisdiction | null;
   regions: { code?: string; name?: string }[];
-  countries: string[];
+  countries: { code: string; name: string }[];
   onDone: () => void;
 }) {
   const save = useSaveJurisdiction();
@@ -230,7 +232,9 @@ function JurisdictionForm({
             >
               <option value="">(choose)</option>
               {countries.map((c) => (
-                <option key={c}>{c}</option>
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.code})
+                </option>
               ))}
             </select>
           </label>
