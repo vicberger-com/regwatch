@@ -132,3 +132,31 @@
 3. Suites: `test_sources.py` 39 passed, and `tests/unit` 702 passed.
 
 **Sign-off at re-verification:** signed off, because no critical, high or medium finding is open. Findings 1 to 9 are closed, and with finding 1 SafeFetcher finding 22 (a) is closed too. Three low findings are open: 12, 13 and 15. Findings 14 and 16 are info. They should be fixed in a follow-up before the scheduler lands (13 together with BL-88 (a)). Findings 10 and 11 are deferred to BL-88. · M3 source routes independent review · 2026-11-16
+
+## Re-verification 2 (`sec/M3-source-routes-followups` at `42eb6cb`)
+
+### Method
+- **Code:** I read `git show 42eb6cb`.
+- **Tests:** `uv run pytest -q -m integration tests/integration/test_sources.py`: 44 passed, and the throwaway container was removed.
+- **Proofs of concept:**
+  - I re-ran `/tmp/m3routes-review/test_reverify.py`: 6 passed. It now includes `test_13_resume_and_lock_order`.
+  - New `pool_probe.py`:
+    - It runs the real `_save_resolver` on IP literals only, so it uses no network.
+    - It then replaces `socket.getaddrinfo` in-process with one that blocks for 4 s on `stuck*` names.
+- **Ground rules:** no repository file other than this record was changed. No external network was used and the dev stack was not touched.
+
+### Verdict per finding
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 12 | closed | These cron expressions now give 422 instead of a 500 or a saved non-ASCII value: `² * * * *`, `*/² * * * *`, `١ * * * *`, `٥٩ * * * *`, and `1-² * * * *` (`cron_ok` False). `0 9 * JAN-DEC MON-FRI` and `0 0 * * 7` are still accepted. |
+| 13 | closed | **Job only paused by an admin:** the editor resuming it through `PATCH /capture-jobs/{id}` gets 403, and through the nested `job` also 403. Switching to `respect` and resuming in one request answers 200 with `respect`, which is fine.<br>**Source deleted:** the editor's job enable gets 403, and the admin's gets 200 with a `source.robots_override` row.<br>**Lock order:** `update_job` now locks the source and then the job, the same order as `update_source` and `disable_source`. 30 interleaved concurrent source and job PATCHes on one source all answered 200, with no deadlock and no 500. |
+| 14 | closed | `language: "en\n"` gets 422, and `pt-BR` is accepted. `url: ""` is stored as `null`. |
+| 15 | closed | `_save_resolver` runs on `_DNS_POOL` (8 threads).<br>20 stuck lookups were refused at the 1 s deadline. Exactly 8 `source-dns` threads were busy, and `asyncio.to_thread` on the default executor answered in 0.001 s.<br>The 12 queued lookups were cancelled at the deadline: a save right after the stuck threads finished took 0.001 s.<br>The real `_save_resolver` refuses `127.0.0.1` and `[::1]` and accepts a public literal. |
+| 16 | closed | The deadline test now sends a slow PATCH and a rename of the same source together. In my probe, 20 slow PATCHes of one source finished in 3.44 s. A rename of it waited 0.02 s, and the list answered in 0.03 s. |
+
+### Remaining notes (info, no action needed for sign-off)
+- **(a) A stuck pool refuses all saves:** while a name server that never answers holds all 8 `_DNS_POOL` threads, every source save that names a URL is refused at the deadline. That includes public IP literals, which go through the pool too (`pool_probe.py`: "public literal while pool busy" refused after 1.00 s). This is the intended trade-off: only saves are affected, for the resolver's retry time. Answering IP literals without the pool, as `getaddrinfo` would, would narrow it.
+- **(b) The resume audit row is uninformative:** it carries the source fields only, and its `before` equals its `after`. The job's `enabled` change is in the `capture_job.update` row written in the same transaction. Adding `job_enabled` to the override row would make it complete on its own.
+- **(c) `_save_resolver` has no test:** every test replaces `RESOLVER`, so the production resolver is never run. Literals are enough to cover it without network, as `pool_probe.py` shows.
+
+**Sign-off at re-verification 2:** signed off. Findings 12 to 16 are closed, and no finding above info is open. Findings 10 and 11 remain deferred to BL-88. · M3 source routes independent review · 2026-11-16
