@@ -321,3 +321,27 @@ def test_sweeps_run_at_most_once_per_window(monkeypatch: pytest.MonkeyPatch) -> 
     for i in range(12, 30):
         window.hit(f"k{i}")
     assert window._last_sweep == swept_at  # no second sweep within the window
+
+
+def test_recently_hit_keys_survive_the_sweep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification 2, N4: a flood of new keys evicts the least recently hit, not a victim."""
+    window = services.SlidingWindow(60.0)
+    monkeypatch.setattr(window, "MAX_KEYS", 10)
+    window.hit("victim")
+    for i in range(8):
+        window.hit(f"old{i}")
+    window.hit("victim")  # hit again: now the most recent
+    for i in range(3):
+        window.hit(f"new{i}")
+    assert window.count("victim") == 2
+    assert "old0" not in window._hits
+
+
+def test_unknown_account_failures_are_never_evicted_while_live() -> None:
+    """Re-verification 2, N4: unknown emails must lock like real ones (M1 acceptance 3)."""
+    assert services.unknown_failures.evict_live is False
+    window = services.SlidingWindow(60.0, evict_live=False)
+    window.MAX_KEYS = 3
+    for i in range(6):
+        window.hit(f"k{i}")
+    assert len(window._hits) == 6  # all live, all kept

@@ -91,10 +91,13 @@ class SlidingWindow:
 
     MAX_KEYS = 50_000
 
-    def __init__(self, window_s: float) -> None:
+    def __init__(self, window_s: float, evict_live: bool = True) -> None:
         self.window_s = window_s
         self._hits: dict[str, deque[float]] = {}
         self._last_sweep = float("-inf")
+        # Whether live keys may be evicted at the cap; not for the unknown-account lockout
+        # counter, whose entries must last as long as a real account's (re-verification 2, N4).
+        self.evict_live = evict_live
 
     def _prune(self, key: str, now: float) -> deque[float]:
         hits = self._hits.setdefault(key, deque())
@@ -119,8 +122,9 @@ class SlidingWindow:
         self._last_sweep = now
         for k in [k for k, v in self._hits.items() if not v or v[-1] <= now - self.window_s]:
             del self._hits[k]
-        for k in list(self._hits)[: max(0, len(self._hits) - self.MAX_KEYS * 9 // 10)]:
-            del self._hits[k]
+        if self.evict_live:  # least recently hit first: hit() moves a key to the end
+            for k in list(self._hits)[: max(0, len(self._hits) - self.MAX_KEYS * 9 // 10)]:
+                del self._hits[k]
 
     def hit(self, key: str) -> int:
         now = time.monotonic()
@@ -128,6 +132,7 @@ class SlidingWindow:
             self._sweep(now)
         hits = self._prune(key, now)
         hits.append(now)
+        self._hits[key] = self._hits.pop(key)  # most recently hit last, for the eviction order
         return len(hits)
 
     def retry_after(self, key: str) -> int:
@@ -189,7 +194,7 @@ login_attempts = SlidingWindow(LOGIN_RATE_ACCOUNT[1])
 password_changes = SlidingWindow(PASSWORD_CHANGE_RATE[1])
 login_attempts_hourly = SlidingWindow(LOGIN_RATE_IP_HOURLY[1])
 all_attempts = SlidingWindow(LOGIN_ALL_RATE[1])
-unknown_failures = SlidingWindow(LOCKOUT_WINDOW.total_seconds())
+unknown_failures = SlidingWindow(LOCKOUT_WINDOW.total_seconds(), evict_live=False)
 unknown_locks = LockTable()
 
 

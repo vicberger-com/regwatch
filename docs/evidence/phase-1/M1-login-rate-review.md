@@ -84,3 +84,58 @@ Against commit `f323b0f` at the tip of `sec/M1-login-rate-followups`. The two co
   - `/tmp/rlpoc/v2.py`: 60,000 requests from one address leave 30 live `all_attempts` keys, against 60,000 before; past `MAX_KEYS` the limiter costs 0.01 ms per request, against 3.44 ms.
 - **N2 (low):** refused retries no longer count toward the never-refunded cap, so a client gets back under it once its window passes. An attacker can no longer hold a user out without failures reaching the counters, the lockout and the audit log. Test: `test_a_refused_client_gets_back_under_the_cap`. A client that keeps signing in correctly twice a second still meets the cap of 20 a minute, by design.
 - **N3 (info):** the 429 messages say "Wait and try again" instead of "Wait a minute", since the hourly cap can mean a longer wait. `Retry-After` carries the exact time. The point that a shared office address with 100 failures an hour is shut out for up to an hour is recorded with BL-84 for the owner.
+
+## Re-verification 2 (M1 login-rate independent review, 2026-11-16)
+Against commit `b020647` at the tip of `sec/M1-login-rate-fix2`. The commit before it, `897432b` (web user editing), is out of scope. Method:
+- I read the diff of `b020647` against `897432b` and the resulting `SlidingWindow`, `_check`, `check_login_rate` and `check_password_change_rate`.
+- I re-ran `/tmp/rlpoc/v2.py` and `alt2.py`. `poc.py` uses the removed `forgive_login` and is superseded by cases 1a and 1b in `v2.py`.
+- I added `/tmp/rlpoc/v3.py`, which probes eviction (with `MAX_KEYS` scaled down to 100), the `unknown_failures` window, the sweep cost with more than 50,000 live keys from admitted requests, a burst of 50 concurrent coroutines, and lookups on unknown keys.
+- Tests: `tests/unit/test_auth_gate.py` 28 passed; `make test-api` unit 532 passed, database integration 102 passed, total coverage 96.68 percent.
+- The repository was not modified apart from this section.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| N1 | fixed | `v2.py`: 60,000 sign-ins from one address with random emails, 59,970 rejected, now leave 30 live `all_attempts` keys (was 60,000). `count`, `retry_after` and `refund` on unknown keys create no entry (`v3.py`: 0 keys). The real bound has to be measured above `MAX_KEYS`, which the 30-key run does not reach. In `v3.py`, 60,000 admitted sign-ins from 2,000 addresses took 0.013 ms per request on average, with 57,000 live keys; the next 500 requests took 0.012 ms each (was 3.44 ms). The sweep runs at most once per window (`services.py:114-123`). Between sweeps the dictionary can exceed `MAX_KEYS`, but only through admitted requests, which the per-address limits bound, so memory stays bounded by the admitted request rate. |
+| N2 | fixed | `_check` counts nothing unless every limit passes. A client retrying correct sign-ins twice a second now gets 40 of 180 requests through over 90 s, i.e. the cap of 20 a minute (was 20 in total, then shut out). With 5 typos and 15 more clicks a user recovers after 61 s. An attacker past the 5-failure limit adds no counts while refused, so keeping a user out means making admitted, audited failures again each minute, which reach the lockout within 15 minutes. |
+| N3 | fixed | The API and the web both say "Wait and try again." and `Retry-After` carries the time. The trade-off for a shared office address is recorded as BL-84 (d) for the owner. |
+
+### Regression checks
+- **Burst gap:** none. `_check` checks every limit, then counts them all with `hit_at` in the same synchronous step, with no `await` in between (`services.py:232-242`). In `v3.py`, 50 concurrent coroutines on one account each awaited after the check; 5 were admitted and 45 got 429. Moving the never-refunded cap from count-first to check-first keeps its bound of 20: the check is `>= limit` before counting, where it was `> limit` after.
+- **The changes to `count` and `retry_after` do not affect `unknown_failures`.** The lockout path uses only `unknown_failures.hit(key) >= threshold` and `reset(key)` (`services.py:475-477`). `hit` still creates the entry through `_prune`, and the dummy Argon2 verify and the `unknown_locks` check are unchanged. Deleting an empty entry in `count` only moves the key to the end of the insertion order when it is next hit. Eviction does affect this window, though; see N4.
+- **Evicting the oldest keys at the cap can reset someone else's counters (N4).**
+
+### New findings
+| # | Severity | Location | Description and failure scenario | Fix |
+| --- | --- | --- | --- | --- |
+| N4 | low | `api/src/regwatch/identity/services.py:114-123` | **"Oldest" is the oldest created key, not the least recently used one, so a flood of admitted keys erases live counters.** A Python dictionary keeps the first insertion order of a key, however often it is hit later. When live keys exceed `MAX_KEYS`, the sweep deletes the first keys created, even if they are still being hit.<br>Proof of concept (`v3.py`, `MAX_KEYS` 100):<br>- a victim account with 4 failures in `login_attempts` had 0 after 60 sign-ins for new emails from other addresses;<br>- the address counter of a client that had just signed in was also reset to 0;<br>- in a 900 s `unknown_failures` window, 9 failures on an unknown email dropped to 0.<br>At the real `MAX_KEYS` of 50,000, an attacker needs about 50,000 admitted attempts within one window. For `login_attempts` that is about 1,700 addresses at 30 a minute, with an Argon2 verify on the server for each attempt. For `unknown_failures` it is about 500 addresses within 15 minutes, because of the hourly cap of 100. For `login_attempts_hourly` it is 50,000 addresses.<br>Impact is limited:<br>- the per-account database lockout (10 in 15 minutes) is not in memory, so per-account guesses stay capped;<br>- `unknown_locks` survives eviction, so locks already set stay;<br>- the remaining effect is that a flood can make an unknown email lock later than a real one, which weakens M1 acceptance 3 (no account enumeration) under a large distributed attack.<br>This is new: before `b020647`, live keys were never evicted. | Refresh a key's position when it is hit (`self._hits[key] = self._hits.pop(key)` inside `hit`, or an `OrderedDict` with `move_to_end`), so active counters go last, and evict only keys whose newest hit is oldest. For `unknown_failures`, consider never evicting live entries and refusing new unknown-email counters with 423 or 429 at the cap instead, or keeping these counters with the lockout state (BL-65). Add a unit test that a key hit after the flood survives the sweep. |
+| N5 | info | `CHANGELOG.md` (Security, login rate limits) | The CHANGELOG says old entries are "swept at most once a minute". The sweep runs once per window of each counter: once a minute for `login_attempts` and `all_attempts`, every 15 minutes for `unknown_failures`, and hourly for `login_attempts_hourly`. | Say "at most once per window". |
+
+### Sign-off
+**Given.** N1, N2 and N3 are fixed, and findings 1 to 6 remain fixed or deferred to BL-84 (a) to (d). No critical, high or medium findings are open. N4 is low: exploiting it needs a large distributed flood, and the database lockout still caps guesses per account. It should be fixed, or recorded in BL-84 with the owner's decision, before the API is exposed externally (M10). N5 is a wording fix. · M1 login-rate independent review · 2026-11-16
+
+### Evidence
+- `/tmp/rlpoc/v2.py`, abridged output:
+  - `poc1a before/after 29 29`
+  - `poc1b remaining ages [5.0]`
+  - `user with 5 typos + 15 retries recovers after 61s`
+  - `2/s successful-retry client: rejected 140 of 180`
+  - `60000 req one address: rejected 59970, all_attempts live keys 30`
+  - `per-request cost past MAX_KEYS: 0.01 ms` (at 30 keys, so not actually past `MAX_KEYS`; see `v3.py`)
+  - The `address_key` outputs are unchanged from re-verification 1.
+- `/tmp/rlpoc/alt2.py`: "failures admitted 20 blocked at request 40 ip count 20" and "own-account failures admitted 5", unchanged.
+- `/tmp/rlpoc/v3.py`:
+  - `victim failures 4`, then `live keys 111 victim failures after flood 0`
+  - `victim (recently hit address) after flood 0 addr 0`
+  - `unknown target failures after flood 0`
+  - `60000 admitted from 2000 addresses: 0.013 ms/req avg, login_attempts keys 56999`
+  - `after: 0.012 ms/req, keys 57999`
+  - `burst admitted 5 of 50`
+  - `lookups create keys: 0`
+
+## Author follow-up 3 (re-verification 2: N4, N5)
+- **N4 (low):** `hit()` moves its key to the end, so the sweep evicts the least recently hit keys first. The unknown-account lockout counter (`unknown_failures`, `evict_live=False`) never drops live entries, so unknown emails lock as real ones do (M1 acceptance 3). Its size is bounded by the per-address limits on admitted attempts.
+  - Tests: `test_recently_hit_keys_survive_the_sweep` and `test_unknown_account_failures_are_never_evicted_while_live`.
+  - `/tmp/rlpoc/v3.py` part 1: the address that signed in just before the flood keeps its count (`addr 4`). The victim's account counter, not hit since the flood began, is still evicted, which is how least-recently-used eviction is meant to behave at the cap. The database lockout still caps guesses per account.
+  - `/tmp/rlpoc/v3.py` part 2: it builds its own `SlidingWindow` with the default eviction, so it doesn't exercise `unknown_failures`. The second new test covers that counter.
+- **N5 (info):** the CHANGELOG now says the sweep runs once per counter window.
+- **Checks:** `make lint` clean; `make test-api` passed (below); the auth gate unit tests, 30, passed.
