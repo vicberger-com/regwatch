@@ -387,7 +387,7 @@ async def test_slow_legal_pages_are_refused_on_both_routes(admin: httpx.AsyncCli
 
 
 async def test_public_branding_summary(admin: httpx.AsyncClient) -> None:
-    """CP-08: the sign-in page's subset, without company details or markings."""
+    """CP-08: the sign-in subset, without company details; markings are public via /legal."""
     body = {
         "site_title": "Policy Watch",
         "company_name": "Secret Holdings",
@@ -398,7 +398,9 @@ async def test_public_branding_summary(admin: httpx.AsyncClient) -> None:
         _api("/admin/legal"), json={"page_markdown": "", "required_markings": "INTERNAL"}
     )
     async with httpx.AsyncClient(transport=admin._transport, base_url="https://localhost") as anon:
-        summary = (await anon.get(_api("/branding/public"))).json()
+        got = await anon.get(_api("/branding/public"))
+        assert got.headers["cache-control"] == "public, max-age=60"  # addendum A2
+        summary = got.json()
         assert summary == {"site_title": "Policy Watch", "logo_url": None,
                            "primary_color": "#123abc", "has_legal_page": False}  # fmt: skip
         assert (await anon.get(_api("/branding"))).status_code == 401  # the full set stays private

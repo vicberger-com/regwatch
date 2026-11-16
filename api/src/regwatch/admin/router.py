@@ -51,6 +51,9 @@ async def get_branding(db: DbSession) -> Branding:
     return await services.branding(db)
 
 
+# Anonymous routes may be cached briefly by browsers and the proxy (G1 addendum A2).
+PUBLIC_CACHE = "public, max-age=60"
+
 _LOGO_HEADERS = {
     # Even opened directly instead of through <img>, the file cannot run or load anything.
     "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
@@ -84,7 +87,8 @@ async def get_logo(request: Request, db: DbSession) -> Response:
     "/branding/public", tags=SYSTEM,
     **spec(BrandingPublic, desc="Public branding summary", public=True, stub=False),
 )  # fmt: skip
-async def get_branding_public(db: DbSession) -> BrandingPublic:
+async def get_branding_public(db: DbSession, response: Response) -> BrandingPublic:
+    response.headers["Cache-Control"] = PUBLIC_CACHE  # anonymous and identical for everyone
     return await services.branding_public(db)
 
 
@@ -92,7 +96,8 @@ async def get_branding_public(db: DbSession) -> BrandingPublic:
 @router.get(
     "/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page", public=True, stub=False)
 )
-async def get_legal(db: DbSession) -> Legal:
+async def get_legal(db: DbSession, response: Response) -> Legal:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return await services.legal(db)
 
 

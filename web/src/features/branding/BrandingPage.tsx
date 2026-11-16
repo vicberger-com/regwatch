@@ -273,7 +273,10 @@ function LegalEditor({
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span>Required markings (report and email footers)</span>
+        <span>
+          Required markings (report and email footers, and shown publicly on the
+          legal page)
+        </span>
         <input
           value={required}
           maxLength={2000}

@@ -10,7 +10,17 @@ describe("audit CSV", () => {
   });
 
   it("defuses values a spreadsheet would run as formulas", () => {
-    for (const v of ["=1+1", "+SUM(A1)", "-2", "@cmd", "\tx", "\rx"]) {
+    for (const v of [
+      "=1+1",
+      "+SUM(A1)",
+      "-2",
+      "@cmd",
+      "\tx",
+      "\rx",
+      "\nx",
+      "  =1",
+      "\uFF1D1",
+    ]) {
       expect(csvField(v).startsWith(`"'`)).toBe(true);
     }
     expect(csvField("plain")).toBe('"plain"');
@@ -21,7 +31,7 @@ describe("audit CSV", () => {
       { id: "1", action: "role.update", actor_email: "=evil()" },
     ]);
     const lines = csv.split("\r\n");
-    expect(lines[0]).toMatch(/^occurred_at,actor_email,/);
+    expect(lines[0]).toMatch(/^id,occurred_at,actor_email,/); // id first (addendum B3)
     expect(lines[1]).toContain(`"'=evil()"`);
     expect(lines).toHaveLength(3); // header, row, trailing empty
   });

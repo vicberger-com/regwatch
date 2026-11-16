@@ -14,7 +14,7 @@ export interface AuditFilters {
 const PAGE = 200; // the contract's page_size maximum
 export const MAX_EXPORT_ROWS = 10_000;
 const COLUMNS = [
-  "occurred_at", "actor_email", "actor_user_id", "action", "entity_type", "entity_id",
+  "id", "occurred_at", "actor_email", "actor_user_id", "action", "entity_type", "entity_id",
   "ip", "request_id", "before", "after",
 ] as const; // prettier-ignore
 
@@ -30,7 +30,12 @@ export function csvField(value: unknown): string {
       : typeof value === "string"
         ? value
         : JSON.stringify(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  // Also after leading whitespace, and for the full-width signs some spreadsheets accept.
+  if (
+    /^[\s]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(text) ||
+    /^[\t\r\n]/.test(text)
+  )
+    text = `'${text}`;
   return `"${text.replace(/"/g, '""')}"`;
 }
 
@@ -45,11 +50,13 @@ export function toCsv(entries: Entry[]): string {
 export async function fetchForExport(
   filters: AuditFilters,
 ): Promise<{ entries: Entry[]; total: number }> {
+  // Fixed at the start, so rows added while exporting do not shift the pages (addendum B3).
+  const snapshot = { ...filters, to: filters.to ?? new Date().toISOString() };
   const entries: Entry[] = [];
   let total = 0;
   for (let page = 1; entries.length < MAX_EXPORT_ROWS; page++) {
     const result = await api.GET("/admin/audit", {
-      params: { query: { ...filters, page, page_size: PAGE } },
+      params: { query: { ...snapshot, page, page_size: PAGE } },
     });
     if (!result.response.ok || result.data === undefined) throw failure(result);
     total = result.data.total;

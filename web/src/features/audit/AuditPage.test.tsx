@@ -232,7 +232,10 @@ describe("audit log screen", () => {
       if (!url.pathname.endsWith("/admin/audit")) return fake(request);
       const size = Number(url.searchParams.get("page_size"));
       const page = Number(url.searchParams.get("page"));
-      if (size === 200) pages.push(String(page));
+      if (size === 200) {
+        pages.push(String(page));
+        expect(url.searchParams.get("to")).toBeTruthy(); // a fixed snapshot (addendum B3)
+      }
       const items = Array.from({ length: size }, (_, i) => ({
         ...ROW,
         id: `${String(page)}-${String(i)}`,
