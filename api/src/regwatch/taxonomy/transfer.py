@@ -59,7 +59,7 @@ def _bad(where: str, message: str) -> ProblemError:
 
 def parse(document: bytes) -> list[dict[str, Any]]:
     try:
-        doc = yaml.load(document.decode("utf-8"), Loader=_NoAliasLoader)  # noqa: S506 - safe loader
+        doc = yaml.load(document.decode("utf-8"), Loader=_NoAliasLoader)  # noqa: S506  # nosec B506 - SafeLoader subclass
     except (UnicodeDecodeError, yaml.YAMLError, RecursionError) as exc:
         raise _bad("body", f"not a valid YAML document: {type(exc).__name__}") from exc
     if not isinstance(doc, dict) or not isinstance(doc.get("facets"), list):

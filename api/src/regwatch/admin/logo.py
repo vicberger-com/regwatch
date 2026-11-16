@@ -21,10 +21,13 @@ from __future__ import annotations
 
 import re
 import struct
-from xml.etree.ElementTree import Element
+from typing import TYPE_CHECKING
 
 import defusedxml.ElementTree as SafeXML
 from defusedxml import DefusedXmlException
+
+if TYPE_CHECKING:  # types only; parsing always goes through defusedxml
+    from xml.etree.ElementTree import Element  # nosec B405 - annotations only
 
 MAX_BYTES = 1024 * 1024
 MAX_ELEMENTS = 5000

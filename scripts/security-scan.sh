@@ -36,9 +36,18 @@ pip_audit_scan() {
   return $rc
 }
 
+semgrep_scan() {
+  local args=(scan --config p/owasp-top-ten --metrics=off --error --quiet api/src web/src)
+  if uvx --quiet --from "semgrep==${SEMGREP_VERSION}" semgrep --version >/dev/null 2>&1; then
+    (cd "$root" && uvx --quiet --from "semgrep==${SEMGREP_VERSION}" semgrep "${args[@]}")
+  else
+    echo "semgrep: the local wheel cannot run here; using $SEMGREP_IMAGE"
+    docker run --rm -v "$root:/src:ro" -w /src "$SEMGREP_IMAGE" semgrep "${args[@]}"
+  fi
+}
+
 step bandit uvx --quiet --from "bandit==${BANDIT_VERSION}" bandit -q -r "$root/api/src"
-step semgrep uvx --quiet --from "semgrep==${SEMGREP_VERSION}" semgrep scan \
-  --config p/owasp-top-ten --metrics=off --error --quiet "$root/api/src" "$root/web/src"
+step semgrep semgrep_scan
 step pip-audit pip_audit_scan
 step pnpm-audit bash -c "cd '$root/web' && pnpm audit --audit-level high"
 step gitleaks gitleaks_scan

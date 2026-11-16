@@ -110,7 +110,8 @@ def problem_response(
 
 
 async def _problem_error(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, ProblemError)  # noqa: S101 - registered for this type only
+    if not isinstance(exc, ProblemError):  # registered for this type only
+        raise TypeError(type(exc).__name__)
     return problem_response(
         request, exc.status, exc.slug, title=exc.title, detail=exc.detail,
         errors=exc.errors, headers=exc.headers,
@@ -146,7 +147,8 @@ def _allowed_methods(request: Request) -> str:
 
 
 async def _http_error(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, StarletteHTTPException)  # noqa: S101
+    if not isinstance(exc, StarletteHTTPException):  # registered for this type only
+        raise TypeError(type(exc).__name__)
     status, headers = exc.status_code, dict(exc.headers or {})
     if status == 400 and exc.detail == BODY_PARSE_DETAIL:
         return problem_response(
@@ -169,7 +171,8 @@ def _field(loc: tuple[Any, ...] | list[Any]) -> str:
 
 
 async def _validation_error(request: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, RequestValidationError)  # noqa: S101
+    if not isinstance(exc, RequestValidationError):  # registered for this type only
+        raise TypeError(type(exc).__name__)
     errors = [
         ProblemFieldError(field=_field(e.get("loc", ())), message=str(e.get("msg", "invalid")))
         for e in exc.errors()
@@ -194,7 +197,8 @@ _SQLSTATE = {
 async def _database_error(request: Request, exc: Exception) -> JSONResponse:
     from sqlalchemy.exc import DBAPIError
 
-    assert isinstance(exc, DBAPIError)  # noqa: S101
+    if not isinstance(exc, DBAPIError):  # registered for this type only
+        raise TypeError(type(exc).__name__)
     known = _SQLSTATE.get(str(getattr(exc.orig, "sqlstate", "")))
     if known is None:
         return await _unhandled(request, exc)

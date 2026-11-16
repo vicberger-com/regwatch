@@ -1,0 +1,5 @@
+# Reviewed gitleaks findings (make security). Each line is a finding fingerprint, with the reason.
+# A fake temporary password in a web test fixture (feat/M1-web-user-create):
+3b6b6226ae45dac8311fbb3329114beea527d5ee:web/src/features/admin/UsersPage.test.tsx:generic-api-key:55
+# The deliberate fake token of the CI secret-scan demonstration, only on test/M0-ci-demo-secret (#29):
+2c0774273f7c4ab36e5d6562ae15a298046e63ec:deploy/ci-demo.env:github-pat:2
