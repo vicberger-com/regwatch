@@ -40,7 +40,9 @@ def test_private_and_special_addresses_are_refused(address: str) -> None:
     assert exc.value.reason == "private-address"
 
 
-@pytest.mark.parametrize("address", ["93.184.215.14", "2606:4700:4700::1111", "8.8.8.8"])
+@pytest.mark.parametrize(
+    "address", ["93.184.215.14", "2606:4700:4700::1111", "8.8.8.8", "64:ff9b::808:808"]
+)  # the last: NAT64 for 8.8.8.8 stays fetchable
 def test_public_addresses_pass(address: str) -> None:
     assert str(check_address(address)) == address
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import ipaddress
+import os
 import ssl
 import subprocess
 import tracemalloc
@@ -284,8 +285,106 @@ async def test_a_nested_gzip_bomb_never_grows_past_the_cap(server: FixtureServer
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
-    assert exc.value.reason in {"too-large", "encoding"}
+    assert exc.value.reason == "encoding"  # nested: refused as a stacked encoding
     assert peak < 32 * 1024 * 1024, f"peak {peak} bytes"
+
+
+async def test_a_single_layer_gzip_bomb_stays_within_the_cap(server: FixtureServer) -> None:
+    """Review finding 10: the bounded decompression itself, not the stacked-encoding refusal."""
+    limits = FetchLimits(max_bytes=1024 * 1024)
+    tracemalloc.start()
+    try:
+        with pytest.raises(FetchRefusedError) as exc:
+            await local(limits=limits).fetch(at(server, "/bomb/gzip?mib=400"))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert exc.value.reason == "too-large"
+    assert peak < 32 * 1024 * 1024, f"peak {peak} bytes"
+
+
+def streamed(encoding: str, *parts: bytes):  # noqa: ANN201 - a MockTransport handler
+    async def body():  # noqa: ANN202
+        for part in parts:
+            yield part
+
+    return lambda r: httpx.Response(200, headers={"Content-Encoding": encoding}, content=body())
+
+
+async def test_data_after_a_gzip_body_is_refused_without_piling_up() -> None:
+    """Review finding 8: 50 MiB of junk after a tiny gzip body is refused, memory stays small."""
+    junk = (b"\x00" * 1024 for _ in range(50 * 1024))  # 50 MiB in 1 KiB chunks
+    tracemalloc.start()
+    try:
+        with pytest.raises(FetchRefusedError) as exc:
+            f = fetcher(streamed("gzip", gzip.compress(b"x"), *junk),
+                        limits=FetchLimits(max_bytes=1024 * 1024))  # fmt: skip
+            await f.fetch("https://example.org/")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert exc.value.reason == "encoding"
+    assert peak < 16 * 1024 * 1024, f"peak {peak} bytes"
+
+
+async def test_raw_bytes_count_against_the_cap_too() -> None:
+    """Review finding 8: incompressible input cannot exceed the cap before decoding catches it."""
+    big = gzip.compress(os.urandom(2 * 1024 * 1024))  # random data: barely compresses
+    with pytest.raises(FetchRefusedError) as exc:
+        f = fetcher(streamed("gzip", big), limits=FetchLimits(max_bytes=1024 * 1024))
+        await f.fetch("https://example.org/")
+    assert exc.value.reason == "too-large"
+
+
+async def test_gzip_members_truncation_and_deflate_forms() -> None:
+    """Review finding 9: several members decode; truncated streams and trailing data refuse;
+    raw deflate is accepted; decoded bodies do not keep their encoding headers."""
+    two = gzip.compress(b"first ") + gzip.compress(b"second")
+    ok = await fetcher(streamed("gzip", two[:7], two[7:])).fetch("https://example.org/")
+    assert ok.body == b"first second"
+    assert "content-encoding" not in ok.headers and "content-length" not in ok.headers
+    with pytest.raises(FetchRefusedError, match="ends early"):
+        await fetcher(streamed("gzip", gzip.compress(b"hello world")[:-6])).fetch(
+            "https://example.org/"
+        )
+    with pytest.raises(FetchRefusedError, match="after the end of the gzip"):
+        await fetcher(streamed("gzip", gzip.compress(b"x") + b"Z")).fetch("https://example.org/")
+    with pytest.raises(FetchRefusedError, match="after the end of the gzip"):
+        await fetcher(streamed("gzip", gzip.compress(b"x") + b"junk")).fetch("https://example.org/")
+    raw = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    deflated = raw.compress(b"raw deflate") + raw.flush()
+    assert (
+        await fetcher(streamed("deflate", deflated)).fetch("https://example.org/")
+    ).body == b"raw deflate"
+    with pytest.raises(FetchRefusedError, match="after the end of the deflate"):
+        await fetcher(streamed("deflate", zlib.compress(b"x") + b"tail")).fetch(
+            "https://example.org/"
+        )
+    assert (await fetcher(streamed("gzip")).fetch("https://example.org/")).body == b""
+    with pytest.raises(FetchRefusedError, match="damaged compressed body"):
+        await fetcher(streamed("gzip", b"\x1f\x8b\x08\x00garbage-not-deflate")).fetch(
+            "https://example.org/"
+        )
+
+
+async def test_a_tls_context_that_checks_less_is_refused() -> None:
+    """Review finding 11: the test hook can add an authority, never switch the checks off."""
+    lax = ssl.create_default_context()
+    lax.check_hostname = False
+    lax.verify_mode = ssl.CERT_NONE
+    with pytest.raises(ValueError, match="never fetches without"):
+        await PinnedFetcher({}, lax).fetch("https://example.org/")
+
+
+async def test_a_slow_name_server_is_named_in_the_timeout() -> None:
+    async def slow(host: str, port: int) -> list[str]:
+        await asyncio.sleep(2)
+        return ["93.184.215.14"]  # pragma: no cover - the deadline ends it first
+
+    f = SafeFetcher(UA, FetchLimits(total_s=0.05), resolver=slow,
+                    transport=httpx.MockTransport(lambda r: httpx.Response(200)))  # fmt: skip
+    with pytest.raises(FetchRefusedError, match="DNS for example.org"):
+        await f.fetch("https://example.org/")
 
 
 async def test_dns_counts_against_the_deadline() -> None:

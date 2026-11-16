@@ -27,7 +27,9 @@ _NAT64 = ipaddress.ip_network("64:ff9b::/96")
 # Every IPv6 address whose top 64 bits are zero embeds IPv4 or is special: IPv4-compatible
 # (::/96), IPv4-mapped (::ffff:0:0/96) and IPv4-translated (::ffff:0:0:0/96). No public
 # unicast address starts that way (review finding 2). Site-local fec0::/10 is deprecated.
-_LOW64 = ipaddress.ip_network("::/64")
+# Not all of ::/8: the NAT64 prefix 64:ff9b::/96 lies inside it, and NAT64 answers stay
+# fetchable, judged by the IPv4 address they embed (re-verification, finding 11).
+_RESERVED6 = ipaddress.ip_network("::/64")
 _SITE_LOCAL = ipaddress.ip_network("fec0::/10")
 MAX_URL = 2048
 
@@ -111,7 +113,7 @@ def check_address(address: str) -> IPAddress:
         ip = ipaddress.ip_address(address.split("%", 1)[0])
     except ValueError:
         raise FetchRefusedError("address", f"{address!r} is not an IP address") from None
-    if isinstance(ip, ipaddress.IPv6Address) and (ip in _LOW64 or ip in _SITE_LOCAL):
+    if isinstance(ip, ipaddress.IPv6Address) and (ip in _RESERVED6 or ip in _SITE_LOCAL):
         raise FetchRefusedError(
             "private-address", f"{ip} is not a public address and cannot be fetched"
         )

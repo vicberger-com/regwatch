@@ -41,8 +41,68 @@ from regwatch.capture.safe_fetch.policy import (
 REDIRECTS = {301, 302, 303, 307, 308}
 
 
-def _decoder(encoding: str) -> zlib._Decompress | None:
-    """A bounded decompressor for one ``Content-Encoding``; stacked or unknown ones are refused."""
+_GZIP_MAGIC = b"\x1f\x8b"
+
+
+class _BodyDecoder:
+    """Bounded decoding of one ``Content-Encoding`` (review findings 1, 8 and 9).
+
+    Every ``decompress`` call is limited to the room left under the cap, and anything left over
+    after the end of a compressed stream is dealt with at once instead of piling up in zlib:
+    another gzip member is decoded as gzip allows (RFC 1952), and any other trailing data is
+    refused. A stream that ends early is refused too. ``deflate`` takes the zlib wrapper RFC 9110
+    names, and raw deflate as many servers send it.
+    """
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+        self._d: zlib._Decompress | None = None
+        self._pending = b""  # gzip: bytes after a member, too few to tell what follows
+
+    def _start(self, data: bytes) -> zlib._Decompress:
+        if self.kind == "gzip":
+            return zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
+        zlib_header = len(data) >= 2 and data[0] & 0x0F == 8 and (data[0] << 8 | data[1]) % 31 == 0
+        return zlib.decompressobj() if zlib_header else zlib.decompressobj(wbits=-zlib.MAX_WBITS)
+
+    def feed(self, data: bytes, room: int) -> bytes:
+        """Decoded output for ``data``, never more than ``room + 1`` bytes."""
+        out = bytearray()
+        data = self._pending + data
+        self._pending = b""
+        while data:
+            if self._d is None:
+                if self.kind == "gzip" and len(data) < 2:
+                    self._pending = data  # wait for the rest of a possible next member
+                    break
+                if self.kind == "gzip" and not data.startswith(_GZIP_MAGIC):
+                    raise FetchRefusedError("encoding", "data after the end of the gzip body")
+                self._d = self._start(data)
+            out += self._d.decompress(data, max(1, room - len(out) + 1))
+            if len(out) > room:
+                break
+            if self._d.eof:
+                data = self._d.unused_data  # handled now, never left to grow inside zlib
+                if data and self.kind != "gzip":
+                    raise FetchRefusedError("encoding", "data after the end of the deflate body")
+                self._d = None
+            else:
+                data = self._d.unconsumed_tail
+        return bytes(out)
+
+    def finish(self) -> bytes:
+        if self._pending:
+            raise FetchRefusedError("encoding", "data after the end of the gzip body")
+        if self._d is None:
+            return b""
+        if not self._d.eof:
+            out = self._d.flush()
+            raise FetchRefusedError("encoding", f"the compressed body ends early ({len(out)} b)")
+        return b""  # pragma: no cover - an ended stream is always cleared in feed
+
+
+def _decoder(encoding: str) -> _BodyDecoder | None:
+    """A bounded decoder for one ``Content-Encoding``; stacked or unknown ones are refused."""
     names = [e.strip().lower() for e in encoding.split(",") if e.strip()]
     names = [n for n in names if n != "identity"]
     if not names:
@@ -50,9 +110,9 @@ def _decoder(encoding: str) -> zlib._Decompress | None:
     if len(names) > 1:
         raise FetchRefusedError("encoding", f"stacked content encodings are refused: {encoding}")
     if names[0] in ("gzip", "x-gzip"):
-        return zlib.decompressobj(wbits=16 + zlib.MAX_WBITS)
+        return _BodyDecoder("gzip")
     if names[0] == "deflate":
-        return zlib.decompressobj()  # zlib-wrapped, as RFC 9110 defines deflate
+        return _BodyDecoder("deflate")
     raise FetchRefusedError("encoding", f"content encoding {names[0]!r} is not accepted")
 
 
@@ -113,33 +173,38 @@ class SafeFetcher:
         return await resolve(target, self._resolver)
 
     def _tls(self) -> ssl.SSLContext | bool:
-        """Certificate checking with the system's trusted authorities; tests may add their own."""
+        """Certificate and host-name checks with httpx's default authorities; tests may supply
+        a context that trusts their own authority, never one that checks less."""
         return True
+
+    def _checked_tls(self) -> ssl.SSLContext | bool:
+        tls = self._tls()
+        if tls is not True and not (
+            isinstance(tls, ssl.SSLContext)
+            and tls.verify_mode == ssl.CERT_REQUIRED
+            and tls.check_hostname
+        ):
+            raise ValueError("SafeFetcher never fetches without certificate and host-name checks")
+        return tls
 
     async def _read(self, response: httpx.Response) -> bytes:
         limit = self.limits.max_bytes
+        too_large = FetchRefusedError("too-large", f"the body is larger than {limit} bytes")
         declared = response.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > limit:
-            raise FetchRefusedError("too-large", f"the body is larger than {limit} bytes")
+            raise too_large
         decoder = _decoder(response.headers.get("content-encoding", ""))
         out = bytearray()
-
-        def take(data: bytes) -> None:
-            out.extend(data)
+        raw = 0
+        async for chunk in response.aiter_raw():  # undecoded: decompression happens here
+            raw += len(chunk)  # what arrives counts too, whatever the encoding (finding 8)
+            if raw > limit:
+                raise too_large
+            out += chunk if decoder is None else decoder.feed(chunk, limit - len(out))
             if len(out) > limit:
-                raise FetchRefusedError("too-large", f"the body is larger than {limit} bytes")
-
-        async for chunk in response.aiter_raw():  # undecoded: decompression happens below
-            if decoder is None:
-                take(chunk)
-                continue
-            data = chunk
-            while data:
-                # Never more output than the room left plus one byte, whatever the input.
-                take(decoder.decompress(data, limit - len(out) + 1))
-                data = decoder.unconsumed_tail
+                raise too_large
         if decoder is not None:
-            take(decoder.flush())
+            out += decoder.finish()
         return bytes(out)
 
     async def _hop(self, client: httpx.AsyncClient, url: str,
@@ -147,8 +212,10 @@ class SafeFetcher:
         """One request: the result, or the redirect location and status."""
         target = parse_target(url)
         try:
+            phase = "DNS for"
             async with asyncio.timeout(self.limits.total_s):  # DNS included (finding 3)
                 ip = (await self._resolve(target))[0]
+                phase = "the server at"
                 request = self._request(client, target, ip, method)
                 response = await client.send(request, stream=True)
                 try:
@@ -157,11 +224,13 @@ class SafeFetcher:
                         return None, location, response.status_code
                     body = await self._read(response)
                     headers = dict(response.headers)
+                    if headers.pop("content-encoding", None) is not None:
+                        headers.pop("content-length", None)  # they described the encoded body
                     return FetchResult(url, response.status_code, headers, body), None, 0
                 finally:
                     await response.aclose()
         except TimeoutError:
-            detail = f"{target.host} took longer than {self.limits.total_s:g} s"
+            detail = f"{phase} {target.host} took longer than {self.limits.total_s:g} s"
             raise FetchRefusedError("timeout", detail) from None
         except httpx.TimeoutException as exc:
             raise FetchRefusedError("timeout", f"{target.host}: {exc}") from None
@@ -186,7 +255,7 @@ class SafeFetcher:
             timeout=timeout,
             follow_redirects=False,
             trust_env=False,
-            verify=self._tls(),
+            verify=self._checked_tls(),
             limits=httpx.Limits(max_keepalive_connections=0),
         ) as client:
             current = url

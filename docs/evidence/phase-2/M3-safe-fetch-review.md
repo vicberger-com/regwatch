@@ -146,3 +146,21 @@
    - Private answer: `private-address`.
 6. `addr.py` and `regress.py`, addresses: see the verdict for finding 2 above. Also refused: `::ffff:8.8.8.8`, `100::1`, `fe80::1`, `ff0e::1` and `2002:808:808::1`. Passes: `0:0:0:1::1`.
 7. `misc.py`: the slow-DNS probe now raises `FetchRefusedError("timeout")`, where before it returned 200 after 2.0 s.
+
+## Author follow-up 2 (findings 8 to 11, pending re-verification)
+- **Finding 8 (high):** decoding moved into `_BodyDecoder`. Anything left after the end of a compressed stream is handled in the same call, so it never accumulates in zlib's `unused_data`: another gzip member (it must start with the gzip magic) is decoded, and any other trailing data is refused with reason `encoding`. Raw bytes from the network also count against `max_bytes`, whatever the encoding.
+  - Tests: `test_data_after_a_gzip_body_is_refused_without_piling_up` (50 MiB of junk in 1 KiB chunks after a tiny gzip body; refused, tracemalloc peak under 16 MiB) and `test_raw_bytes_count_against_the_cap_too`.
+- **Finding 9 (low):**
+  - several gzip members are decoded in full;
+  - a stream that ends early is refused ("ends early");
+  - trailing data after gzip or deflate is refused;
+  - raw deflate without a zlib header is accepted again;
+  - a damaged gzip body is refused;
+  - a decoded body no longer carries `content-encoding` or `content-length` in the returned headers.
+  - Test: `test_gzip_members_truncation_and_deflate_forms`.
+- **Finding 10 (low):** the nested-bomb test now asserts `encoding` only. A new `test_a_single_layer_gzip_bomb_stays_within_the_cap` fetches `/bomb/gzip?mib=400` with a 1 MiB cap and asserts `too-large` with a peak under 32 MiB.
+- **Finding 11 (info):**
+  - `_checked_tls` refuses any context without `CERT_REQUIRED` and `check_hostname` (`test_a_tls_context_that_checks_less_is_refused`), and the docstring now names httpx's default authorities.
+  - Timeouts say whether DNS or the server was slow (`test_a_slow_name_server_is_named_in_the_timeout`).
+  - `::/8` was **not** adopted: the NAT64 prefix `64:ff9b::/96` lies inside it, so it would block every NAT64 answer. `::/64` stays, and NAT64 addresses are judged by their embedded IPv4 address (`64:ff9b::808:808` passes).
+  - The `transport` constructor argument and the roughly twice-the-cap peak are left as they are.
