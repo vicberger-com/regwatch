@@ -164,3 +164,73 @@
   - Timeouts say whether DNS or the server was slow (`test_a_slow_name_server_is_named_in_the_timeout`).
   - `::/8` was **not** adopted: the NAT64 prefix `64:ff9b::/96` lies inside it, so it would block every NAT64 answer. `::/64` stays, and NAT64 addresses are judged by their embedded IPv4 address (`64:ff9b::808:808` passes).
   - The `transport` constructor argument and the roughly twice-the-cap peak are left as they are.
+
+## Re-verification 2 (`sec/M3-safe-fetch-followups` at `cea315f`)
+**Method:** I read `git diff HEAD~1 HEAD` and re-ran the two test files: 102 passed, and coverage of `regwatch.capture.safe_fetch` is 100 percent (265 statements, 78 branches). I re-ran `trail.py`, `mem.py` and `regress.py` with `MockTransport`, and `bomb2.py` against a separately started fixture server on 127.0.0.1, which was stopped afterwards. A new script, `/tmp/m3review/edges.py`, probes the `_BodyDecoder` edge cases requested. No external network was used, the Docker stacks were not touched, and no file other than this record was changed.
+
+### Verdict per finding
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 8 | closed | `trail.py`: a gzip member followed by 200 MiB of raw bytes with a 1 MiB cap is now refused (`too-large`, from the raw-byte cap at `fetch.py:200`). Peak traced memory is under 1 MiB, where it was 399 MiB. After a stream ends, leftover input is taken from `unused_data` within the same call (`fetch.py:85`) and is either decoded as the next gzip member or refused. The author's test uses 50 MiB in 1 KiB chunks and asserts a peak under 16 MiB. |
+| 9 | closed, with two new low issues in deflate handling (finding 12) | `regress.py`: two members, in one chunk or split, decode to all 26 bytes. Trailing garbage after gzip is `encoding`. A second member holding a 1 GiB bomb is `too-large`. Raw deflate decodes. The decoded result no longer carries `content-encoding` or `content-length`. `edges.py`: a gzip stream genuinely cut short (random data cut at 3,000 bytes) is refused with "ends early". My first-round truncation probe had cut a stream that was already complete, so its "accepted" result was not evidence. |
+| 10 | closed | The nested test now asserts `encoding` only. `test_a_single_layer_gzip_bomb_stays_within_the_cap` asserts `too-large` and a peak under 32 MiB, so it now exercises the `max_length` path. `mem.py`: 1 GiB and 4 GiB single-layer bombs in one raw chunk with a 10 MiB cap peak at 21.2 MiB and 24.0 MiB. `bomb2.py`: every fixture bomb peaks at 36 to 38 MiB RSS. |
+| 11 | closed; `::/8` decision accepted | (a) `_checked_tls` (`fetch.py:180`) accepts only `True`, or an `SSLContext` with `CERT_REQUIRED` and `check_hostname`. `False` or a weaker context raises before any connection, and the docstring is corrected. (b) The timeout detail now reads "DNS for `<host>`…" or "the server at `<host>`…" (`regress.py`: "DNS for example.org took longer than 0.2 s"). NXDOMAIN is still `dns`, and a private answer is still `private-address`. (c) **The author is right, and my suggestion in 11(c) was wrong.** `64:ff9b::/96` (first 16 bits `0x0064`) lies inside `::/8`, so refusing all of `::/8` would block every NAT64 answer, including `64:ff9b::808:808`. Keeping `::/64` plus the NAT64 embedded-address check is correct. What is left is unallocated reserved space such as `0:0:0:1::1`, which is not routable. If wanted, refuse `::/8` minus `64:ff9b::/96` and `64:ff9b:1::/48`; this is optional. (d), (e): left as they are, accepted as info. |
+
+### `_BodyDecoder` regression checks requested
+- **A gzip member boundary split across chunks:** correct. I tried every 2-way split of a two-member body: all 47 split points decode to the full 26 bytes. These also decode correctly:
+  - one byte per chunk;
+  - a split leaving a one-byte remainder (`\x1f` | `\x8b…`);
+  - a three-way split of member 1 | `\x1f` | rest.
+
+  A lone trailing `\x1f` at the end of the body is refused through `_pending` in `finish`. An empty body with `Content-Encoding: gzip` returns `b""`.
+- **Deflate detection on a first chunk of one byte:** a defect, see 12(a). With only one byte, the zlib-header test (`fetch.py:65`, `len(data) >= 2`) fails, so a zlib-wrapped body is decoded as raw deflate and refused as damaged. This happens both when the first chunk is one byte and when every chunk is one byte. Raw deflate in one-byte chunks decodes correctly.
+- **Could the raw-byte cap refuse legitimate bodies?** Only within about 0.03 percent of the cap. A 1,048,476-byte incompressible body (100 bytes under a 1 MiB cap) gzips to 1,048,814 bytes and is refused as `too-large`, while the same body sent uncompressed passes. Compressible content is always smaller raw than decoded. At the 10 MB default this affects only incompressible bodies within about 3 KB of the cap. I accept this; see 13(a).
+- **The `max(1, …)` room argument:** correct. The caller passes `limit - len(out) ≥ 0`, and `feed` stops as soon as its output exceeds `room`, so `room - len(out) + 1` is always at least 1. The `max` is a guard against passing `0`, which zlib treats as "no limit". `feed(…, room=0)` returns exactly 1 byte, which the caller then refuses.
+
+### New findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 12 | low | **Two defects in deflate handling in `_BodyDecoder`; neither affects memory or address safety.**<br>(a) A zlib-wrapped `deflate` body whose first raw chunk is one byte is misdetected as raw deflate and refused (`encoding`, "Error -3"), so a legitimate body is lost. Over chunked transfer, a 1-byte first chunk is unusual but legal. **Fix:** for `deflate`, hold back a first chunk shorter than 2 bytes in `_pending`, as gzip already does, and decide only when 2 bytes are available.<br>(b) After a deflate stream ends exactly at a chunk boundary, `_d` is reset to `None` (`fetch.py:88`), so the next chunk starts a *new* deflate stream. A second zlib stream in the next chunk is decoded and appended (the `SMUGGLED` probe), and junk in the next chunk is reported as "ends early" rather than as trailing data. That is inconsistent with the stated rule that trailing data after deflate is refused. It is bounded by both caps. **Fix:** record that a deflate stream has ended, and refuse any later byte with "data after the end of the deflate body". Add tests for both cases. | open | reviewer PoC (`edges.py`) |
+| 13 | info | (a) The raw-byte cap equals `max_bytes`, so incompressible gzip bodies within gzip's overhead of the cap (about 0.03 percent, plus 18 bytes) are refused. A raw cap of `max_bytes + max_bytes // 512 + 64` would remove this without weakening finding 8. (b) Trailing NUL padding after a gzip body, which gzip(1) and Python's `gzip` module tolerate, is refused. This is rare on HTTP and acceptable. (c) Decoding many back-to-back empty gzip members copies `unused_data` once per member, so cost grows with the square of the chunk size. It is negligible at httpcore's 64 KiB reads: 10 MiB of empty members in 64 KiB chunks took 0.9 s in total, about 0.01 s per chunk. A 1 MiB chunk, which only a custom transport can deliver, blocks the loop for 0.81 s. No change needed while production uses the default transport (see 11(d)). | n/a | n/a |
+
+**Sign-off at re-verification 2:** signed off; no high or critical open. Findings 1 to 11 are closed. Finding 12 (low) is open and tracked for a follow-up, and finding 13 is info. Acceptance criteria 4 and 5 (robots.txt, per-host rate limits) remain outside this review. · M3 SafeFetcher independent review · 2026-11-16
+
+### Evidence (re-verification 2)
+1. `trail.py`: a gzip member plus 200 MiB of trailing raw bytes, 1 MiB cap: refused `too-large`, peak traced under 1 MiB.
+2. `mem.py`, 10 MiB cap, single-layer bomb in one raw chunk:
+   - 1 GiB: `too-large`, 21.2 MiB.
+   - 4 GiB: `too-large`, 24.0 MiB.
+3. `bomb2.py` against the fixture server, 1 MiB cap:
+   - `page_v1.html`: ok, RSS 36 MiB.
+   - `/bomb/gzip?mib=1024`: `too-large`, 38 MiB.
+   - `/bomb/gzip?mib=4096`: `too-large`, 38 MiB.
+   - `/bomb/gzip?mib=400&nested=1`: `encoding`, 36 MiB.
+   - `/pages/zip_bomb.html.gz?mib=4096`: `too-large`, 38 MiB.
+   - `/redirect/chain/3`: ok, 36 MiB.
+4. `regress.py`:
+   - Two members: 26 bytes.
+   - Trailing garbage: `encoding`.
+   - Bomb as the second member: `too-large`.
+   - Raw deflate: ok.
+   - `content-encoding` is absent from every decoded result.
+   - Exactly at the cap: ok. One byte over: `too-large`.
+   - Slow DNS: "DNS for example.org took longer than 0.2 s". NXDOMAIN: `dns`. Private answer: `private-address`.
+   - `::ffff:8.8.8.8` and `::1:0:0:1` are refused. `0:0:0:1::1` and `64:ff9b::808:808` pass.
+5. `edges.py`, gzip:
+   - All 2-way splits: ok.
+   - One-byte remainder: ok. One byte per chunk: ok. Three-way split: ok.
+   - A lone trailing `\x1f`: refused. NUL padding: refused.
+   - Empty body: `b""`.
+   - Truncated stream: refused, "ends early".
+6. `edges.py`, deflate:
+   - zlib-wrapped, one chunk: ok.
+   - zlib-wrapped, first chunk one byte: **refused** (12a).
+   - zlib-wrapped, one byte per chunk: **refused** (12a).
+   - Raw, one byte per chunk: ok.
+   - zlib plus junk in the same chunk: refused.
+   - zlib plus a second zlib stream in the next chunk: **decoded and appended** (12b).
+   - zlib plus junk in the next chunk: refused as "ends early" (12b).
+7. `edges.py`, caps and cost:
+   - Incompressible body 100 bytes under a 1 MiB cap, gzipped: `too-large`. The same body uncompressed: ok.
+   - Empty-member decoding: 0.01 s per 64 KiB chunk, 0.81 s for a 1 MiB chunk, and 0.9 s for 10 MiB in 64 KiB chunks.
+   - `feed(room=0)` returns 1 byte.
