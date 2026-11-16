@@ -25,6 +25,17 @@ export function UsersPage({ selfId }: { selfId: string }) {
   const reset = useResetPassword();
   // A temporary password is shown once, here, and dropped when the next action starts.
   const [editing, setEditing] = useState<User | null>(null);
+  // Focus returns to the Edit button that opened the form (screens.md: dialogs return focus).
+  const close = (email: string) => {
+    setEditing(null);
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLButtonElement>(
+          `button[aria-label="Edit ${CSS.escape(email)}"]`,
+        )
+        ?.focus();
+    });
+  };
   const [notice, setNotice] = useState("");
   const [secret, setSecret] = useState<{
     email: string;
@@ -68,10 +79,10 @@ export function UsersPage({ selfId }: { selfId: string }) {
           roleKeys={(roles.data ?? []).map((r) => r.key)}
           isSelf={editing.id === selfId}
           onClose={() => {
-            setEditing(null);
+            close(editing.email);
           }}
           onSaved={(saved) => {
-            setEditing(null);
+            close(saved.email);
             setNotice(`Saved ${saved.email}.`);
           }}
         />

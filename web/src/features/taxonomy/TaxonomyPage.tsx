@@ -47,11 +47,12 @@ export function TaxonomyPage({ canManage }: { canManage: boolean }) {
                 <button
                   type="button"
                   aria-current={f.key === current?.key ? "true" : undefined}
-                  className={`${button} w-full text-left ${f.key === current?.key ? "border-l-4 border-accent font-semibold" : ""}`}
+                  className={`${button} w-full text-left ${f.key === current?.key ? "border-l-8 border-accent bg-accent text-accent-contrast font-semibold" : ""}`}
                   onClick={() => {
                     setSelected(f.key);
                   }}
                 >
+                  {f.key === current?.key && <span aria-hidden="true">▸ </span>}
                   {f.label}
                   {f.system ? " (system)" : ""}
                   {f.hidden ? " (hidden)" : ""}

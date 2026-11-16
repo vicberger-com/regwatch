@@ -36,10 +36,9 @@ export function BrandingPage() {
         Branding and legal
       </h1>
       <LogoForm branding={branding.data} />
-      <BrandingForm
-        key={JSON.stringify(branding.data)}
-        branding={branding.data}
-      />
+      {/* Not keyed on the data: a logo upload or legal save refreshes branding, and a remount
+          would throw away unsaved edits here (peer review of PRs 56 and 57). */}
+      <BrandingForm branding={branding.data} />
       <LegalForm />
     </section>
   );

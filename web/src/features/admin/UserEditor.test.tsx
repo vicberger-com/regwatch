@@ -90,6 +90,11 @@ describe("editing users (U-M1-2)", () => {
     expect(
       screen.queryByRole("form", { name: `Edit ${ADMIN.email}` }),
     ).toBeNull();
+    await vi.waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: `Edit ${ADMIN.email}` }),
+      ).toHaveFocus(); // focus returns to the opener (peer review of PR 68)
+    });
     expect(api.calls.some((c) => c.key.startsWith("PATCH"))).toBe(false);
   });
 

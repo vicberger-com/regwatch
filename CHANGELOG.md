@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Fixed
+- Peer-review fixes: the branding form keeps unsaved edits when a logo upload or a legal-page save refreshes the branding (it was remounted); closing the user editor returns focus to the Edit button that opened it (#32, BL-83, REQ-16, REQ-18)
 - The light theme's focus ring is `#B45309`, at 4.73:1 against the page and 5.02:1 against cards, instead of `#FFB400` at 1.68:1, below the WCAG 2.2 non-text minimum of 3:1. Dark and high-contrast keep `#FFB400` (CP-09; BL-83, U-M0-2; REQ-18)
 - The database integration tests remove their throwaway PostgreSQL container with its data volume (`docker rm -f -v`); before, every `make test-api` run left an anonymous volume of about 425 MB behind (#28, REQ-19)
 - G1 use-testing fixes: the logo upload and Import YAML controls show the focus ring (U-M0-1); the browser title names the screen, as `<Screen> · <site title>`, and the sign-in page is `Sign in` (U-M0-4); the sign-in page has a `main` landmark (U-M0-8); the selected facet is marked visually, not only through `aria-current` (U-M2-5); the jurisdiction parent picker lists countries by name, as `Germany (DE)` (U-M2-1) (#32, BL-83, REQ-16, REQ-18)

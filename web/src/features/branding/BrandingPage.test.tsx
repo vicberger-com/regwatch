@@ -162,4 +162,38 @@ describe("branding screen", () => {
     renderAt("/admin/branding");
     expect(await screen.findByRole("alert")).toHaveTextContent("Boom");
   });
+  it("keeps unsaved branding edits when the logo is uploaded", async () => {
+    let logo: string | null = null;
+    fakeApi({
+      ...BASE,
+      "GET /branding": () => [200, { ...BRANDING, logo_url: logo }],
+    });
+    const fake = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) => {
+      if (request.method !== "POST") return fake(request);
+      logo = "/api/v1/branding/logo?v=1";
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...BRANDING, logo_url: logo }), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    renderAt("/admin/branding");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Branding" });
+    await user.clear(within(form).getByLabelText("Site title"));
+    await user.type(within(form).getByLabelText("Site title"), "Unsaved title");
+    await user.upload(
+      screen.getByLabelText(/Upload a PNG or SVG/),
+      new File(["png"], "l.png", { type: "image/png" }),
+    );
+    expect(
+      await screen.findByRole("img", { name: "Current logo" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("form", { name: "Branding" })).getByLabelText(
+        "Site title",
+      ),
+    ).toHaveValue("Unsaved title");
+  });
 });
