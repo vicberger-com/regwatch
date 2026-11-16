@@ -159,6 +159,13 @@ paths:
       x-permission: settings.manage
       requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { page_markdown: { type: string, maxLength: 200000 }, required_markings: { type: string, maxLength: 2000 } } } } } }
       responses: { "204": { description: Saved } }
+  /admin/audit/export:
+    get:
+      tags: [admin]
+      x-permission: audit.read
+      description: The filtered audit log as CSV, newest first, at most 10,000 rows or 20 MB (headers X-Export-Rows and X-Export-Truncated). The export writes its own audit.export row with the filters and row count (CP-10, 8.2).
+      parameters: [ { name: actor, in: query, schema: { type: string, format: uuid } }, { name: action, in: query, schema: { type: string } }, { name: entity_type, in: query, schema: { type: string } }, { name: entity_id, in: query, schema: { type: string } }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } } ]
+      responses: { "200": { description: Audit rows as CSV, content: { text/csv: { schema: { type: string } } } } }
   /admin/audit:
     get:
       tags: [admin]

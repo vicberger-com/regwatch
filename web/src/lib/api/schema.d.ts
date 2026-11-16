@@ -1012,6 +1012,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/audit/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The filtered audit log as CSV, newest first, at most 10,000 rows or 20 MB (headers X-Export-Rows and X-Export-Truncated). The export writes its own audit.export row with the filters and row count (CP-10, 8.2). */
+        get: {
+            parameters: {
+                query?: {
+                    actor?: string;
+                    action?: string;
+                    entity_type?: string;
+                    entity_id?: string;
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Audit rows as CSV */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/audit": {
         parameters: {
             query?: never;

@@ -5,12 +5,7 @@ import { api, type Schemas } from "@/lib/api/client";
 import { usersQuery } from "@/features/admin/api";
 import { failure, problemText } from "@/lib/auth/session";
 
-import {
-  fetchForExport,
-  MAX_EXPORT_ROWS,
-  toCsv,
-  type AuditFilters,
-} from "./csv";
+import { exportAudit, type AuditFilters } from "./export";
 
 type Entry = Schemas["AuditEntry"];
 type Filters = AuditFilters;
@@ -38,10 +33,8 @@ function dayStart(value: string): string | undefined {
   return value ? `${value}T00:00:00Z` : undefined;
 }
 
-function saveCsv(csv: string) {
-  const url = URL.createObjectURL(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-  );
+function saveCsv(blob: Blob) {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = "regwatch-audit.csv";
@@ -56,9 +49,9 @@ export function AuditPage({ canListUsers }: { canListUsers: boolean }) {
   // The actor filter takes a user id; the list of users needs users.manage (U-M1-3).
   const people = useQuery({ ...usersQuery, enabled: canListUsers });
   const exporter = useMutation({
-    mutationFn: fetchForExport,
-    onSuccess: ({ entries }) => {
-      saveCsv(toCsv(entries));
+    mutationFn: exportAudit,
+    onSuccess: ({ blob }) => {
+      saveCsv(blob);
     },
   });
   const [draft, setDraft] = useState({
@@ -155,10 +148,10 @@ export function AuditPage({ canListUsers }: { canListUsers: boolean }) {
           {exporter.isPending ? "Exporting…" : "Export CSV"}
         </button>
       </form>
-      {exporter.isSuccess && exporter.data.total > MAX_EXPORT_ROWS && (
+      {exporter.isSuccess && exporter.data.truncated && (
         <p role="status" className="text-warning">
-          The export holds the newest {String(MAX_EXPORT_ROWS)} of{" "}
-          {String(exporter.data.total)} entries; narrow the filters for the
+          The export holds the newest {String(exporter.data.rows)} matching
+          entries (at most 10,000 rows or 20 MB); narrow the filters for the
           rest.
         </p>
       )}

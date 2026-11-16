@@ -180,6 +180,37 @@ async def put_legal(
     return Response(status_code=204)
 
 
+_EXPORT_SPEC = spec(desc="Audit rows as CSV", perm="audit.read", stub=False)
+_EXPORT_SPEC["responses"][200] = {
+    "description": "Audit rows as CSV, newest first, at most 10,000 rows or 20 MB",
+    "content": {"text/csv": {"schema": {"type": "string"}}},
+}
+
+
+@router.get("/admin/audit/export", tags=ADMIN, **_EXPORT_SPEC)
+async def export_audit(
+    request: Request,
+    principal: CurrentPrincipal,
+    db: DbSession,
+    actor: UUID | None = None,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    from_: Annotated[datetime | None, Query(alias="from")] = None,
+    to: datetime | None = None,
+) -> Response:
+    text, rows, truncated = await services.export_audit(
+        db, principal.user.id, client_ip(request), actor=actor, action=action,
+        entity_type=entity_type, entity_id=entity_id, from_=from_, to=to,
+    )  # fmt: skip
+    return Response(text, media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": 'attachment; filename="regwatch-audit.csv"',
+        "X-Export-Rows": str(rows),
+        "X-Export-Truncated": "true" if truncated else "false",
+        "Cache-Control": "no-store",
+    })  # fmt: skip
+
+
 @router.get(
     "/admin/audit", tags=ADMIN,
     **spec(Page[AuditEntry], desc="Audit rows", perm="audit.read", stub=False),

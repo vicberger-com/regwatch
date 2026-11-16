@@ -38,6 +38,7 @@
 | CP-07 | Public `GET /branding/logo` | Owner approved 2026-11-15; implemented; issue to open |
 | CP-08 | Public `GET /branding/public` and a public `GET /legal` | Owner approved 2026-11-16; implemented; issue to open |
 | CP-09 | Light-theme focus colour `#B45309` in screens.md | Owner approved 2026-11-16; implemented; issue to open |
+| CP-10 | Server-side `GET /admin/audit/export`, itself audited (8.2) | Owner approved 2026-11-16; implemented; issue to open |
 | BL-31, BL-40, BL-64 | CP proposals recorded in BACKLOG | Open |
 
 ## BACKLOG rows awaiting an owner decision

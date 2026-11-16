@@ -223,29 +223,33 @@ describe("audit log screen", () => {
     ).toBeInTheDocument();
   });
 
-  it("exports every matching page as CSV, and says when it stops at the cap", async () => {
-    const pages: string[] = [];
+  it("downloads the server's CSV export and says when it was cut (CP-10)", async () => {
+    const asked: string[] = [];
     fakeApi({ "GET /auth/me": [200, ME] });
     const fake = globalThis.fetch;
     vi.stubGlobal("fetch", (request: Request) => {
       const url = new URL(request.url);
-      if (!url.pathname.endsWith("/admin/audit")) return fake(request);
-      const size = Number(url.searchParams.get("page_size"));
-      const page = Number(url.searchParams.get("page"));
-      if (size === 200) {
-        pages.push(String(page));
-        expect(url.searchParams.get("to")).toBeTruthy(); // a fixed snapshot (addendum B3)
+      if (url.pathname.endsWith("/admin/audit/export")) {
+        asked.push(url.search);
+        return Promise.resolve(
+          new Response("id,occurred_at\r\n", {
+            headers: {
+              "Content-Type": "text/csv; charset=utf-8",
+              "X-Export-Rows": "10000",
+              "X-Export-Truncated": "true",
+            },
+          }),
+        );
       }
-      const items = Array.from({ length: size }, (_, i) => ({
-        ...ROW,
-        id: `${String(page)}-${String(i)}`,
-      }));
-      const body = { items, total: 20_000, page, page_size: size };
-      return Promise.resolve(
-        new Response(JSON.stringify(body), {
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+      if (url.pathname.endsWith("/admin/audit")) {
+        const body = { items: [ROW], total: 1, page: 1, page_size: 50 };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return fake(request);
     });
     const blobs: Blob[] = [];
     vi.stubGlobal(
@@ -263,15 +267,20 @@ describe("audit log screen", () => {
       .mockImplementation(() => undefined);
     renderAt("/admin/audit");
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Export CSV" }));
+    const form = await screen.findByRole("form", { name: "Filter audit log" });
+    await user.type(within(form).getByLabelText("Action"), "role.update");
+    await user.click(
+      within(form).getByRole("button", { name: "Apply filters" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
     expect(
-      await screen.findByText(/newest 10000 of 20000/),
+      await screen.findByText(/newest 10000 matching entries/),
     ).toBeInTheDocument();
     expect(click).toHaveBeenCalled();
-    expect(pages).toHaveLength(50); // 50 pages of 200
-    const text = await blobs[0]?.text();
-    expect(text?.split("\r\n")).toHaveLength(10_002);
+    expect(await blobs[0]?.text()).toBe("id,occurred_at\r\n");
+    expect(new URLSearchParams(asked[0]).get("action")).toBe("role.update");
   });
+
   it("hides loaded rows when a refetch of the same page fails (PR 51 review)", async () => {
     let failing = false;
     fakeApi({ "GET /auth/me": [200, ME] });

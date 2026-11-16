@@ -428,3 +428,28 @@ async def test_hosted_classification_model_needs_a_basis(admin: httpx.AsyncClien
     cleared = await put(_api("/admin/settings/translation.data_processing_basis"),
                         json={"value": ""})  # fmt: skip
     assert cleared.status_code == 400  # a hosted provider is selected
+
+
+async def test_audit_export_is_csv_and_is_itself_audited(admin: httpx.AsyncClient) -> None:
+    """CP-10, 8.2: the export answers CSV and records who exported, with what filters."""
+    await admin.put(_api("/admin/settings/map.projection"), json={"value": "mercator"})
+    resp = await admin.get(_api("/admin/audit/export"), params={"entity_type": "setting"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert resp.headers["content-disposition"].startswith("attachment")
+    lines = resp.text.split("\r\n")
+    assert lines[0].startswith("id,occurred_at,") and int(resp.headers["x-export-rows"]) >= 1
+    assert all('"setting"' in line for line in lines[1:] if line)
+    page = (await admin.get(_api("/admin/audit"), params={"action": "audit.export"})).json()
+    assert page["total"] >= 1
+    after = page["items"][0]["after"]
+    assert after["filters"] == {"entity_type": "setting"} and after["rows"] >= 1
+    assert after["truncated"] is False
+
+
+async def test_audit_export_needs_audit_read(admin: httpx.AsyncClient) -> None:
+    viewer = await _as_new_user(admin, "export-viewer@example.org", ["viewer"])
+    try:
+        assert (await viewer.get(_api("/admin/audit/export"))).status_code == 403
+    finally:
+        await viewer.aclose()

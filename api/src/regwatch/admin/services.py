@@ -330,6 +330,23 @@ async def put_legal(db: AsyncSession, body: LegalWrite, actor: uuid.UUID, ip: st
     await db.commit()
 
 
+async def export_audit(
+    db: AsyncSession, actor_id: uuid.UUID, ip: str | None, **filters: Any
+) -> tuple[str, int, bool]:
+    """The filtered audit log as CSV, newest first, capped; the export itself is audited (CP-10)."""
+    from regwatch.admin import audit_export
+
+    page = await list_audit(db, 1, audit_export.MAX_ROWS, **filters)
+    text, written, size_cut = audit_export.to_csv(list(page.items))
+    truncated = size_cut or page.total > written
+    recorded = {k: (str(v) if v is not None else None) for k, v in filters.items() if v is not None}
+    audit(db, "audit.export", "audit_log", None, actor=actor_id, ip=ip,
+          after={"filters": recorded, "rows": written, "total": page.total,
+                 "truncated": truncated})  # fmt: skip
+    await db.commit()
+    return text, written, truncated
+
+
 async def list_audit(
     db: AsyncSession,
     page: int,
