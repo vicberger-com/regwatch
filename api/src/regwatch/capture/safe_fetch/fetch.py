@@ -57,7 +57,8 @@ class _BodyDecoder:
     def __init__(self, kind: str) -> None:
         self.kind = kind
         self._d: zlib._Decompress | None = None
-        self._pending = b""  # gzip: bytes after a member, too few to tell what follows
+        self._pending = b""  # bytes too few to tell what follows (a gzip magic, a zlib header)
+        self._ended = False  # deflate: the one stream has ended; any later byte is refused
 
     def _start(self, data: bytes) -> zlib._Decompress:
         if self.kind == "gzip":
@@ -72,8 +73,10 @@ class _BodyDecoder:
         self._pending = b""
         while data:
             if self._d is None:
-                if self.kind == "gzip" and len(data) < 2:
-                    self._pending = data  # wait for the rest of a possible next member
+                if self._ended:  # review finding 12 (b)
+                    raise FetchRefusedError("encoding", "data after the end of the deflate body")
+                if len(data) < 2:  # wait for the second byte (gzip magic, zlib header; 12 (a))
+                    self._pending = data
                     break
                 if self.kind == "gzip" and not data.startswith(_GZIP_MAGIC):
                     raise FetchRefusedError("encoding", "data after the end of the gzip body")
@@ -83,8 +86,12 @@ class _BodyDecoder:
                 break
             if self._d.eof:
                 data = self._d.unused_data  # handled now, never left to grow inside zlib
-                if data and self.kind != "gzip":
-                    raise FetchRefusedError("encoding", "data after the end of the deflate body")
+                if self.kind != "gzip":
+                    if data:
+                        raise FetchRefusedError(
+                            "encoding", "data after the end of the deflate body"
+                        )
+                    self._ended = True
                 self._d = None
             else:
                 data = self._d.unconsumed_tail
@@ -92,7 +99,9 @@ class _BodyDecoder:
 
     def finish(self) -> bytes:
         if self._pending:
-            raise FetchRefusedError("encoding", "data after the end of the gzip body")
+            if self.kind == "deflate" and not self._ended:
+                raise FetchRefusedError("encoding", "the compressed body ends early")
+            raise FetchRefusedError("encoding", f"data after the end of the {self.kind} body")
         if self._d is None:
             return b""
         if not self._d.eof:

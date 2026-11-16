@@ -234,3 +234,10 @@
    - Incompressible body 100 bytes under a 1 MiB cap, gzipped: `too-large`. The same body uncompressed: ok.
    - Empty-member decoding: 0.01 s per 64 KiB chunk, 0.81 s for a 1 MiB chunk, and 0.9 s for 10 MiB in 64 KiB chunks.
    - `feed(room=0)` returns 1 byte.
+
+## Author follow-up 3 (finding 12)
+- **12 (a):** a first chunk shorter than 2 bytes is held back for deflate as well as gzip, so the zlib-header check always sees two bytes. A one-byte first chunk of a zlib-wrapped body decodes.
+- **12 (b):** once the deflate stream has ended, any later byte is refused ("data after the end of the deflate body"), including when the stream ended exactly at a chunk boundary.
+- A lone held-back byte at the end of a deflate body is refused as "ends early".
+- Test: `test_deflate_split_at_awkward_places`.
+- **13 (info):** no change.

@@ -367,6 +367,21 @@ async def test_gzip_members_truncation_and_deflate_forms() -> None:
         )
 
 
+async def test_deflate_split_at_awkward_places() -> None:
+    """Review finding 12: a one-byte first chunk, and data after a stream ending on a boundary."""
+    body = zlib.compress(b"zlib-wrapped deflate")
+    one = await fetcher(streamed("deflate", body[:1], body[1:])).fetch("https://example.org/")
+    assert one.body == b"zlib-wrapped deflate"
+    with pytest.raises(FetchRefusedError, match="after the end of the deflate"):
+        await fetcher(streamed("deflate", body, zlib.compress(b"second"))).fetch(
+            "https://example.org/"
+        )
+    with pytest.raises(FetchRefusedError, match="after the end of the deflate"):
+        await fetcher(streamed("deflate", body, b"j")).fetch("https://example.org/")
+    with pytest.raises(FetchRefusedError, match="ends early"):
+        await fetcher(streamed("deflate", b"x")).fetch("https://example.org/")
+
+
 async def test_a_tls_context_that_checks_less_is_refused() -> None:
     """Review finding 11: the test hook can add an authority, never switch the checks off."""
     lax = ssl.create_default_context()
