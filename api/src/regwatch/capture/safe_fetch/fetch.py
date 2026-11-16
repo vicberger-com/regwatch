@@ -25,6 +25,7 @@ import asyncio
 import copy
 import ssl
 import zlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from urllib.parse import urljoin
 
@@ -40,6 +41,7 @@ from regwatch.capture.safe_fetch.policy import (
 )
 
 REDIRECTS = {301, 302, 303, 307, 308}
+HopCheck = Callable[[str], Awaitable[None]]
 
 
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -257,8 +259,14 @@ class SafeFetcher:
         except httpx.HTTPError as exc:
             raise FetchRefusedError("connect", f"{target.host}: {exc}") from None
 
-    async def fetch(self, url: str, method: str = "GET") -> FetchResult:
-        """Fetch ``url`` with every hop checked; ``FetchRefusedError`` says why it was refused."""
+    async def fetch(
+        self, url: str, method: str = "GET", before_hop: HopCheck | None = None
+    ) -> FetchResult:
+        """Fetch ``url`` with every hop checked; ``FetchRefusedError`` says why it was refused.
+
+        ``before_hop`` is awaited with each hop's URL before it is requested, including
+        redirect targets, so robots.txt and per-host rate limits apply to every host reached.
+        """
         limits = self.limits
         timeout = httpx.Timeout(connect=limits.connect_s, read=limits.read_s,
                                 write=limits.read_s, pool=limits.connect_s)  # fmt: skip
@@ -276,6 +284,8 @@ class SafeFetcher:
         ) as client:
             current = url
             while True:
+                if before_hop is not None:
+                    await before_hop(current)
                 result, location, status = await self._hop(client, current, method)
                 if result is not None:
                     return FetchResult(result.url, result.status, result.headers, result.body,
