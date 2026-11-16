@@ -91,3 +91,58 @@
   - `/lie/long` reads exactly the 10 declared bytes and ignores the rest (`test_a_body_longer_than_declared_is_cut_at_the_declared_length`).
   - httpx is bounded `<1`.
 - **Info (7):** no change.
+
+## Re-verification (`sec/M3-safe-fetch-followups` at `db1e1b4`)
+**Method:** I read `git diff feat/M3-safe-fetch sec/M3-safe-fetch-followups` and re-ran the two test files: 95 passed, and coverage of `regwatch.capture.safe_fetch` is 100 percent (218 statements, 56 branches). I re-ran the proof-of-concept scripts in `/tmp/m3review/`, adapted from the removed `pinned_hosts` to a subclass that overrides `_resolve`. Against a separately started fixture server on 127.0.0.1 I ran `bomb2.py`. With `MockTransport` I ran `addr.py`, `misc.py`, `mem.py`, `regress.py` and `trail.py`. The fixture server was stopped afterwards. No external network was used, the Docker stacks were not touched, and no file other than this record was changed.
+
+### Verdict per finding
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | **closed for the reported case; a new high regression in the same code (finding 8)** | `/bomb/gzip?mib=400&nested=1` is now refused as `encoding` before any decompression, with peak RSS 36 MiB (837 MiB before). Single-layer bombs are bounded: `mib=1024` and `mib=4096` from the fixture server peaked at 38 MiB RSS. With the 10 MiB cap, a 1 GiB and a 4 GiB bomb, each delivered as one raw chunk, were refused at 21 MiB and 24 MiB peak traced memory. The cap edge is exact: 1 MiB decoded passes, and 1 MiB plus 1 byte is refused. |
+| 2 | closed | `::127.0.0.1`, `::a9fe:a9fe`, `::ffff:0:7f00:1`, `::ffff:0:a9fe:a9fe`, `::1:0:0:1` and `fec0::1` (also `febf::1`) are refused (`policy.py:114`). Public `2001:4860:4860::8888`, `2606:4700:4700::1111`, `2a00:1450:4001:80b::200e`, `2620:4f:8000::1` and NAT64 `64:ff9b::808:808` still pass. |
+| 3 | closed | A 2 s resolver with `total_s=0.2` is refused as `timeout` after 0.2 s (`fetch.py:150`). |
+| 4 | closed | `pinned_hosts` is gone from `SafeFetcher` and `resolve`. Nothing under `api/src` subclasses `SafeFetcher` or overrides `_resolve` or `_tls`. The only override is `PinnedFetcher` in the test module. |
+| 5 | closed | `test_a_certificate_for_another_name_is_refused` uses a real TLS listener and a throwaway authority. The right name passes, another name on the same address is refused (`connect`), and the default trust refuses the throwaway authority. |
+| 6 | closed | Reading the tests, they now exercise behaviour. The connection test runs on the real transport and compares client ports, so it would fail if a connection were reused. The proxy test sets the variables to an unroutable proxy. The cap test checks the boundary (chain/4 passes, chain/5 is refused). The raw-listener routes are covered. `httpx>=0.27,<1` is accepted; httpcore is still only pinned by the lockfile. New gaps are in finding 10. |
+
+### Regression checks requested
+- **Gzip with trailing data, or several members:** this is a regression, see findings 8 and 9.
+- **Does refusing `::/64` block anything legitimate?** No. `::/64` lies inside `::/8`, which IANA reserves; no global unicast address is allocated there. The only behaviour change is that an AAAA answer in IPv4-mapped form with a public address (`::ffff:8.8.8.8`) is now refused, where before it passed. The system resolver does not return mapped addresses (no `AI_V4MAPPED`), and refusing them is safe. `0:0:0:1::1` is still in reserved `::/8` but outside `::/64`, and it passes. It is not routable; see 11(c).
+- **Does DNS inside the deadline change the error a user sees?** Only for slow DNS. NXDOMAIN is still `dns` ("could not be resolved"), and a private answer is still `private-address`. `FetchRefusedError` passes through the handlers in `_hop` unchanged. A slow name server now gives `timeout` with "`<host>` took longer than N s", where before the hop simply waited. The message does not say that DNS was the slow part; see 11(b).
+- **Could the `_tls` hook weaken certificate checking in production?** No, as built. `_tls()` returns `True`, which is httpx's own default: the bundled CA file, `CERT_REQUIRED`, and `check_hostname` on. Because of `trust_env=False`, `SSL_CERT_FILE` and `SSL_CERT_DIR` cannot change it. Only a subclass can change the hook, and none exists outside tests. The residual risk is a future subclass, or a test-style context copied into production code; see 11(a).
+
+### New findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 8 | high | **Raw bytes after the end of a gzip stream pile up in memory without limit (a regression from the finding 1 fix).** In `fetch.py:132-142`, once the gzip member ends (`decoder.eof`), each later raw chunk passed to `decoder.decompress` produces no output. zlib appends it to `decoder.unused_data`, and the loop still reads every chunk (`unconsumed_tail` is empty, so the inner loop ends at once). Neither `take` nor the Content-Length pre-check counts these bytes; a chunked response has no Content-Length. **Failure case** (`/tmp/m3review/trail.py`): a 5-byte gzip member followed by 200 MiB of raw bytes, with a 1 MiB cap. The fetch *succeeds* with a 5-byte body, and peak traced memory is 399 MiB. Over a real connection only the 60 s hop deadline limits this, which is several GB on a fast link, so a hostile source can OOM-kill a worker, as in finding 1. **Fix:** after each `decompress`, if `decoder.eof`, stop reading. Either refuse (`encoding`) when `decoder.unused_data` or later chunks hold anything other than whitespace, or start a fresh bounded decompressor for the next member (see 9). As a backstop, count raw bytes against a cap (for example `max_bytes`) whatever the encoding. Add tests for trailing data and for a member followed by a large raw tail, with a memory assertion. | open | reviewer PoC |
+| 9 | low | **Correctness of the new decoder.** (a) A body with several gzip members (valid under RFC 1952) is silently cut to the first member, and trailing garbage is silently ignored. (b) A truncated gzip stream is accepted as complete, because `flush()` runs without checking `decoder.eof`. So a capture can be silently partial, which M3 change detection would report as "changed". (c) Raw deflate without the zlib header, which some servers send and httpx used to accept, is now refused as `encoding`. (d) `FetchResult.headers` still carries `content-encoding` (and any `content-length`) for a body that is already decoded, so a caller that trusts the headers could decode twice or mislabel the content. **Fix:** support members with a fresh bounded decompressor that shares the cap (or refuse them); refuse with `encoding` when `decoder.eof` is false at the end of the stream; decide whether to allow a raw-deflate fallback (`wbits=-15`); drop `content-encoding` and `content-length` from the returned headers, or mark the body as decoded. | open | reviewer PoC (`regress.py`) |
+| 10 | low | **The bounded-decompression path has no memory test.** `test_a_nested_gzip_bomb_never_grows_past_the_cap` accepts `reason in {"too-large", "encoding"}`, and the fixture sends `Content-Encoding: gzip, gzip`. It therefore passes on the stacked-encoding refusal alone, and would still pass if the `max_length` argument were removed. The single-layer bomb test (`mib=50`) has no memory assertion. **Fix:** assert `reason == "encoding"` for the nested case. Add a single-layer bomb test, ideally one large raw chunk through `MockTransport`, that asserts a tracemalloc peak of a small multiple of the cap. Add trailing-data, multi-member and truncated-stream tests (findings 8 and 9). | open | code reading and PoC (`mem.py`) |
+| 11 | info | (a) Make the `_tls` hook fail closed: in `fetch`, refuse an `SSLContext` whose `verify_mode` is not `CERT_REQUIRED` or whose `check_hostname` is false, and accept no other `bool` than `True`. Also correct its docstring, which says "the system's trusted authorities", whereas httpx's `True` uses its bundled CA file. (b) Let the timeout detail say whether DNS or the server was slow, for operators. (c) Consider refusing all of reserved `::/8` (for example `0:0:0:1::1`), not only `::/64`. (d) The production constructor still takes `transport`, which, when given, bypasses `trust_env`, `limits` and `verify`. It is not reachable from configuration; keep it so, or move it to the test subclass as was done for pinning. (e) Peak memory is about twice the cap, because `bytes(out)` copies the bytearray. Return `bytes` from a single buffer, or accept and document the figure. | n/a | n/a |
+
+**Sign-off at re-verification:** not signed off; one high open (8, a regression from the finding 1 fix). Findings 1 to 6 are closed. Findings 9 and 10 are low, and 11 is info. Sign-off can follow once 8 is fixed and tested as described, with 10 at least covering finding 8. · M3 SafeFetcher independent review · 2026-11-16
+
+### Evidence (re-verification)
+1. `bomb2.py` against the fixture server, 1 MiB cap:
+   - `page_v1.html`: ok, RSS 36 MiB.
+   - `/bomb/gzip?mib=1024`: `too-large`, 38 MiB.
+   - `/bomb/gzip?mib=4096`: `too-large`, 38 MiB.
+   - `/bomb/gzip?mib=400&nested=1`: `encoding`, 36 MiB.
+   - `/pages/zip_bomb.html.gz?mib=4096`: `too-large`, 38 MiB.
+2. `mem.py`, 10 MiB cap, single-layer gzip in one raw chunk:
+   - 1 GiB in 1019 KiB: `too-large`, peak traced 21.2 MiB.
+   - 4 GiB in 4076 KiB: `too-large`, peak traced 24.0 MiB.
+3. `trail.py`: a gzip member plus 200 MiB of trailing raw bytes, 1 MiB cap: ok with a 5-byte body, peak traced 399 MiB. As a direct zlib check, `decompress(b"tail")` after EOF adds to `unused_data`.
+4. `regress.py`, decoder cases:
+   - Two members, in one chunk or split into chunks: 13 bytes (the first member only).
+   - First member followed by trailing garbage: 13 bytes (the garbage is ignored).
+   - Second member a 1 GiB bomb: 13 bytes (not decoded).
+   - Truncated gzip: ok with 100,000 bytes and no error.
+   - Raw deflate: `encoding`.
+   - `x-gzip`, `GZIP` and `identity, gzip`: decoded.
+   - In every decoded result, the `content-encoding` header is still present.
+5. `regress.py`, DNS cases with a 0.2 s deadline:
+   - Slow resolver: `timeout` after 0.2 s.
+   - NXDOMAIN: `dns`.
+   - Private answer: `private-address`.
+6. `addr.py` and `regress.py`, addresses: see the verdict for finding 2 above. Also refused: `::ffff:8.8.8.8`, `100::1`, `fe80::1`, `ff0e::1` and `2002:808:808::1`. Passes: `0:0:0:1::1`.
+7. `misc.py`: the slow-DNS probe now raises `FetchRefusedError("timeout")`, where before it returned 200 after 2.0 s.
