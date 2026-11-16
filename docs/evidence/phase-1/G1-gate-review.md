@@ -17,7 +17,7 @@
 | Peer, security, use and adversarial records for every module | **Security and use: yes. Peer and adversarial: not yet.** Use testing (2026-11-16, isolated QA stack, headless Chromium): 39 journeys, 24 passed and 12 failed (M0 4, M1 4, M2 0); findings in BL-83. The adversarial session was stopped by the model provider's safety filter before it ran any test; the owner chooses another session, a human tester, or deferral to G5. | Security: `M1-security-review.md`, `M2-security-review.md`, `web-security-review.md`, `web-admin-security-review.md`, `BL-68-security-review.md`, all signed off after re-verification. Peer review is due on each PR (7.4). Use-testing and adversarial records for M0 to M2 are still to be written (7.6, 7.7). |
 | License scan clean; register and notices updated | **Yes** | `scripts/license-scan.sh`: 551 allowed, 1 by reviewed exception, 0 failing; register rows with R-01 addenda B1 to B7; `api/THIRD_PARTY_NOTICES.md` (the full MIT and Apache notice set for nh3's crates is BL-81 a, due before the API image is first distributed) |
 | CHANGELOG release section cut; BACKLOG decisions recorded; CP issues summarised | **At the gate:** the release section is cut when the owner approves; decisions are below | `CHANGELOG.md` Unreleased |
-| Questioning-period issues closed or assumptions recorded | **Assumptions recorded**; the question-bank issues still need opening on GitHub | `docs/decisions/ASSUMPTIONS.md` |
+| Questioning-period issues closed or assumptions recorded | **Answered:** the owner accepted the defaults for all M0 to M2 bank questions on 2026-11-16 (ASSUMPTIONS.md); the issues still need opening on GitHub | `docs/decisions/ASSUMPTIONS.md` |
 | Owner comment `approved` | **Pending** | |
 
 ## Owner demonstration (exit criterion)
@@ -67,4 +67,4 @@ All rows are `open` and are listed in `BACKLOG.md`. Those raised during Phase 1,
 3. Use testing is done (records in `docs/evidence/phase-1/use-testing/`); owner decisions on BL-83, whose majors include M1 acceptance 6, where the sign-in page is not branded.
 4. Adversarial records for M0 to M2 (7.7): owner decision on how to run them.
 5. The `Questions: M0`, `Questions: M1` and `Questions: M2` issues and the `Gate G1` issue on GitHub.
-6. A decision on BL-60 before its exceptions expire on 2026-12-02.
+6. BL-60 is decided: zlib1g and tinypool are fixed; tar and esbuild are re-accepted until G2 (expiry 2027-03-01).

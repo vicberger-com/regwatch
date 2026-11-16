@@ -1,15 +1,16 @@
 # Accepted critical findings in the web image (development image for the Vite dev server;
 # it is not deployed). Used only by the `images` job in .github/workflows/ci.yml for
 # regwatch-web. Each entry expires; when it does, the job fails again until the finding is
-# fixed or re-accepted. Fix tracked in BL-60 (#29). Never add api-image findings here.
+# fixed or re-accepted. Fix tracked in BL-60 (#29); re-accepted by the owner on 2026-11-16 until
+# G2 (expiry 2027-03-01) for tar in pnpm 9 and esbuild under Vite 6. Never add api-image findings here.
 vulnerabilities:
   - id: CVE-2026-59873
     paths:
       - root/.cache/node/corepack/v1/pnpm/9.15.9/dist/node_modules/tar/package.json
     statement: tar bundled inside pnpm 9.15.9 (contract pins pnpm 9); used only at image build
-    expired_at: 2026-12-02
+    expired_at: 2027-03-01
   - id: CVE-2025-68121
     paths:
       - app/node_modules/.pnpm/@esbuild+linux-x64@0.25.12/node_modules/@esbuild/linux-x64/bin/esbuild
     statement: Go stdlib crypto/tls in the esbuild binary (Vite 6 pins esbuild 0.25); esbuild makes no TLS connections in the dev server
-    expired_at: 2026-12-02
+    expired_at: 2027-03-01
