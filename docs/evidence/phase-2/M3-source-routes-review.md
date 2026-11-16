@@ -81,3 +81,54 @@
    - J: every `q` probe 200 with total 0.
 3. **`/tmp/m3routes-review/unit_probe.py`:** `ZoneInfo(None)` raises `TypeError` (unreachable, the schema refuses `null`); all other probes handled. pydantic normalises `http://evil.example\@127.0.0.1/` to `http://evil.example/@127.0.0.1/`, `127.1` and `0x7f.1` to `127.0.0.1`, and removes a tab from the host.
 4. **`/tmp/m3routes-review/literal_probe.py`:** with the system resolver, `127.0.0.1`, `169.254.169.254`, `2130706433`, `[::1]` and `0x7f.1` are all `private-address`.
+
+## Re-verification (`sec/M3-source-routes-followups` at `20c9b74`)
+
+### Method
+- **Code:** I read `git show 20c9b74`: `capture/services.py`, `core/routing.py`, `tests/integration/test_sources.py`, the ASSUMPTIONS rows and BL-88.
+- **Tests:** `uv run pytest -q -m integration tests/integration/test_sources.py`: 39 passed. `uv run pytest -q tests/unit`: 702 passed. The throwaway container was removed afterwards.
+- **Proofs of concept:** I re-ran them in `/tmp/m3routes-review/`:
+  - `test_reverify.py` is the integration probe. Its resolver passes IP literals through and can be made slow.
+  - `cron_probe.py` probes `cron_ok` and `_LANGUAGE` directly.
+- **Ground rules:** no repository file other than this record was changed. No external network was used and the dev stack was not touched.
+
+### Verdict per finding
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 1 | closed, with one low residual (finding 13) | On an admin-approved override crawl source, an editor gets 403 for each of these changes: `url`, a seed URL, `allowed_domains`, a change to `max_depth` alone, `enabled: true` after a delete, and setting `override` again. Switching to `respect` while moving the source is allowed, and the policy then reads `respect`. The `source.robots_override` row now carries `robots_policy`, `override_reason`, `url`, `config` and `enabled` before and after. Any config change on an overridden source counts as new, not only URL changes. That is stricter than the ASSUMPTIONS wording ("New URLs") but safe. SafeFetcher finding 22 (a) is closed. |
+| 2 | closed, with one low residual (finding 15) | `update_source` reads the kind, rolls back, resolves, and only then locks (`services.py:334-341`). `create_source` resolves before its first query. 20 concurrent PATCHes of the same crawl source, each with 21 lookups of 3 s, all answered 200 in 3.34 s. A rename of that same source during them waited 0.12 s, against 5.10 s before. `GET /sources` answered in 0.02 s, so the slow saves held no pooled connection. A resolver that never answers is cut off at 10.02 s with 422 on every field. |
+| 3 | closed | `javascript:alert(1)` and ` javascript:alert(1)` (leading space) give 422 on `terms_url`, and an https link is accepted. `url: ""` is still stored as `''` (info, finding 14). |
+| 4 | closed | `inside.example` (private), `nowhere.example` (does not resolve) and `127.0.0.1` all give "the host must resolve to public addresses only". |
+| 5 | closed | The test resolver returns IP literals as themselves (`test_sources.py`, using `_is_ip`). The parametrised test now asserts `_NOT_PUBLIC` for URL fields, so a loopback literal is refused by the address policy, not by a missing name. The new finding-2 test checks POST together with a PATCH of another source, not of the same one. The probe above covers that case (info, finding 16). |
+| 6 | closed | `http://feeds.example\@127.0.0.1/rss` is stored as `http://feeds.example/@127.0.0.1/rss`, which is what was checked. `HTTPS://Feeds.Example/rss` is stored lower-cased (repository test). |
+| 7 | closed, with one info residual (finding 14) | A name with U+202E and a reason with a newline give 422, and `pt-BR` is accepted. `language: "en\n"` is still accepted, because `_LANGUAGE.match` with `$` allows a trailing newline. |
+| 8 | closed | `interval_seconds: 2**31` gives 422 ("at most 31622400 seconds"). `page=10**17` gives 422 on `/sources` and `/admin/users`. `page=1000000` with `page_size=200` gives 200. |
+| 9 | closed for the race and for ASCII cron; one low residual (finding 12) | Race probe: the job PATCH (cron) and the source PATCH (interval 1800, slowed by DNS) both answered 200. The final job is consistent (`cron` null, `interval` 1800), where it was a 500 before. The source PATCH now locks the job too, after DNS. `99 99 99 99 99` gives 422. `0 9 * JAN-DEC MON-FRI` and `0 0 * * 7` are accepted. |
+
+### New findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 12 | low | **`cron_ok` trusts `str.isdigit`, which is true for non-ASCII digits.** In `services.py:171` and `188`, `"²".isdigit()` is true but `int("²")` raises `ValueError`. `"١".isdigit()` is true and `int("١")` is 1.<br>**Failure case** (`test_reverify.py::test_cron_unicode_digits`, `cron_probe.py`):<br>- `² * * * *` and `*/² * * * *` answer **500** (generic `internal`, logged as `unhandled_error`).<br>- `١ * * * *` and `٥٩ * * * *` are saved with Arabic-Indic digits (201). The scheduler's cron parser then has to cope with them.<br>**Fix:** accept only ASCII digits (`text.isascii() and text.isdigit()`, or `re.fullmatch("[0-9]{1,2}", text)`), in both places. Add the four cases to the parametrised test. | | |
+| 13 | low | **A capture job can be turned back on without the override permission.** `check_robots` treats only `source.enabled` going from false to true as a new override (`services.py:163-164`). `enabled` on the job, through `PATCH /capture-jobs/{id}` or the nested `job`, is never looked at.<br>**Failure case** (`test_reverify.py::test_1`): after an editor deletes an override source, they set the job to `enabled: true` through either route (200). The result is source false, job true. While the source is disabled, BL-88 (a) covers this (the scheduler must also require `source.enabled`). It does not cover an admin pausing only the job of an enabled override source: the editor can resume it.<br>**Fix:** treat a job's `enabled` going from false to true as a new override when the source is overridden, in both job routes. Alternatively, record in ASSUMPTIONS and BL-88 that pausing an override means disabling the source, and have the scheduler require both flags. | | |
+| 14 | info | (a) `_LANGUAGE.match` with `$` accepts a trailing newline (`"en\n"` saved). Use `fullmatch`. (b) `url: ""` is stored as an empty string. Treat it as `null` or refuse it. | | |
+| 15 | low | **Save-time lookups can still fill the loop's default executor.** The deadline cancels the wait, but a cancelled `getaddrinfo` keeps its worker thread until glibc gives up (`policy.py:128-132`; the same mechanism as SafeFetcher finding 3). One save now starts up to 21 lookups at once. The default executor has `min(32, cpu + 4)` threads, so a couple of saves against a name server that never answers occupy it for the resolver's full retry time. While they do, other saves' lookups and `asyncio.to_thread` users (`core/objectstore.py:61,66`) queue behind them.<br>Password hashing uses anyio's own worker threads, so logins are not affected. This comes from code reading; demonstrating it needs a real unresponsive name server, which I did not run (no network).<br>**Fix:** bound save-time lookups with a module-level semaphore (for example 8 at a time across the process), or run them on a small dedicated executor. Rate-limit saves per user if needed. | | |
+| 16 | info | `test_lookups_have_one_deadline_and_run_before_the_lock` slows a POST and renames a different source, so it would pass even if a slow PATCH held the source lock again. Make the slow request a PATCH of the same source, as in `test_reverify.py::test_2`. | | |
+
+### Evidence (re-verification)
+1. `test_reverify.py`, abridged output:
+   - `1 url 403`, `seed 403`, `allowed_domains 403`, `depth only 403`, `respect+move 200 respect`, `editor re-override: 403`.
+   - `disabled: source enable 403 job route 200 nested job 200 -> source False job True`.
+   - `override rows: 2 ['config', 'enabled', 'override_reason', 'robots_policy', 'url']`.
+   - `20 slow PATCHes: [200, 200, 200]... in 3.34s; rename waited 0.12s; list 0.02s`.
+   - `never-answering: 422 after 10.02s`.
+   - `terms js 422`, `terms ws js 422`, `terms http 201`, `url empty 201 ''`.
+   - `inside`, `nowhere` and `127 literal`: 422 "the host must resolve to public addresses only".
+   - `backslash 201 {'feed_url': 'http://feeds.example/@127.0.0.1/rss'}`.
+   - `lang newline 201 'en\n'`, `name bidi 422`, `reason newline 422`, `interval 2**31 422`, `cron 99 422`.
+   - `page 1e17: 422`.
+   - `9 race: job PATCH 200 source PATCH 200 final None 1800`.
+   - `C '² * * * *' 500`, `C '*/² * * * *' 500`, `C '١ * * * *' 201`, `C '٥٩ * * * *' 201`.
+2. `cron_probe.py`: `cron_ok` raises `ValueError` for `²`, `*/²` and `1-²`. It returns True for `١` and `٥٩`. `_LANGUAGE.match("en\n")` is true.
+3. Suites: `test_sources.py` 39 passed, and `tests/unit` 702 passed.
+
+**Sign-off at re-verification:** signed off, because no critical, high or medium finding is open. Findings 1 to 9 are closed, and with finding 1 SafeFetcher finding 22 (a) is closed too. Three low findings are open: 12, 13 and 15. Findings 14 and 16 are info. They should be fixed in a follow-up before the scheduler lands (13 together with BL-88 (a)). Findings 10 and 11 are deferred to BL-88. · M3 source routes independent review · 2026-11-16
