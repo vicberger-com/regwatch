@@ -101,3 +101,27 @@ def test_application_role_cannot_update_or_delete_audit_log(
     url = postgres.url(empty_db)
     upgrade(url)
     asyncio.run(_audit_checks(url))
+
+
+def test_capture_models_match_the_tables(postgres: Postgres, empty_db: str) -> None:
+    """M3: every column the ORM maps for source, capture_job and capture_run exists in the
+    migrated database with the same nullability."""
+    from regwatch.capture import models
+    from regwatch.core.db import Base
+
+    upgrade(postgres.url(empty_db))
+    for table in (
+        models.Source.__table__,
+        models.CaptureJob.__table__,
+        models.CaptureRun.__table__,
+    ):
+        sql = (
+            "SELECT column_name || ':' || is_nullable FROM information_schema.columns "
+            f"WHERE table_name = '{table.name}';"
+        )
+        rows = postgres.psql(empty_db, sql)
+        db = dict(line.split(":") for line in rows.split() if ":" in line)
+        for column in table.columns:
+            assert column.name in db, f"{table.name}.{column.name} is not in the database"
+            assert (db[column.name] == "YES") == column.nullable, f"{table.name}.{column.name}"
+    assert "source" in Base.metadata.tables
