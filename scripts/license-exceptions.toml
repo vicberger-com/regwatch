@@ -32,6 +32,60 @@ scope = "any"
 reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE is the 3-clause text. The extension statically links Abseil (Apache-2.0) and pybind11 (BSD-3-Clause)"
 reviewed = "google/re2 tag 2025-11-05 (927f5d5) LICENSE, python/setup.py version 1.1.20251105, read 2026-11-13 (M2 review finding 1, BL-74); register row V"
 
+[[exception]]
+ecosystem = "python"
+package = "amqp"
+version = "5.4.2"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "celery/py-amqp tag v5.4.2 (9d4a51a) LICENSE, read 2026-11-16 (M3 scheduler); R-01 C6, register row V"
+
+[[exception]]
+ecosystem = "python"
+package = "billiard"
+version = "4.3.2"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "celery/billiard tag v4.3.2 (895817a) LICENSE.txt, read 2026-11-16 (M3 scheduler); R-01 C7, register row V"
+
+[[exception]]
+ecosystem = "python"
+package = "click-plugins"
+version = "1.1.1.2"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "click-contrib/click-plugins tag 1.1.1.2 (4ac07e5) LICENSE.txt, read 2026-11-16 (M3 scheduler); R-01 C10, register row V"
+
+[[exception]]
+ecosystem = "python"
+package = "prompt_toolkit"
+version = "3.0.53"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "prompt-toolkit/python-prompt-toolkit tag 3.0.53 (583b341) LICENSE, read 2026-11-16 (M3 scheduler); R-01 C12, register row V"
+
+[[exception]]
+ecosystem = "python"
+package = "python-dateutil"
+version = "2.9.0.post0"
+license = "Apache-2.0 AND BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause, and Apache-2.0 for contributions after 2017-12-01"
+reviewed = "dateutil/dateutil tag 2.9.0.post0 (1ae8077) LICENSE, read 2026-11-16 (M3 scheduler); R-01 C14, register row V"
+
+[[exception]]
+ecosystem = "python"
+package = "vine"
+version = "5.1.0"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "celery/vine tag v5.1.0 (8c08b39) LICENSE, read 2026-11-16 (M3 scheduler); R-01 C8, register row V"
+
 # --- Development tooling under licenses allowed only for data -------------------------------
 # caniuse-lite is browserslist build data, not shipped. MIT-0, BlueOak-1.0.0 and Python-2.0 joined
 # the 3.5 allow-list by owner decision (BL-59, ADR-0003 amendment 2), so those packages need no entry.
