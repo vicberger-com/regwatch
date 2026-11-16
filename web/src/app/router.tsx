@@ -204,7 +204,7 @@ const auditRoute = createRoute({
   component: function Audit() {
     const { me } = authedRoute.useRouteContext();
     if (!hasPermission(me, "audit.read")) return <NotPermitted />;
-    return <AuditPage />;
+    return <AuditPage canListUsers={hasPermission(me, "users.manage")} />;
   },
 });
 

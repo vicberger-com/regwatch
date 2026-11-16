@@ -1,16 +1,19 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { api, type Schemas } from "@/lib/api/client";
+import { usersQuery } from "@/features/admin/api";
 import { failure, problemText } from "@/lib/auth/session";
 
+import {
+  fetchForExport,
+  MAX_EXPORT_ROWS,
+  toCsv,
+  type AuditFilters,
+} from "./csv";
+
 type Entry = Schemas["AuditEntry"];
-interface Filters {
-  action?: string;
-  entity_type?: string;
-  from?: string;
-  to?: string;
-}
+type Filters = AuditFilters;
 const PAGE_SIZE = 50;
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -35,9 +38,31 @@ function dayStart(value: string): string | undefined {
   return value ? `${value}T00:00:00Z` : undefined;
 }
 
-/** `/admin/audit` (screens.md): filterable table with before and after values. */
-export function AuditPage() {
+function saveCsv(csv: string) {
+  const url = URL.createObjectURL(
+    new Blob([csv], { type: "text/csv;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "regwatch-audit.csv";
+  link.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 10_000);
+}
+
+/** `/admin/audit` (screens.md): filterable table with before and after values, CSV export. */
+export function AuditPage({ canListUsers }: { canListUsers: boolean }) {
+  // The actor filter takes a user id; the list of users needs users.manage (U-M1-3).
+  const people = useQuery({ ...usersQuery, enabled: canListUsers });
+  const exporter = useMutation({
+    mutationFn: fetchForExport,
+    onSuccess: ({ entries }) => {
+      saveCsv(toCsv(entries));
+    },
+  });
   const [draft, setDraft] = useState({
+    actor: "",
     action: "",
     entity_type: "",
     from: "",
@@ -50,6 +75,7 @@ export function AuditPage() {
   function apply(event: FormEvent) {
     event.preventDefault();
     const next: Filters = {};
+    if (draft.actor) next.actor = draft.actor;
     if (draft.action.trim()) next.action = draft.action.trim();
     if (draft.entity_type.trim()) next.entity_type = draft.entity_type.trim();
     const from = dayStart(draft.from);
@@ -86,6 +112,31 @@ export function AuditPage() {
         aria-label="Filter audit log"
         className="flex flex-wrap items-end gap-3"
       >
+        {canListUsers ? (
+          <label className="flex flex-col gap-1">
+            <span>Actor</span>
+            <select
+              value={draft.actor}
+              onChange={(e) => {
+                setDraft({ ...draft, actor: e.target.value });
+              }}
+              className={field}
+            >
+              <option value="">Anyone</option>
+              {[...(people.data ?? [])]
+                .sort((a, b) => a.email.localeCompare(b.email))
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name} ({u.email})
+                  </option>
+                ))}
+            </select>
+          </label>
+        ) : (
+          <p className="text-sm text-text-muted">
+            Filtering by actor needs the users.manage permission.
+          </p>
+        )}
         {text("action", "Action")}
         {text("entity_type", "Entity type")}
         {text("from", "From (UTC day)", "date")}
@@ -93,7 +144,29 @@ export function AuditPage() {
         <button type="submit" className={button}>
           Apply filters
         </button>
+        <button
+          type="button"
+          className={button}
+          disabled={exporter.isPending}
+          onClick={() => {
+            exporter.mutate(filters);
+          }}
+        >
+          {exporter.isPending ? "Exporting…" : "Export CSV"}
+        </button>
       </form>
+      {exporter.isSuccess && exporter.data.total > MAX_EXPORT_ROWS && (
+        <p role="status" className="text-warning">
+          The export holds the newest {String(MAX_EXPORT_ROWS)} of{" "}
+          {String(exporter.data.total)} entries; narrow the filters for the
+          rest.
+        </p>
+      )}
+      {exporter.isError && (
+        <p role="alert" className="text-critical">
+          {problemText(exporter.error, "The export failed.")}
+        </p>
+      )}
       {audit.isError && (
         <p role="alert" className="text-critical">
           {problemText(audit.error, "The audit log could not be loaded.")}

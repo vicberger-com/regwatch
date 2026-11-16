@@ -42,6 +42,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - License allow-list: PSF-2.0 and SIL OFL-1.1 (fonts only) added by owner decision; ADR-0003 amended (BL-53, BL-57, REQ-20)
 
 ### Added
+- M1 web audit log: an actor filter (a list of users, for holders of `users.manage`; others see why it is missing) and CSV export of the filtered entries, newest 10,000 at most, with every field quoted and spreadsheet formulas defused (#32, BL-83, U-M1-3, REQ-16)
 - M1 web user editing on `/admin/users`: an Edit action per user changes the name and roles (one's own roles are left to another administrator), with focus moved into the form and Escape to close; a locked account's action reads Unlock (#32, BL-83, U-M1-2, U-M1-7, REQ-16)
 - M1 web branding screen `/admin/branding` for `settings.manage` holders: logo upload (PNG or SVG, 1 MB checked first, the API's reason shown when it refuses a file) with the current logo; site title, company fields and primary colour (hex checked first) (#32, BL-68, REQ-16)
 - M1 web legal page editor on `/admin/branding`: the legal Markdown opens from the stored text so saving never wipes it, with the required markings and a preview of the saved page as the API renders and sanitizes it (#32, BL-68, REQ-16)

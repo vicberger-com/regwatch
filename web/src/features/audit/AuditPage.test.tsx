@@ -153,4 +153,119 @@ describe("audit log screen", () => {
     const more = await screen.findByText(/more characters/);
     expect(more.textContent.length).toBeLessThan(VALUE_MAX + 100);
   });
+  it("filters by actor when the users list is available (U-M1-3)", async () => {
+    const seen: string[] = [];
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ME, permissions: ["audit.read", "users.manage"] },
+      ],
+      "GET /admin/users": [
+        200,
+        {
+          items: [
+            {
+              id: "u-1",
+              email: "ana@example.org",
+              display_name: "Ana",
+              status: "active",
+              roles: [],
+              last_login_at: null,
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 200,
+        },
+      ],
+    });
+    const fake = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) => {
+      const url = new URL(request.url);
+      if (url.pathname.endsWith("/admin/audit")) {
+        seen.push(url.search);
+        const body = { items: [ROW], total: 1, page: 1, page_size: 50 };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            headers: { "Content-Type": "application/json" },
+          }),
+        );
+      }
+      return fake(request);
+    });
+    renderAt("/admin/audit");
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Filter audit log" });
+    await user.selectOptions(
+      await within(form).findByLabelText("Actor"),
+      "u-1",
+    );
+    await user.click(
+      within(form).getByRole("button", { name: "Apply filters" }),
+    );
+    await vi.waitFor(() => {
+      expect(new URLSearchParams(seen.at(-1)).get("actor")).toBe("u-1");
+    });
+  });
+
+  it("explains the missing actor filter without users.manage", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ME],
+      "GET /admin/audit": [
+        200,
+        { items: [], total: 0, page: 1, page_size: 50 },
+      ],
+    });
+    renderAt("/admin/audit");
+    expect(
+      await screen.findByText(/needs the users.manage permission/),
+    ).toBeInTheDocument();
+  });
+
+  it("exports every matching page as CSV, and says when it stops at the cap", async () => {
+    const pages: string[] = [];
+    fakeApi({ "GET /auth/me": [200, ME] });
+    const fake = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) => {
+      const url = new URL(request.url);
+      if (!url.pathname.endsWith("/admin/audit")) return fake(request);
+      const size = Number(url.searchParams.get("page_size"));
+      const page = Number(url.searchParams.get("page"));
+      if (size === 200) pages.push(String(page));
+      const items = Array.from({ length: size }, (_, i) => ({
+        ...ROW,
+        id: `${String(page)}-${String(i)}`,
+      }));
+      const body = { items, total: 20_000, page, page_size: size };
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    const blobs: Blob[] = [];
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: (b: Blob) => {
+          blobs.push(b);
+          return "blob:audit";
+        },
+        revokeObjectURL: () => undefined,
+      }),
+    );
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    renderAt("/admin/audit");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Export CSV" }));
+    expect(
+      await screen.findByText(/newest 10000 of 20000/),
+    ).toBeInTheDocument();
+    expect(click).toHaveBeenCalled();
+    expect(pages).toHaveLength(50); // 50 pages of 200
+    const text = await blobs[0]?.text();
+    expect(text?.split("\r\n")).toHaveLength(10_002);
+  });
 });
