@@ -447,3 +447,13 @@ Findings 17 to 21 are low and 22 is info. Sign-off can follow when 14 to 16 are 
    - Cancelled checks: 0 locks left, nothing cached.
 6. **`fix3.py`, clamps:** `MemoryRateLimiter` intervals: 3,600 s for `1e20`, `inf` and `nan`; 0.001 s for `-5` and `0`. A NaN `max_wait_s` accepts the take (27).
 7. **`clamp_valkey.py`:** `1e20`, `1e9`, `inf` and `nan` all succeed, each with a TTL of 7,260 s after two takes. `-5` gives a TTL of 60 s.
+
+### Re-verification of findings 26 and 27 (`sec/M3-fetch-followups` at `7a02053`)
+**Method:** I read `git show 7a02053`. The four SafeFetcher unit files pass (139 tests), and coverage of `regwatch.capture.safe_fetch` is 100 percent (467 statements, 128 branches). I ran a new probe, `/tmp/m3review/fix4.py`. No Valkey was needed: the script must not run when the input is refused, so a stub client that fails if it is called stood in for one. No dev-stack data was changed, no bind was widened, no external network was used, and only this record was changed (it is not committed).
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 26 | closed | `_parse_text` (`robots.py:50-56`) cuts at the later of the last LF and the last CR at or before `PARSE_BYTES`. The `Disallow: /private` rule is enforced over the limit in all three line-end styles: CR-only (open before), LF and CRLF. A CRLF pair split by the limit keeps the CR and drops the LF, so 512,001 characters are parsed and the line still ends. A CR-only file with an `Allow: /private-docs` straddling the limit drops that partial line, and the request is still refused. A single line longer than the limit still parses as empty, so everything is allowed. That is RFC-consistent, as noted under 26, and not a defect. |
+| 27 | closed | `_check_wait` (`rate.py:58-61`) refuses NaN, -1, +inf and -inf with `ValueError` in both `MemoryRateLimiter.take` and `ValkeyRateLimiter.take`. It runs before any state change: the in-memory table stays empty, and the stub Valkey script is never called. A `max_wait_s` of 0 or 120 is still accepted. |
+
+**Sign-off:** signed off; no finding above info is open in slices 1 to 4. 20(b) is deferred to BL-87, and 22(a) to the routes slice. · M3 SafeFetcher independent review · 2026-11-16
