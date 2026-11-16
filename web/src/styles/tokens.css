@@ -18,7 +18,7 @@
   --good: #1e7f4f;
   --warning: #b7791f;
   --critical: #b23a3a;
-  --focus: #ffb400;
+  --focus: #b45309; /* 4.73:1 on --bg, 5.02:1 on --surface (CP-09, use testing U-M0-2) */
   /* Map recency scale, 5 steps: no change in period to most recent. */
   --map-0: #e6ecf3;
   --map-1: #b9cbe0;
@@ -68,6 +68,7 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --focus: #ffb400; /* the light theme's darker amber is too faint here (CP-09) */
   --bg: #0f141a;
   --surface: #171e26;
   --border: #2a3440;

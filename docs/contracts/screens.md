@@ -6,7 +6,7 @@ Corporate, quiet, dense enough for analysts. One accent colour; status colours o
 
 | Token group | Values (light theme; dark and high-contrast override in `tokens.css`) |
 | --- | --- |
-| Colour | `--bg: #F7F8FA`, `--surface: #FFFFFF`, `--border: #D9DEE5`, `--text: #1B2430`, `--text-muted: #5B6675`, `--accent: #1F5AA6` (replaceable by `branding.primary_color`), `--accent-contrast: #FFFFFF`, `--good: #1E7F4F`, `--warning: #B7791F`, `--critical: #B23A3A`, `--focus: #FFB400` (3 px outline) |
+| Colour | `--bg: #F7F8FA`, `--surface: #FFFFFF`, `--border: #D9DEE5`, `--text: #1B2430`, `--text-muted: #5B6675`, `--accent: #1F5AA6` (replaceable by `branding.primary_color`), `--accent-contrast: #FFFFFF`, `--good: #1E7F4F`, `--warning: #B7791F`, `--critical: #B23A3A`, `--focus: #B45309` in light (4.73:1 on `--bg`), `#FFB400` in dark and high contrast (3 px outline, 2 px offset; CP-09) |
 | Map scale (recency) | 5 steps from `--map-0: #E6ECF3` (no change in period) to `--map-4: #123E7A`; high-contrast theme adds diagonal hatch patterns per step |
 | Type | Inter; scale 12 / 13 / 14 (body) / 16 / 20 / 24 px; line height 1.45; weights 400 and 600 only |
 | Spacing | 4 px base: 4, 8, 12, 16, 24, 32, 48. Density setting multiplies paddings by 0.85 (compact), 1 (default), 1.2 (comfortable) |
