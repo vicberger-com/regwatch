@@ -172,8 +172,21 @@ Read the same way as the BL-68 addendum: from each project's own repository at t
 | C1 | protego | scrapy/protego | 0.7.0 | 06ccad42ec281e7fa2db213e5af907c9e83129c9 | LICENSE | BSD-3-Clause | allowed |
 | C2 | tenacity | jd/tenacity | 9.2.1 | 4410996dd9a96864a2733ce0778bcaa112b72811 | LICENSE | Apache-2.0 | allowed |
 | C3 | redis-py | redis/redis-py | v8.1.0 | e013126df18e476fbb8b8215f040f39bd3242683 | LICENSE | MIT | allowed |
+| C4 | Celery | celery/celery | v5.7.0 | 6fcdbf904d410749ad7676d8ff6b1b25d6e19675 | LICENSE | BSD-3-Clause | allowed; the rendered `docs` directory is CC BY-SA 4.0 and is not in the wheel, so nothing of it is bundled |
+| C5 | kombu | celery/kombu | v5.7.0 | 703e96f22fb7a9c8da9a560b8b01f8766e654265 | LICENSE | BSD-3-Clause | allowed |
+| C6 | amqp (py-amqp) | celery/py-amqp | v5.4.2 | 9d4a51a104021ef2f1920744087add8638cc2cc6 | LICENSE | BSD-3-Clause | allowed |
+| C7 | billiard | celery/billiard | v4.3.2 | 895817a456af1a56c28675dfe4e22b87b991a72a | LICENSE.txt | BSD-3-Clause | allowed |
+| C8 | vine | celery/vine | v5.1.0 | 8c08b391a9f8976153a3a1972c66296e01f60c66 | LICENSE | BSD-3-Clause | allowed |
+| C9 | click-didyoumean | click-contrib/click-didyoumean | v0.3.1 | e571cc808c5107fbe5b05b1d42af05d118b066e1 | LICENSE | MIT | allowed |
+| C10 | click-plugins | click-contrib/click-plugins | 1.1.1.2 | 4ac07e5eeed7f80f193776e54f5b7e851f055950 | LICENSE.txt | BSD-3-Clause | allowed |
+| C11 | click-repl | click-contrib/click-repl | 0.4.1 | 4cc38ffd736406bd0c05510b1ef005bd52422457 | LICENSE | MIT | allowed |
+| C12 | prompt-toolkit | prompt-toolkit/python-prompt-toolkit | 3.0.53 | 583b3412c792a5cc9f01adde603679f3824a88f3 | LICENSE | BSD-3-Clause | allowed |
+| C13 | wcwidth | jquast/wcwidth | 0.9.4 | 2a8edf18133391fd45b4415eca73f6b34f71d0dd | LICENSE | MIT; Markus Kuhn's table code under a notice that grants use, copying, modification and distribution with no conditions | allowed (the Kuhn notice asks less than ISC) |
+| C14 | python-dateutil | dateutil/dateutil | 2.9.0.post0 | 1ae807774053c071acc9e7d3d27778fba0a7773e | LICENSE | Apache-2.0 AND BSD-3-Clause (Apache-2.0 for contributions after 2017-12-01 and re-licensed code, BSD-3 for the rest) | allowed |
+| C15 | six | benjaminp/six | 1.17.0 | ebd9b3af90247b8858d415a05e96e9ee61e48d07 | LICENSE | MIT | allowed |
+| C16 | tzlocal | regebro/tzlocal | 5.4.5 | ab833e7364aa89ff2d0560d94b74261a32a7af35 | LICENSE.txt | MIT | allowed |
 
-None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
+C4 to C16 are Celery 5.7.0 and what it installs on Python 3.12 that was not yet in the register (click, packaging, typing-extensions and redis-py already were), resolved with `uv pip compile` and read at each tag on 2026-11-16; the owner approved the rows the same day. GitHub classified Celery, amqp, vine, click-plugins, wcwidth and dateutil as NOASSERTION, so their texts were read in full. None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
 
 ## Exceptions (component evaluation records)
 
