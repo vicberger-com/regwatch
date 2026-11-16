@@ -393,7 +393,10 @@ async def export_audit(
     while not full:
         stmt = _audit_select(conds)
         if last is not None:
-            stmt = stmt.where(tuple_(AuditLog.occurred_at, AuditLog.id) < last)
+            # The plain bound lets PostgreSQL use the occurred_at index (re-verification 2, S1).
+            stmt = stmt.where(
+                AuditLog.occurred_at <= last[0], tuple_(AuditLog.occurred_at, AuditLog.id) < last
+            )
         batch = (await db.execute(stmt.limit(EXPORT_BATCH))).tuples().all()
         for r, email in batch:
             if not out.add(_audit_entry(r, email)):

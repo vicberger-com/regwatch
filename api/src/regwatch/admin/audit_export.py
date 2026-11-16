@@ -4,7 +4,7 @@ Every field is quoted with quotes doubled (RFC 4180). A value a spreadsheet woul
 formula (starting, after any whitespace, with ``=``, ``+``, ``-``, ``@`` or their full-width
 forms, or starting with a tab, carriage return or line feed) gets a leading apostrophe, so
 opening the file runs nothing. The export stops at ``MAX_ROWS`` rows or ``MAX_BYTES`` bytes,
-whichever comes first, and says so in its last line.
+whichever comes first; the ``X-Export-Truncated`` response header says whether it did.
 """
 
 from __future__ import annotations

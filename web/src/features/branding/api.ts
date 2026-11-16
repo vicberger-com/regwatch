@@ -28,7 +28,16 @@ export const brandingQuery = queryOptions({
 export const legalQuery = queryOptions({
   queryKey: ["branding", "legal"],
   queryFn: async () => {
-    // Revalidate: the public 60 s cache must not show the editor an old page (review R4).
+    const result = await api.GET("/legal");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+});
+
+/** The editor's preview revalidates past the public 60 s cache (re-verification R4, S3). */
+export const legalPreviewQuery = queryOptions({
+  queryKey: ["branding", "legal", "preview"],
+  queryFn: async () => {
     const result = await api.GET("/legal", { cache: "no-cache" });
     if (!result.response.ok || result.data === undefined) throw failure(result);
     return result.data;

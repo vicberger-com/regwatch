@@ -7,7 +7,7 @@ import { settingsQuery } from "@/features/settings/api";
 import {
   brandingQuery,
   COLOR,
-  legalQuery,
+  legalPreviewQuery,
   MAX_LOGO_BYTES,
   useSaveBranding,
   useSaveLegal,
@@ -200,7 +200,7 @@ function BrandingForm({ branding }: { branding: Branding }) {
 function LegalForm() {
   // The stored Markdown comes from the settings list (same permission), so the editor starts
   // from the current page instead of empty, and saving never wipes text by accident.
-  const legal = useQuery(legalQuery);
+  const legal = useQuery(legalPreviewQuery);
   const settings = useQuery(settingsQuery);
   if (legal.isPending || settings.isPending)
     return <p>Loading the legal page…</p>;
