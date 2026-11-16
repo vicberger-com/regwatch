@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -331,3 +332,22 @@ async def test_run_history_and_health(admin: httpx.AsyncClient, db_url: str) -> 
     assert (await admin.get(_api(f"/sources/{sid}/health"))).json()["last_error"] is None
     viewer = await _as_new_user(admin, "vh@example.org", ["viewer"])
     assert (await viewer.get(_api("/capture-runs"))).status_code == 403  # no sources.read
+
+
+async def test_saving_a_schedule_sets_the_next_run(admin: httpx.AsyncClient) -> None:
+    """An interval job runs soon after it is saved; a cron job at its next time; a schedule
+    that never fires is refused (capture/schedule.py)."""
+    from datetime import datetime
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    first = datetime.fromisoformat(made["job"]["next_run_at"])
+    assert abs((datetime.now(first.tzinfo) - first).total_seconds()) < 60
+    jid = made["job"]["id"]
+    cron = await admin.patch(_api(f"/capture-jobs/{jid}"),
+                             json={"cron": "0 9 * * *", "timezone": "Europe/Vienna"})  # fmt: skip
+    nxt = datetime.fromisoformat(cron.json()["next_run_at"])
+    assert nxt.astimezone(ZoneInfo("Europe/Vienna")).hour == 9 and nxt.minute == 0
+    never = await admin.patch(_api(f"/capture-jobs/{jid}"), json={"cron": "0 0 30 2 *"})
+    assert never.status_code == 422
+    unchanged = await admin.patch(_api(f"/capture-jobs/{jid}"), json={"max_items_per_run": 5})
+    assert unchanged.json()["next_run_at"] == cron.json()["next_run_at"]

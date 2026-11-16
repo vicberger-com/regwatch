@@ -30,6 +30,7 @@ from regwatch.capture.safe_fetch.policy import (
     is_ip,
     validate_source_url,
 )
+from regwatch.capture.schedule import CronError, next_run, parse_cron
 from regwatch.capture.schemas import CaptureJob as JobOut
 from regwatch.capture.schemas import CaptureJobWrite, SourceHealth, SourceWrite
 from regwatch.capture.schemas import CaptureRun as RunOut
@@ -72,9 +73,6 @@ _OVERRIDE_TARGET = ("url", "config")
 # saving sources tells nothing about internal names or addresses (findings 4 and the record).
 _NOT_PUBLIC = "the host must resolve to public addresses only"
 _LANGUAGE = re.compile(r"^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}$")
-_CRON_RANGES = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
-_CRON_NAMES = {3: "JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split(),
-               4: "SUN MON TUE WED THU FRI SAT".split()}  # fmt: skip
 
 
 def invalid(field: str, message: str) -> ProblemError:
@@ -208,37 +206,6 @@ def check_resume(
     return True
 
 
-def _cron_value(index: int, text: str) -> int | None:
-    if text.isascii() and text.isdigit():  # not ² or ١ (re-verification 12)
-        return int(text)
-    names = _CRON_NAMES.get(index, [])
-    if text.upper() in names:
-        return names.index(text.upper()) + (1 if index == 3 else 0)
-    return None
-
-
-def cron_ok(expr: str) -> bool:
-    """Five fields of numbers, names, ``*``, ranges, lists and steps, each within its range."""
-    fields = expr.split()
-    if len(expr) > 200 or len(fields) != 5:
-        return False
-    for index, field in enumerate(fields):
-        low, high = _CRON_RANGES[index]
-        for part in field.split(","):
-            span, slash, step = part.partition("/")
-            if slash and not (step.isascii() and step.isdigit() and 1 <= int(step) <= high):
-                return False
-            if span == "*":
-                continue
-            first, dash, last = span.partition("-")
-            ends = [_cron_value(index, first), *([_cron_value(index, last)] if dash else [])]
-            if any(e is None or not low <= e <= high for e in ends):
-                return False
-            if dash and ends[0] > ends[1]:  # type: ignore[operator]
-                return False
-    return True
-
-
 def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
     """A job runs on a cron expression or an interval; setting one clears the other."""
     if values.get("cron") is not None and "interval_seconds" not in values:
@@ -249,8 +216,11 @@ def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
     interval = values.get("interval_seconds", job.interval_seconds if job else None)
     if cron is not None and interval is not None:
         raise invalid("job.cron", "give a cron expression or an interval, not both")
-    if cron is not None and not cron_ok(cron):
-        raise invalid("job.cron", "five cron fields, each within its range")
+    if cron is not None:
+        try:
+            parse_cron(cron)
+        except CronError:
+            raise invalid("job.cron", "five cron fields, each within its range") from None
     if interval is not None and interval > MAX_INTERVAL:
         raise invalid("job.interval_seconds", f"at most {MAX_INTERVAL} seconds (a year)")
     if cron is None and interval is None:
@@ -270,6 +240,23 @@ def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
                 "extraction_rules", "change_threshold_pct", "enabled"):  # fmt: skip
         if key in values and values[key] is None:
             raise invalid(f"job.{key}", "may not be empty")
+
+
+_SCHEDULE = ("cron", "interval_seconds", "timezone", "enabled")
+
+
+def reschedule(job: CaptureJob, values: dict[str, Any], *, new: bool = False,
+               now: datetime | None = None) -> None:  # fmt: skip
+    """Set ``next_run_at`` when a save changes when the job runs; a schedule that never fires
+    (such as 30 February) is refused."""
+    if not new and not any(k in values for k in _SCHEDULE):
+        return
+    now = now or datetime.now(UTC)
+    when = next_run(job.cron, job.interval_seconds, job.timezone, now)
+    if when is None:
+        raise invalid("job.cron", "this schedule never runs")
+    # An interval job runs first soon after it is created or changed, not one interval later.
+    job.next_run_at = now if job.cron is None else when
 
 
 async def jurisdiction_ids(db: AsyncSession, codes: list[str]) -> list[uuid.UUID]:
@@ -364,6 +351,8 @@ async def create_source(db: AsyncSession, body: SourceWrite, principal: Principa
     await db.flush()
     await db.refresh(source)
     await db.refresh(job)
+    reschedule(job, job_values, new=True)
+    await db.flush()
     audit(db, "source.create", "source", source.id, actor=actor, ip=ip,
           after={**source_snapshot(source), "job": job_snapshot(job)})  # fmt: skip
     if new_override:
@@ -398,6 +387,8 @@ async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrit
         setattr(source, key, value)
     for key, value in job_values.items():
         setattr(job, key, value)
+    if job is not None:
+        reschedule(job, job_values)
     await db.flush()
     await db.refresh(source)
     if job is not None:
@@ -474,6 +465,7 @@ async def update_job(db: AsyncSession, job_id: uuid.UUID, body: CaptureJobWrite,
     before = job_snapshot(job)
     for key, value in values.items():
         setattr(job, key, value)
+    reschedule(job, values)
     await db.flush()
     await db.refresh(job)
     after = job_snapshot(job)
