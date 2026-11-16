@@ -239,3 +239,73 @@ A2, B3 and B4 are fixed; B2 is covered by R1, and A2's proxy rate limit is BL-86
 - **R4 (info):** the legal editor's query sends `cache: "no-cache"`, so its preview revalidates instead of using the 60-second public cache.
 - **R5 (info):** the audit row no longer records `total`, which came from a second query. It records the rows written and whether a cap was reached.
 
+
+## Re-verification 2 (G1 addendum independent review, 2026-11-16)
+Against `sec/M1-audit-export-followups` at `1c1174b` (diff `f995584..1c1174b`, 8 files).
+
+**Method.**
+- Read the whole diff and the resulting code:
+  - `admin/services.py:333-407` (`_audit_conds`, `_audit_entry`, `_audit_select`, `export_audit`, `list_audit`);
+  - `admin/audit_export.py` (`CsvBuilder`);
+  - `admin/router.py:190-216`;
+  - `web/src/features/branding/api.ts:28-36`;
+  - the `audit_log` table in `alembic/versions/0001_baseline.sql:318-328`.
+- Re-ran `/tmp/g1addendum/export_probe.py` unchanged. It exercises `to_csv`, which is kept as a wrapper around `CsvBuilder`.
+- Added these probes in `/tmp/g1addendum/`:
+  - `export_probe2.py`: copies `export_audit`'s loop (batches of `services.EXPORT_BATCH` entries fed to `CsvBuilder`) and measures peak memory and time spent on the loop;
+  - `keyset_probe.py`: the SQL the keyset step emits for PostgreSQL, and the paging logic on 1,000 rows with only 3 distinct timestamps;
+  - `nocache_probe.mjs`: whether openapi-fetch 0.17.0, as the web client uses it, carries `cache: "no-cache"` into the `Request` that the app's custom `fetch` receives.
+- Tests: `uv run pytest -q tests/unit` 551 passed, and `export_gate.py` still gives an anonymous 401. I read the two new integration tests but did not run them, since the test database runs only in Docker. There is no browser on the host.
+- Only this record was changed, and it is not committed.
+
+### Correction to re-verification 1
+In the B3 verdict I wrote "The file now ends with a truncation line." That is wrong. The module docstring of `audit_export.py` says the export "says so in its last line", but neither `to_csv` nor `CsvBuilder` writes such a line. Truncation is carried only by `X-Export-Truncated`, the on-screen notice and the `audit.export` row, so a saved file still does not say it was cut. See S4.
+
+### Verdicts
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| R1 | fixed | `export_audit` reads keyset batches of 100 (`services.py:393-404`), adds each row to `CsvBuilder`, and stops at the first row that does not fit. It holds one batch at a time; the `AuditLog` objects are not modified, so the session's identity map keeps them only weakly. `export_probe2.py`, rows with a 200,000-character `before` and `after`: peak 59 MiB at 34 rows and 19.5 MiB of CSV, where loading all 10,000 had come to about 3.7 GiB. Typical rows: peak 19 MiB for 10,000 rows and 6.3 MiB of CSV. tracemalloc does not count the driver's and ORM's copy of the current batch, which is up to about 100 × 2 × 0.4 MB of JSON text, so the real peak is about 100 to 200 MB. Concurrent exports each add that, and there is no per-user limit yet (R3). |
+| R2 | fixed for browsers that send Fetch Metadata | The route refuses `Sec-Fetch-Site` values other than `same-origin` or `none` with 403 before `export_audit` runs (`router.py:204-205`). A refused request therefore writes no row and reads nothing. The anonymous gate still answers first (401). Current Chromium, Firefox and Safari 16.4 or later mark a cross-site link, redirect, form or `window.location` as `cross-site`. Sibling-subdomain sites are `same-site`, which is also refused. `none` means the user typed, pasted or bookmarked the URL, which a third-party page cannot produce. If the header is absent, the request is treated as same-origin; see S2. |
+| R3 | properly deferred | BL-86 (e) holds the per-user export limit (8.2: 20 outputs an hour per user) and the indexes on `audit_log.action` and `actor_user_id`. In part, the loop now yields between batches (`asyncio.sleep(0)`, plus the awaits on each batch query). The longest synchronous stretch per batch was 21 ms for typical rows and 110 ms for the largest, against about 250 ms for one whole export before. Moving the work to `asyncio.to_thread` is not listed. With the yielding batches, that is no longer needed. |
+| R4 | fixed | `legalQuery` passes `{ cache: "no-cache" }`. In openapi-fetch 0.17.0 this lands in `requestInit` and then in the `Request` handed to the app's `fetch(request)`: `nocache_probe.mjs` shows `no-cache` with the option and `default` without it. A `no-cache` request is never answered from the HTTP cache without revalidation. So after a save, the editor's preview shows the new page. See S3 for the side effect on the public page. |
+| R5 | fixed | The export no longer calls `list_audit`, so there is no second statement, and the row records only `rows` and `truncated`. `truncated` is now exact. It is set only when a row exists beyond a cap. `export_probe2.py` confirms both cases: exactly 10,000 rows with a further batch empty gives `false`; 10,001 rows gives `true` (rows 10,000). The oversized case gives `true` at 34 rows. |
+
+### Regression checks
+- **Keyset with equal `occurred_at`:**
+  - `occurred_at` is `now()`, the transaction start time, so all rows from one transaction share it (a taxonomy import, for example), and `id` (`uuidv7()`, the primary key) breaks the tie.
+  - The emitted SQL is `(audit_log.occurred_at, audit_log.id) < (:ts, :id::UUID) ORDER BY occurred_at DESC, id DESC LIMIT 100`. Row comparison in PostgreSQL is lexicographic and matches the sort order, so no row is skipped or repeated at a tie.
+  - `keyset_probe.py`: 1,000 rows over 3 timestamps, batches of 7, all 1,000 rows exported once in sort order.
+  - `last` is the last row added, and the timestamps keep microseconds both ways through asyncpg, so equality holds exactly.
+  - Rows committed during the export carry later timestamps and are excluded, apart from S1's edge case.
+- **`Sec-Fetch-Site` and clients without it:**
+  - Non-browser clients (curl, scripts, the tests) send no header and are allowed. That is correct, because CSRF needs a victim's browser, and such a client must hold a session and `audit.read` anyway.
+  - The weak spot is browsers that do not send Fetch Metadata, such as Safari before 16.4. For them the R2 attack still works (S2).
+  - Header case does not matter, since Starlette's lookup ignores it.
+  - The check comes after the gate, so it reveals nothing to anonymous callers.
+- **`cache: "no-cache"` honoured:** yes, as shown under R4. No other query got the option. `publicBrandingQuery` keeps the 60 s cache, which is fine, because the signed-in screens use `GET /branding`, which is not cached.
+- **Still in place:** `Cache-Control: no-store` and the fixed `Content-Disposition` on the export; the audit row is still committed before the body is returned; `list_audit` behaves as before and now shares `_audit_conds` and `_audit_select` with the export.
+
+### New findings
+| # | Severity | Location | Description and failure scenario | Fix |
+| --- | --- | --- | --- | --- |
+| S1 | info | `api/src/regwatch/admin/services.py:394-397`; `alembic/versions/0001_baseline.sql:327` | **The keyset step may not use an index, so each batch can rescan the rows already exported.** The only time index is `ix_audit_time (occurred_at DESC)`. PostgreSQL can use a row comparison `(occurred_at, id) < (…)` as an index condition only on a composite B-tree with those columns. Otherwise it may walk `ix_audit_time` from the newest row and filter, re-reading every row of earlier batches for each new batch. For 100 batches that is about 500,000 row visits instead of 10,000. This comes from planner behaviour and was not measured: there is no PostgreSQL outside Docker here. A separate edge case: a row whose transaction began before the export and committed during it has an older `occurred_at`, so it can appear even though it was not visible when the export started. That is harmless. | Add the redundant `AuditLog.occurred_at <= last[0]` next to the row comparison, so `ix_audit_time` bounds each batch. Add `(occurred_at DESC, id DESC)` to BL-86 (e)'s index work. Check with `EXPLAIN` on the test database. |
+| S2 | info | `api/src/regwatch/admin/router.py:204` | **Without `Sec-Fetch-Site`, a request counts as same-origin.** Browsers that do not send Fetch Metadata (Safari before 16.4, older embedded views) are still open to the cross-site export of R2, and so is any future fetch path that strips the header. Impact is as before: rows written under the victim's name and a forced download, no data to the attacker. | Optional, for every browser: the web client sends a custom header on this request only (for example `X-Regwatch-Export: 1`), and the route requires it. A navigation cannot set headers, and a cross-origin `fetch` with a custom header needs a CORS preflight, which the API does not grant. Then keep the `Sec-Fetch-Site` rule as a second layer. |
+| S3 | info | `web/src/features/branding/api.ts:32`; `LegalPage.tsx:10` | **`no-cache` also applies to the public `/legal` page, so A2's browser cache no longer helps there.** `legalQuery` is shared by the editor and the public page. The responses carry no `ETag` or `Last-Modified`, so every revalidation is a full download of the page, up to about 1.7 MB. Anonymous load on `/legal` is now the same as before A2. A2 still helps `/branding/public`, and the real control on the public routes remains BL-86 (b). | Use `no-cache` only in the editor (a separate query or option), or add an `ETag` (hash of the rendered HTML) to `GET /legal` so revalidation is a cheap 304. |
+| S4 | info | `api/src/regwatch/admin/audit_export.py:6-7`, `:41-66` | **The docstring promises a truncation line that the code does not write** (see the correction above). The saved file does not say it was cut or by which cap, which is the file-level half of B3. | Either append a final line such as `"# truncated at 10,000 rows or 20 MB; narrow the filters"`, with a test, or drop the sentence from the docstring. |
+| S5 | info | `api/tests/integration/test_admin.py:458-482` | **The batch test does not exercise ties.** Its five rows come from five separate requests and so carry five different `now()` values. A tie-breaking bug would pass it. The cross-site test does not check that a refused export writes no row. | Write rows in one transaction (a taxonomy import with several terms) and export with `EXPORT_BATCH` 2. In the cross-site test, assert that the `audit.export` count is unchanged after the 403s. |
+
+### Sign-off
+**Given.** R1 and R2 are fixed. R2's protection covers browsers that send Fetch Metadata. R4 and R5 are fixed, and R3 is properly deferred as BL-86 (e). No critical, high, medium or low findings are open in this record. S1 to S5 are info-level proposals for BL-86. For S1, check with `EXPLAIN` before M10 sizes the audit table. S2's custom header is optional hardening for older browsers. The earlier conditions (A1, B1, R1, R2) are all met, so nothing in this record blocks admitting the external audience. · G1 addendum independent review · 2026-11-16
+
+### Evidence
+- `/tmp/g1addendum/export_probe2.py` (at `1c1174b`, `EXPORT_BATCH 100`, `MAX_BYTES 20971520`):
+  - `typical 10000: rows 10000, full False, csv 6.3 MiB, peak 19 MiB, total 1.39 s, worst batch on loop 21 ms`
+  - `large (2 x 200,000 chars): rows 34, full True, csv 19.5 MiB, peak 59 MiB, total 0.13 s, worst batch on loop 110 ms`
+  - `10001 typical (cap by rows): rows 10000, full True, csv 6.3 MiB, peak 19 MiB, total 1.32 s, worst batch on loop 20 ms`
+- `/tmp/g1addendum/export_probe.py`, re-run: the output is unchanged (`to_csv` 126 ms; 100 large rows, peak 97 MiB, all held at once). It shows the cost of the whole-list path that `to_csv` keeps for tests; the route no longer uses it.
+- `/tmp/g1addendum/keyset_probe.py`:
+  - SQL: `WHERE audit_log.entity_type = … AND (audit_log.occurred_at, audit_log.id) < (…, …::UUID) ORDER BY audit_log.occurred_at DESC, audit_log.id DESC LIMIT …`
+  - Paging: `rows 1000 exported 1000 unique 1000 same order True`
+- `/tmp/g1addendum/nocache_probe.mjs` (Node 20, openapi-fetch 0.17.0 from `web/node_modules`): `with option: no-cache same-origin`, `without option: default`.
+- `/tmp/g1addendum/export_gate.py`: `anonymous: 401 application/problem+json`.
+- Tests: `tests/unit`, 551 passed. The integration tests `test_audit_export_refuses_cross_site_requests` and `test_audit_export_reads_in_batches` were read, not run (the test database runs only in Docker).
