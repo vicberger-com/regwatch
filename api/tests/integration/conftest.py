@@ -91,7 +91,7 @@ def postgres() -> Iterator[Postgres]:
         pg.psql("postgres", "CREATE ROLE regwatch_app NOLOGIN;\n" + login)
         yield pg
     finally:
-        _remove = ["docker", "rm", "-f", name]
+        _remove = ["docker", "rm", "-f", "-v", name]  # -v: drop its anonymous data volume
         subprocess.run(_remove, capture_output=True, check=False)  # noqa: S603, S607
 
 
