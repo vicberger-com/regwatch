@@ -22,6 +22,7 @@ subclass; the class itself has no way to skip the address check (finding 4).
 from __future__ import annotations
 
 import asyncio
+import copy
 import ssl
 import zlib
 from dataclasses import dataclass, field
@@ -177,6 +178,12 @@ class SafeFetcher:
             },  # fmt: skip
             extensions=extensions,
         )
+
+    def with_limits(self, limits: FetchLimits) -> SafeFetcher:
+        """The same fetcher (including any test subclass) with other limits."""
+        clone = copy.copy(self)
+        clone.limits = limits
+        return clone
 
     async def _resolve(self, target: Target) -> list[IPAddress]:
         return await resolve(target, self._resolver)
