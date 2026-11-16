@@ -23,7 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.config import validate_config, validate_rules
 from regwatch.capture.models import CaptureJob, Source
-from regwatch.capture.safe_fetch.policy import FetchRefusedError, Resolver, validate_source_url
+from regwatch.capture.safe_fetch.policy import (
+    FetchRefusedError,
+    Resolver,
+    is_ip,
+    validate_source_url,
+)
 from regwatch.capture.schemas import CaptureJob as JobOut
 from regwatch.capture.schemas import CaptureJobWrite, SourceWrite
 from regwatch.capture.schemas import Source as SourceOut
@@ -41,6 +46,8 @@ _DNS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="source-dns")
 
 
 async def _save_resolver(host: str, port: int) -> list[str]:
+    if is_ip(host):  # a literal needs no lookup, so a stuck pool cannot refuse it
+        return [host]
     infos = await asyncio.get_running_loop().run_in_executor(
         _DNS_POOL,
         functools.partial(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM,
@@ -326,12 +333,15 @@ async def _source_and_job(db: AsyncSession, source_id: uuid.UUID,
 
 
 def _audit_robots(db: AsyncSession, source: Source, before: dict[str, Any] | None,
-                  actor: uuid.UUID, ip: str | None) -> None:  # fmt: skip
+                  actor: uuid.UUID, ip: str | None,
+                  job_enabled: tuple[bool, bool] | None = None) -> None:  # fmt: skip
     """The override's own row names what it applies to: the URL and config (finding 1)."""
     keys = ("robots_policy", "override_reason", "url", "config", "enabled")
     audit(db, "source.robots_override", "source", source.id, actor=actor, ip=ip,
-          before={k: before[k] for k in keys} if before else None,
-          after={k: getattr(source, k) for k in keys})  # fmt: skip
+          before={**({k: before[k] for k in keys} if before else {}),
+                  **({"job_enabled": job_enabled[0]} if job_enabled else {})} or None,
+          after={**{k: getattr(source, k) for k in keys},
+                 **({"job_enabled": job_enabled[1]} if job_enabled else {})})  # fmt: skip
 
 
 async def create_source(db: AsyncSession, body: SourceWrite, principal: Principal,
@@ -470,7 +480,7 @@ async def update_job(db: AsyncSession, job_id: uuid.UUID, body: CaptureJobWrite,
         audit(db, "capture_job.update", "capture_job", job.id, actor=actor, ip=ip,
               before=before, after=after)  # fmt: skip
     if resumed:
-        _audit_robots(db, source, source_snapshot(source), actor, ip)
+        _audit_robots(db, source, source_snapshot(source), actor, ip, job_enabled=(False, True))
     out = JobOut.model_validate(job, from_attributes=True)
     await db.commit()
     return out

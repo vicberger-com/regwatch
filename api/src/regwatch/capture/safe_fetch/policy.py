@@ -77,7 +77,7 @@ def parse_target(url: str) -> Target:
     if not host:
         raise FetchRefusedError("url", "the URL has no host")
     try:
-        host = host.encode("idna").decode("ascii").lower() if not _is_ip(host) else host
+        host = host.encode("idna").decode("ascii").lower() if not is_ip(host) else host
     except UnicodeError:
         raise FetchRefusedError("url", "the host name is not a valid international name") from None
     path = parts.path or "/"
@@ -86,7 +86,8 @@ def parse_target(url: str) -> Target:
     return Target(scheme, host, port or SCHEMES[scheme], path)
 
 
-def _is_ip(host: str) -> bool:
+def is_ip(host: str) -> bool:
+    """Whether the host is an IP literal, so it needs no name lookup."""
     try:
         ipaddress.ip_address(host)
     except ValueError:

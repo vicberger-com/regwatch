@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from regwatch.capture import services
-from regwatch.capture.safe_fetch.policy import _is_ip
+from regwatch.capture.safe_fetch.policy import is_ip
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
 
@@ -30,7 +30,7 @@ def fixed_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     async def resolver(host: str, port: int) -> list[str]:
         if host in SLOW:
             await asyncio.sleep(5)
-        if _is_ip(host):  # as getaddrinfo does: a literal resolves to itself (review finding 5)
+        if is_ip(host):  # as getaddrinfo does: a literal resolves to itself (review finding 5)
             return [host]
         if host not in HOSTS:
             raise OSError("no such host")
@@ -266,3 +266,18 @@ async def test_resuming_an_overridden_job_is_a_new_override(admin: httpx.AsyncCl
     assert rows["total"] == 2  # the create and the resume
     made = (await admin.post(_api("/sources"), json=rss(url=""))).json()
     assert made.get("url") is None  # an empty URL is no URL (re-verification 14)
+    assert rows["items"][0]["before"]["job_enabled"] is False  # the resume row names the job
+    assert rows["items"][0]["after"]["job_enabled"] is True
+
+
+async def test_the_real_save_resolver_refuses_private_literals(
+    admin: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The resolver used in production, exercised without the network: IP literals need no
+    lookup, so they answer whatever the name servers do (re-verification 2, third note)."""
+    monkeypatch.setattr(services, "RESOLVER", None)
+    for url, status in (("http://127.0.0.1/rss", 422), ("http://[::1]/rss", 422),
+                        ("http://169.254.169.254/rss", 422),
+                        ("https://93.184.215.14/rss", 201)):  # fmt: skip
+        got = await admin.post(_api("/sources"), json=rss(config={"feed_url": url}))
+        assert got.status_code == status, f"{url}: {got.text}"
