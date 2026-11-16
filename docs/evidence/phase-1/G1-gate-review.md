@@ -1,6 +1,6 @@
 # Gate G1 review: Phase 1 Foundation (M0, M1, M2)
 
-**Prepared by:** lead session · **Build under review:** `sec/M0-scan-clean` (top of the Phase 1 stack) · **Date:** 2026-11-16 · **Decision:** owner, as the comment `approved` on the `Gate G1` issue (docs/06-process.md 6.1)
+**Prepared by:** lead session · **Build under review:** `sec/M0-scan-clean` (top of the Phase 1 stack) · **Date:** 2026-11-16 · **Decision:** **approved by the owner on 2026-11-16** in the lead session. Mirror it as the comment `approved` on the `Gate G1` issue (docs/06-process.md 6.1)
 
 **Exit criterion (6.1):** fresh clone to running stack; admin logs in, creates users and taxonomy; CI gates proven.
 
@@ -72,3 +72,13 @@ All rows are `open` and are listed in `BACKLOG.md`. Those raised during Phase 1,
 4. Adversarial records for M0 to M2 (7.7): owner decision on how to run them.
 5. The `Questions: M0`, `Questions: M1` and `Questions: M2` issues and the `Gate G1` issue on GitHub.
 6. BL-60 is decided: zlib1g and tinypool are fixed; tar and esbuild are re-accepted until G2 (expiry 2027-03-01).
+
+## Approval (2026-11-16)
+
+The owner approved Gate G1. These items stay open as Phase 1 follow-ups, to be closed in Phase 2:
+1. **Adversarial record for M0 to M2 (7.7):** the owner runs it from `G1-adversarial-brief.md` in a separate session; any findings become sec/ PRs.
+2. **CI on GitHub:** it runs for each PR in the stack as it reaches `main`. CI must be green before each merge.
+3. **Peer reviews:** written for all 72 PRs; the owner posts them. The changes they requested are already made on `fix/G1-review-findings` and later branches.
+4. **Issues to open:** Gate G1, Questions: M0, M1 and M2, and CP-07, CP-08, CP-09 and CP-10, from the drafts.
+5. **Open BACKLOG rows:** they carry over, notably BL-60 (pnpm and Vite upgrades before 2027-03-01), BL-81 (a) (notices before the first distribution of the API image), BL-84, BL-85 and BL-86.
+

@@ -4,6 +4,10 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+## [G1] - 2026-11-16
+
+Phase 1 Foundation (M0, M1, M2), approved by the owner on 2026-11-16 (`docs/evidence/phase-1/G1-gate-review.md`).
+
 ### Fixed
 - Peer-review fixes: the branding form keeps unsaved edits when a logo upload or a legal-page save refreshes the branding (it was remounted); closing the user editor returns focus to the Edit button that opened it; the jurisdiction form scrolls into view, takes focus, closes on Escape and returns focus to its opener; the selected facet has a filled accent and a marker; the facet detail is keyed by facet so its forms start fresh; the session gate, the current-password check and the hosted classification model's data-processing basis (8.4) now have tests or rules; the attribute validator meets its 100% unit floor (the critical-module pattern now matches `taxonomy/validator.py`); RE2's ASCII-only `\w` and `\b` are documented, with keywords for other languages (#32, M2, BL-83, BL-85, REQ-16, REQ-18)
 - The light theme's focus ring is `#B45309`, at 4.73:1 against the page and 5.02:1 against cards, instead of `#FFB400` at 1.68:1, below the WCAG 2.2 non-text minimum of 3:1. Dark and high-contrast keep `#FFB400` (CP-09; BL-83, U-M0-2; REQ-18)
