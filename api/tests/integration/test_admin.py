@@ -357,8 +357,8 @@ async def test_names_and_labels_are_single_line(admin: httpx.AsyncClient) -> Non
     ).status_code == 400
 
 
-async def test_legal_page_is_sanitized_and_needs_a_session(admin: httpx.AsyncClient) -> None:
-    """BL-68: hostile Markdown renders as text; the page is not public."""
+async def test_legal_page_is_sanitized_and_public(admin: httpx.AsyncClient) -> None:
+    """BL-68: hostile Markdown renders as text. CP-08: the page is public, not signed-in only."""
     hostile = (
         "Terms <script>alert(1)</script> <img src=x onerror=alert(1)>\n\n"
         "[ok](https://example.org) [bad](javascript:alert(1)) "
@@ -371,7 +371,8 @@ async def test_legal_page_is_sanitized_and_needs_a_session(admin: httpx.AsyncCli
     assert "&lt;script&gt;" in html
     assert '<a href="https://example.org" rel="noopener noreferrer nofollow">ok</a>' in html
     async with httpx.AsyncClient(base_url=admin.base_url, transport=admin._transport) as anon:
-        assert (await anon.get(_api("/legal"))).status_code == 401
+        public = await anon.get(_api("/legal"))
+        assert public.status_code == 200 and public.json()["html"] == html
 
 
 async def test_slow_legal_pages_are_refused_on_both_routes(admin: httpx.AsyncClient) -> None:
@@ -383,3 +384,24 @@ async def test_slow_legal_pages_are_refused_on_both_routes(admin: httpx.AsyncCli
     assert resp.status_code == 400 and "too long to render" in resp.text
     fine = await admin.put(_api("/admin/settings/legal.page_markdown"), json={"value": "# Ok"})
     assert fine.status_code == 200
+
+
+async def test_public_branding_summary(admin: httpx.AsyncClient) -> None:
+    """CP-08: the sign-in page's subset, without company details or markings."""
+    body = {
+        "site_title": "Policy Watch",
+        "company_name": "Secret Holdings",
+        "primary_color": "#123abc",
+    }
+    assert (await admin.put(_api("/admin/branding"), json=body)).status_code == 200
+    await admin.put(
+        _api("/admin/legal"), json={"page_markdown": "", "required_markings": "INTERNAL"}
+    )
+    async with httpx.AsyncClient(transport=admin._transport, base_url="https://localhost") as anon:
+        summary = (await anon.get(_api("/branding/public"))).json()
+        assert summary == {"site_title": "Policy Watch", "logo_url": None,
+                           "primary_color": "#123abc", "has_legal_page": False}  # fmt: skip
+        assert (await anon.get(_api("/branding"))).status_code == 401  # the full set stays private
+    await admin.put(_api("/admin/legal"), json={"page_markdown": "# Notices"})
+    async with httpx.AsyncClient(transport=admin._transport, base_url="https://localhost") as anon:
+        assert (await anon.get(_api("/branding/public"))).json()["has_legal_page"] is True

@@ -28,7 +28,7 @@ Dark theme: `--bg: #0F141A`, `--surface: #171E26`, `--border: #2A3440`, `--text:
 
 | Route | Screen | Regions and components | Primary commands (toolbar) | Module |
 | --- | --- | --- | --- | --- |
-| `/login` | Sign in | Centered card: logo, email, password, sign-in button, error live region; link to legal page | none | M1 |
+| `/login` | Sign in | Centered card: logo and site title from `GET /branding/public` (CP-08), email, password, sign-in button, error live region; link to legal page | none | M1 |
 | `/change-password` | Change password | Card with current, new, confirm; policy hints; forced after temporary password | none | M1, M9 |
 | `/` | Map | Toolbar row: period selector (7, 30, 90, 365, custom), view selector (country, region, regulation, facets flagged in M2), colour encoding (recency, count, severity), filter button with active-filter chips, saved view picker, export menu, print menu. Main: MapLibre choropleth with legend; beside it a collapsible jurisdiction listbox (keyboard equivalent) sorted by last change. Right panel on selection: jurisdiction name, counts by severity, latest 10 change events, link to items filtered by that jurisdiction. Status bar: result count announced in a live region | Display, Filter, Search, Change view, Print stock report, Print custom report, Export CSV | M6 |
 | `/items` | Items table | Same toolbar as map minus view selector; TanStack table with columns title (translated title when present), jurisdictions, topics, source, published, last changed, severity; column chooser; sort; pagination; row click opens detail panel | Filter, Search, Export CSV, Print | M6, M5 |
@@ -49,7 +49,7 @@ Dark theme: `--bg: #0F141A`, `--surface: #171E26`, `--border: #2A3440`, `--text:
 | `/admin/flags` | Feature flags | Toggle list with descriptions and dependencies (hosted providers require data-processing basis) | none | M1 |
 | `/admin/printers` | Printers | Table, create dialog (name, IPP URL, media), test page | Create printer, Test page | M8 |
 | `/admin/audit` | Audit log | Filterable table (actor, action, entity, date range) with before and after diff viewer; CSV export | Export | M1 |
-| `/legal` | Legal page | Rendered legal Markdown and required markings; public to authenticated users | none | M1 |
+| `/legal` | Legal page | Rendered legal Markdown and required markings; public, outside the signed-in shell, with the public branding (CP-08) | none | M1 |
 
 ## Component conventions
 

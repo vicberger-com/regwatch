@@ -17,6 +17,7 @@ from regwatch.admin import logo, services
 from regwatch.admin.schemas import (
     AuditEntry,
     Branding,
+    BrandingPublic,
     BrandingWrite,
     FeatureFlag,
     FeatureFlagWrite,
@@ -79,7 +80,18 @@ async def get_logo(request: Request, db: DbSession) -> Response:
     return Response(data, media_type=media_type, headers=headers)
 
 
-@router.get("/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page", stub=False))
+@router.get(
+    "/branding/public", tags=SYSTEM,
+    **spec(BrandingPublic, desc="Public branding summary", public=True, stub=False),
+)  # fmt: skip
+async def get_branding_public(db: DbSession) -> BrandingPublic:
+    return await services.branding_public(db)
+
+
+# Public since CP-08: the sign-in page links to it; the HTML is sanitized (BL-68).
+@router.get(
+    "/legal", tags=SYSTEM, **spec(Legal, desc="Rendered legal page", public=True, stub=False)
+)
 async def get_legal(db: DbSession) -> Legal:
     return await services.legal(db)
 

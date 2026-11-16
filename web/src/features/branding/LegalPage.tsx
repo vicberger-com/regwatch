@@ -5,7 +5,7 @@ import { problemText } from "@/lib/auth/session";
 import { legalQuery } from "./api";
 import { LegalHtml } from "./BrandingPage";
 
-/** `/legal` (screens.md): the rendered legal page and the required markings. */
+/** `/legal` (screens.md, CP-08): the rendered legal page and the required markings, public. */
 export function LegalPage() {
   const legal = useQuery(legalQuery);
   return (

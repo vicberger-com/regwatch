@@ -75,3 +75,15 @@ export function useSaveLegal() {
     },
   );
 }
+
+export type BrandingPublic = Schemas["BrandingPublic"];
+
+/** What the sign-in and legal pages may show before sign-in (CP-08). */
+export const publicBrandingQuery = queryOptions({
+  queryKey: ["branding", "public"],
+  queryFn: async (): Promise<BrandingPublic | null> => {
+    const result = await api.GET("/branding/public");
+    return result.response.ok ? (result.data ?? null) : null; // the page works without it
+  },
+  staleTime: 5 * 60_000,
+});

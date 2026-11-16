@@ -65,6 +65,12 @@ paths:
     get:
       tags: [system]
       responses: { "200": { description: Branding for authenticated users, content: { application/json: { schema: { $ref: "#/components/schemas/Branding" } } } } }
+  /branding/public:
+    get:
+      tags: [system]
+      security: []
+      description: What the sign-in page shows before anyone signs in (CP-08); the rest of the branding stays behind GET /branding.
+      responses: { "200": { description: Public branding summary, content: { application/json: { schema: { $ref: "#/components/schemas/BrandingPublic" } } } } }
   /branding/logo:
     get:
       tags: [system]
@@ -74,6 +80,8 @@ paths:
   /legal:
     get:
       tags: [system]
+      security: []
+      description: Public, so the sign-in page can link to it (CP-08).
       responses: { "200": { description: Rendered legal page, content: { application/json: { schema: { type: object, properties: { html: { type: string }, required_markings: { type: string } } } } } } }
 
   /admin/users:
@@ -508,6 +516,10 @@ components:
     Branding:
       type: object
       properties: { site_title: { type: string }, logo_url: { type: string, nullable: true }, company_name: { type: string }, company_short_name: { type: string }, company_address: { type: string }, primary_color: { type: string, nullable: true }, required_markings: { type: string } }
+    BrandingPublic:
+      type: object
+      required: [site_title, has_legal_page]
+      properties: { site_title: { type: string }, logo_url: { type: string, nullable: true }, primary_color: { type: string, nullable: true }, has_legal_page: { type: boolean } }
     BrandingWrite:
       type: object
       properties: { site_title: { type: string, maxLength: 80 }, company_name: { type: string, maxLength: 200 }, company_short_name: { type: string, maxLength: 40 }, company_address: { type: string, maxLength: 500 }, primary_color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$", nullable: true } }

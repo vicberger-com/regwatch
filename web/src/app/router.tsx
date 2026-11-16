@@ -27,6 +27,7 @@ import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AppShell } from "./AppShell";
+import { PublicFrame } from "./PublicFrame";
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -172,11 +173,17 @@ const settingsRoute = createRoute({
   },
 });
 
+// Public (CP-08): the sign-in page links here, so it sits outside the signed-in shell.
 const legalRoute = createRoute({
-  getParentRoute: () => authedRoute,
+  getParentRoute: () => rootRoute,
   path: "/legal",
-  staticData: { title: "Legal" },
-  component: LegalPage,
+  component: function Legal() {
+    return (
+      <PublicFrame screen="Legal">
+        <LegalPage />
+      </PublicFrame>
+    );
+  },
 });
 
 const brandingRoute = createRoute({
@@ -203,6 +210,7 @@ const auditRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   loginRoute,
+  legalRoute,
   authedRoute.addChildren([
     homeRoute,
     changePasswordRoute,
@@ -213,7 +221,6 @@ export const routeTree = rootRoute.addChildren([
     jurisdictionsRoute,
     settingsRoute,
     brandingRoute,
-    legalRoute,
     auditRoute,
   ]),
 ]);

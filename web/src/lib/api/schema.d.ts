@@ -277,6 +277,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/branding/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description What the sign-in page shows before anyone signs in (CP-08); the rest of the branding stays behind GET /branding. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Public branding summary */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrandingPublic"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/branding/logo": {
         parameters: {
             query?: never;
@@ -322,6 +358,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @description Public, so the sign-in page can link to it (CP-08). */
         get: {
             parameters: {
                 query?: never;
@@ -3421,6 +3458,12 @@ export interface components {
             company_address?: string;
             primary_color?: string | null;
             required_markings?: string;
+        };
+        BrandingPublic: {
+            site_title: string;
+            logo_url?: string | null;
+            primary_color?: string | null;
+            has_legal_page: boolean;
         };
         BrandingWrite: {
             site_title?: string;

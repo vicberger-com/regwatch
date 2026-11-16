@@ -38,11 +38,14 @@ def _app(gated: bool) -> Any:
 
 
 # Public routes that read the database, which unit tests do not have; their integration tests
-# cover them (/branding/logo: tests/integration/test_logo.py).
+# cover them (/branding/logo: tests/integration/test_logo.py; /branding/public and /legal:
+# tests/integration/test_admin.py).
 gated = (
     schemathesis.openapi.from_asgi("/api/v1/openapi.json", _app(gated=True))
     .exclude(path="/health")
     .exclude(path="/branding/logo")
+    .exclude(path="/branding/public")
+    .exclude(path="/legal")
 )
 
 

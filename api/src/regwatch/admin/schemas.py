@@ -46,6 +46,15 @@ class Branding(BaseModel):
     required_markings: str = UNSET
 
 
+class BrandingPublic(BaseModel):
+    """What the sign-in page may show before sign-in (CP-08)."""
+
+    site_title: str
+    logo_url: str | None = None
+    primary_color: str | None = None
+    has_legal_page: bool
+
+
 class BrandingWrite(BaseModel):
     site_title: str = Field(default=UNSET, max_length=80)
     company_name: str = Field(default=UNSET, max_length=200)

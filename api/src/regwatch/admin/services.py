@@ -28,6 +28,7 @@ from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.admin.schemas import (
     AuditEntry,
     Branding,
+    BrandingPublic,
     BrandingWrite,
     Legal,
     LegalWrite,
@@ -242,6 +243,15 @@ async def branding(db: AsyncSession) -> Branding:
     out.logo_url = f"/api/v1/branding/logo?v={match['sha'][:12]}" if match else None
     out.required_markings = current["legal.required_markings"]
     return out
+
+
+async def branding_public(db: AsyncSession) -> BrandingPublic:
+    """The sign-in page's subset of the branding (CP-08)."""
+    full = await branding(db)
+    page = (await values(db, ["legal.page_markdown"]))["legal.page_markdown"]
+    return BrandingPublic(site_title=full.site_title, logo_url=full.logo_url,
+                          primary_color=full.primary_color,
+                          has_legal_page=bool(page.strip()))  # fmt: skip
 
 
 async def put_branding(
