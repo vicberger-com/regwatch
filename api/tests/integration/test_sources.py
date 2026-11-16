@@ -121,6 +121,10 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
         (rss(job={"cron": "*/0 * * * *"}), "job.cron"),
         (rss(job={"cron": "* * * * " + "1," * 200 + "1"}), "job.cron"),
         (rss(job={"interval_seconds": 2**31}), "job.interval_seconds"),
+        (rss(job={"cron": "\u00b2 * * * *"}), "job.cron"),
+        (rss(job={"cron": "*/\u00b2 * * * *"}), "job.cron"),
+        (rss(job={"cron": "\u0661 * * * *"}), "job.cron"),
+        (rss(language="en\n"), "language"),
     ],
 )  # fmt: skip
 async def test_invalid_sources_are_refused_with_the_field(
@@ -215,15 +219,18 @@ async def test_lookups_have_one_deadline_and_run_before_the_lock(
     same source do not wait for it."""
     monkeypatch.setattr(services, "DNS_DEADLINE_S", 0.5)
     sid = (await admin.post(_api("/sources"), json=rss())).json()["id"]
-    seeds = {"seed_urls": [f"https://slow.example/{n}" for n in range(20)],
-             "allowed_domains": ["slow.example"]}  # fmt: skip
-    crawl = {"name": "Crawl", "kind": "web_crawl", "config": seeds}
+    slow_feed = {"config": {"feed_url": "https://slow.example/rss"}}
     started = time.monotonic()
     slow, rename = await asyncio.gather(
-        admin.post(_api("/sources"), json=crawl),
+        admin.patch(_api(f"/sources/{sid}"), json=slow_feed),
         admin.patch(_api(f"/sources/{sid}"), json={"name": "Renamed"}),
-    )
+    )  # the same source: the slow save must not hold its row (re-verification 16)
     assert slow.status_code == 422 and rename.status_code == 200
+    seeds = {"seed_urls": [f"https://slow.example/{n}" for n in range(20)],
+             "allowed_domains": ["slow.example"]}  # fmt: skip
+    crawl_body = {"name": "Crawl", "kind": "web_crawl", "config": seeds}
+    crawl = await admin.post(_api("/sources"), json=crawl_body)
+    assert crawl.status_code == 422
     assert time.monotonic() - started < 2.0  # 20 lookups together, not 20 after another
 
 
@@ -237,3 +244,25 @@ async def test_the_config_is_stored_as_checked_and_pages_are_bounded(
     assert made.json()["config"]["feed_url"] == "https://feeds.example/rss"
     assert (await admin.get(_api("/sources"), params={"page": 10**17})).status_code == 422
     assert (await admin.get(_api("/admin/users"), params={"page": 10**17})).status_code == 422
+
+
+async def test_resuming_an_overridden_job_is_a_new_override(admin: httpx.AsyncClient) -> None:
+    """Re-verification 13: an admin pauses only the job; an editor may not resume it."""
+    editor = await _as_new_user(admin, "ed3@example.org", ["editor"])
+    body = rss(robots_policy="override", override_reason="Owner agreed in writing")
+    made = (await admin.post(_api("/sources"), json=body)).json()
+    sid, jid = made["id"], made["job"]["id"]
+    assert (await admin.patch(_api(f"/capture-jobs/{jid}"),
+                              json={"enabled": False})).status_code == 200  # fmt: skip
+    on = {"enabled": True}
+    assert (await editor.patch(_api(f"/capture-jobs/{jid}"), json=on)).status_code == 403
+    nested = await editor.patch(_api(f"/sources/{sid}"), json={"job": on})
+    assert nested.status_code == 403
+    assert (await editor.patch(_api(f"/capture-jobs/{jid}"),
+                               json={"rate_limit_per_minute": 5})).status_code == 200  # fmt: skip
+    assert (await admin.patch(_api(f"/capture-jobs/{jid}"), json=on)).status_code == 200
+    rows = (await admin.get(_api("/admin/audit"),
+                            params={"action": "source.robots_override"})).json()  # fmt: skip
+    assert rows["total"] == 2  # the create and the resume
+    made = (await admin.post(_api("/sources"), json=rss(url=""))).json()
+    assert made.get("url") is None  # an empty URL is no URL (re-verification 14)

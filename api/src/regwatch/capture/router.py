@@ -99,7 +99,7 @@ async def list_capture_jobs(db: DbSession, source_id: UUID | None = None) -> lis
 async def update_capture_job(
     id: UUID, body: CaptureJobWrite, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> CaptureJob:
-    return await services.update_job(db, id, body, principal.user.id, client_ip(request))
+    return await services.update_job(db, id, body, principal, client_ip(request))
 
 
 @router.post(

@@ -9,8 +9,11 @@ audited as ``source.robots_override`` besides the usual create or update row (ac
 from __future__ import annotations
 
 import asyncio
+import functools
 import re
+import socket
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
@@ -30,7 +33,22 @@ from regwatch.core.services import audit
 from regwatch.identity.services import Principal
 from regwatch.taxonomy.models import Jurisdiction, Term
 
-RESOLVER: Resolver | None = None  # None: the system resolver; tests set a fixed answer
+RESOLVER: Resolver | None = None  # None: _save_resolver below; tests set a fixed answer
+# Save-time lookups get threads of their own: a cancelled getaddrinfo keeps its thread until the
+# system resolver gives up, so a name server that never answers can fill this pool, but not the
+# loop's default one that object-store reads use (re-verification 15).
+_DNS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="source-dns")
+
+
+async def _save_resolver(host: str, port: int) -> list[str]:
+    infos = await asyncio.get_running_loop().run_in_executor(
+        _DNS_POOL,
+        functools.partial(socket.getaddrinfo, host, port, type=socket.SOCK_STREAM,
+                          proto=socket.IPPROTO_TCP),
+    )  # fmt: skip
+    return [str(info[4][0]) for info in infos]
+
+
 OVERRIDE = "sources.override_robots"
 MAX_REASON = 1000
 MAX_URL = 2048
@@ -81,12 +99,15 @@ async def check_urls(kind: str, values: dict[str, Any]) -> None:
                 urls += [(f"config.{name}.{n}", str(u)) for n, u in enumerate(value)]
             elif value is not None:
                 urls.append((f"config.{name}", str(value)))
+    if values.get("url") == "":
+        values["url"] = None  # no URL, rather than an empty one (re-verification 14)
     if values.get("url"):
         urls.append(("url", values["url"]))
     try:
         async with asyncio.timeout(DNS_DEADLINE_S):
             results = await asyncio.gather(
-                *(validate_source_url(u, RESOLVER) for _, u in urls), return_exceptions=True
+                *(validate_source_url(u, RESOLVER or _save_resolver) for _, u in urls),
+                return_exceptions=True,
             )
     except TimeoutError:
         raise invalid_all([(f, _NOT_PUBLIC) for f, _ in urls]) from None
@@ -133,7 +154,7 @@ def check_plain(values: dict[str, Any], kind: str | None) -> str:
         raise invalid("name", "name is required")
     for key in ("name", "override_reason", "url"):
         _text(values, key)
-    if values.get("language") is not None and not _LANGUAGE.match(values["language"]):
+    if values.get("language") is not None and not _LANGUAGE.fullmatch(values["language"]):
         raise invalid("language", "a language tag such as en or pt-BR")
     if values.get("terms_url") is not None and not _web_link(values["terms_url"]):
         raise invalid("terms_url", f"an http or https URL of at most {MAX_URL} characters")
@@ -167,8 +188,19 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     return new
 
 
+def check_resume(
+    policy: str, job: CaptureJob | None, values: dict[str, Any], principal: Principal
+) -> bool:
+    """Turning the job of an overridden source back on is a new override (re-verification 13)."""
+    if policy != "override" or job is None or job.enabled or values.get("enabled") is not True:
+        return False
+    if OVERRIDE not in principal.permissions:
+        raise ProblemError(403, "forbidden", "Overriding robots.txt needs its own permission.")
+    return True
+
+
 def _cron_value(index: int, text: str) -> int | None:
-    if text.isdigit():
+    if text.isascii() and text.isdigit():  # not ² or ١ (re-verification 12)
         return int(text)
     names = _CRON_NAMES.get(index, [])
     if text.upper() in names:
@@ -185,7 +217,7 @@ def cron_ok(expr: str) -> bool:
         low, high = _CRON_RANGES[index]
         for part in field.split(","):
             span, slash, step = part.partition("/")
-            if slash and not (step.isdigit() and 1 <= int(step) <= high):
+            if slash and not (step.isascii() and step.isdigit() and 1 <= int(step) <= high):
                 return False
             if span == "*":
                 continue
@@ -346,6 +378,8 @@ async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrit
         raise not_found("capture job")
     if job is not None:
         check_job(job_values, job)
+    policy = values.get("robots_policy", source.robots_policy)
+    new_override = check_resume(policy, job, job_values, principal) or new_override
     before = source_snapshot(source)
     job_before = job_snapshot(job) if job is not None else None
     for key, value in values.items():
@@ -415,21 +449,28 @@ async def list_jobs(db: AsyncSession, source_id: uuid.UUID | None) -> list[JobOu
 
 
 async def update_job(db: AsyncSession, job_id: uuid.UUID, body: CaptureJobWrite,
-                     actor: uuid.UUID, ip: str | None) -> JobOut:  # fmt: skip
-    job = await db.scalar(select(CaptureJob).where(CaptureJob.id == job_id).with_for_update())
-    if job is None:
+                     principal: Principal, ip: str | None) -> JobOut:  # fmt: skip
+    source_id = await db.scalar(select(CaptureJob.source_id).where(CaptureJob.id == job_id))
+    if source_id is None:
+        raise not_found("capture job")
+    source, job = await _source_and_job(db, source_id, lock=True)  # source first, as PATCH does
+    if job is None or job.id != job_id:  # pragma: no cover - one job per source
         raise not_found("capture job")
     values = body.model_dump(exclude_unset=True)
     check_job(values, job)
+    resumed = check_resume(source.robots_policy, job, values, principal)
     before = job_snapshot(job)
     for key, value in values.items():
         setattr(job, key, value)
     await db.flush()
     await db.refresh(job)
     after = job_snapshot(job)
+    actor = principal.user.id
     if before != after:
         audit(db, "capture_job.update", "capture_job", job.id, actor=actor, ip=ip,
               before=before, after=after)  # fmt: skip
+    if resumed:
+        _audit_robots(db, source, source_snapshot(source), actor, ip)
     out = JobOut.model_validate(job, from_attributes=True)
     await db.commit()
     return out
