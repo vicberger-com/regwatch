@@ -12,6 +12,7 @@ import {
   useUpdateUser,
   type User,
 } from "./api";
+import { UserEditor } from "./UserEditor";
 
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -23,6 +24,8 @@ export function UsersPage({ selfId }: { selfId: string }) {
   const update = useUpdateUser();
   const reset = useResetPassword();
   // A temporary password is shown once, here, and dropped when the next action starts.
+  const [editing, setEditing] = useState<User | null>(null);
+  const [notice, setNotice] = useState("");
   const [secret, setSecret] = useState<{
     email: string;
     password: string;
@@ -46,6 +49,7 @@ export function UsersPage({ selfId }: { selfId: string }) {
         }}
       />
       <div role="status" aria-live="polite">
+        {notice && <p>{notice}</p>}
         {secret && (
           <p className="rounded border border-warning bg-surface p-3">
             Temporary password for {secret.email}:{" "}
@@ -57,6 +61,21 @@ export function UsersPage({ selfId }: { selfId: string }) {
       <p role="alert" className="text-critical">
         {error}
       </p>
+      {editing && (
+        <UserEditor
+          key={editing.id}
+          user={editing}
+          roleKeys={(roles.data ?? []).map((r) => r.key)}
+          isSelf={editing.id === selfId}
+          onClose={() => {
+            setEditing(null);
+          }}
+          onSaved={(saved) => {
+            setEditing(null);
+            setNotice(`Saved ${saved.email}.`);
+          }}
+        />
+      )}
       {users.isPending ? (
         <p>Loading users…</p>
       ) : users.isError ? (
@@ -90,8 +109,18 @@ export function UsersPage({ selfId }: { selfId: string }) {
                   user={u}
                   isSelf={u.id === selfId}
                   busy={update.isPending || reset.isPending}
+                  onEdit={() => {
+                    setSecret(null);
+                    setNotice("");
+                    setEditing(u);
+                  }}
                   onStatus={(status) => {
-                    const verb = status === "disabled" ? "Disable" : "Enable";
+                    const verb =
+                      status === "disabled"
+                        ? "Disable"
+                        : u.status === "locked"
+                          ? "Unlock"
+                          : "Enable";
                     if (!window.confirm(`${verb} ${u.email}?`)) return;
                     setSecret(null);
                     update.mutate({ id: u.id, body: { status } });
@@ -123,6 +152,7 @@ function Row(props: {
   busy: boolean;
   onStatus: (status: "active" | "disabled") => void;
   onReset: () => void;
+  onEdit: () => void;
 }) {
   const { user, isSelf, busy } = props;
   const active = user.status === "active";
@@ -138,6 +168,15 @@ function Row(props: {
           : "never"}
       </td>
       <td className="flex gap-2 py-1">
+        <button
+          type="button"
+          className={button}
+          disabled={busy}
+          aria-label={`Edit ${user.email}`}
+          onClick={props.onEdit}
+        >
+          Edit
+        </button>
         {!isSelf && (
           <button
             type="button"
@@ -154,12 +193,16 @@ function Row(props: {
             type="button"
             className={button}
             disabled={busy}
-            aria-label={`${active ? "Disable" : "Enable"} ${user.email}`}
+            aria-label={`${active ? "Disable" : user.status === "locked" ? "Unlock" : "Enable"} ${user.email}`}
             onClick={() => {
               props.onStatus(active ? "disabled" : "active");
             }}
           >
-            {active ? "Disable" : "Enable"}
+            {active
+              ? "Disable"
+              : user.status === "locked"
+                ? "Unlock"
+                : "Enable"}
           </button>
         )}
       </td>
