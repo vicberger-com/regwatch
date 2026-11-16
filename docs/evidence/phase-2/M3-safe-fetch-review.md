@@ -241,3 +241,93 @@
 - A lone held-back byte at the end of a deflate body is refused as "ends early".
 - Test: `test_deflate_split_at_awkward_places`.
 - **13 (info):** no change.
+
+## Slices 3 and 4: robots.txt and per-host rate limits
+**Scope:**
+- **Slice 3**, `feat/M3-robots` (`git diff docs/M3-components...feat/M3-robots`, commit `c719f36`):
+  - `safe_fetch/robots.py` (`RobotsPolicy`);
+  - `SafeFetcher.with_limits`;
+  - `tests/unit/test_safe_fetch_robots.py`.
+- **Slice 4**, `feat/M3-rate-limit` (`git diff feat/M3-robots...feat/M3-rate-limit`, commit `0c7a749`):
+  - `safe_fetch/rate.py` (Lua slot script, `ValkeyRateLimiter`, `MemoryRateLimiter`, `wait_turn`);
+  - `safe_fetch/capture.py` (`CaptureFetcher`);
+  - the `before_hop` argument of `SafeFetcher.fetch`;
+  - `tests/unit/test_safe_fetch_rate.py`, `tests/integration/test_valkey_rate.py`.
+
+Also checked: the M3 acceptance criteria 4 and 5, RFC 9309, 8.3 (politeness), and the follow-up 3 note for finding 12, whose deflate fixes are in the base and covered by the passing tests. · **Reviewer session label:** M3 SafeFetcher independent review · **Date:** 2026-11-16 · **Author sessions excluded from review:** yes
+
+**Method:**
+- **Code and tests:** I read both diffs and protego 0.7.0's matching. I ran all four SafeFetcher unit files: 122 passed, and coverage of `regwatch.capture.safe_fetch` is 100 percent (397 statements, 110 branches). I ran `tests/integration/test_valkey_rate.py` (2 passed; its throwaway container was removed).
+- **Probes:** scratch scripts in `/tmp/m3review/`:
+  - `robots_probe.py`: protego and RFC 9309 behaviour, and hostile Crawl-delay values;
+  - `capture_probe.py`: CaptureFetcher with `MockTransport` and a fake clock;
+  - `valkey_probe.py`: the Lua script against a throwaway Valkey of my own (`regwatch-review-valkey-*`). It ran from the locally present pinned image `valkey/valkey:9@sha256:3add1a33…`, bound to 127.0.0.1 only, and was removed afterwards.
+- **Not touched:** the `regwatch-qa-*` stacks, including their Valkey. No external network was used, and no image was pulled. Only this record was changed.
+
+### Data flows touched
+- **Worker to external hosts:** `GET /robots.txt` per origin through SafeFetcher (512 KiB cap, 30 s), then the page hops.
+- **Worker to Valkey:** one `EVALSHA` per hop on key `regwatch:rate:<host>`, run on Valkey's clock.
+- **Hostile inputs:**
+  - robots.txt content: groups, rules, Crawl-delay and size;
+  - the status code of the robots.txt answer;
+  - redirect targets, which choose which origins and hosts get robots fetches, cache entries and Valkey keys.
+- **Admin input (future routes):** the per-source robots override reason, and the job's rate.
+
+### STRIDE (slices 3 and 4)
+| Threat | Where | Control in place | Residual risk | Finding |
+| --- | --- | --- | --- | --- |
+| Tampering | robots.txt parsing | protego; RFC 9309 status rules; group merging, longest match and percent-encoding are correct | Substring matching of group names; files over 512 KiB are treated as unreadable | 20 |
+| Repudiation | robots override | A reason is required (an empty or blank reason gives `ValueError`) | Permission and audit are not in this layer | 22 |
+| Information disclosure (SSRF) | `before_hop` on redirect targets | SafeFetcher still refuses private addresses (robots fetch and hop) | The refusal is reported as `robots`; with an override, a rate slot is used up on the private host | 19 |
+| Denial of service | Lua slot script, robots cache, Crawl-delay | Atomic script; `max_wait_s`; a 10,000-origin cache limit | Refused takes still reserve slots; the key expires before its reservations, so limits are exceeded; the cache can grow to about 122 GiB; a huge Crawl-delay raises a raw `ResponseError` and creates keys that live for decades | 14, 15, 16, 17 |
+| Elevation of privilege | override | Only a non-empty reason string | Who may set it is enforced elsewhere (8.3 `sources.override_robots`) | 22 |
+
+### Findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 14 | medium | **A refused take still reserves a slot, so contention locks a host out for longer and longer.** `rate.py:26-34` always runs `SET … free + interval`. `wait_turn` (`rate.py:72-83`) only refuses afterwards. **Failure case** (`valkey_probe.py`, interval 6 s, `max_wait_s` 120): with 21 slots already reserved, 50 more attempts are all refused, yet they move next-free by 300 s, so the next caller must wait 426 s. Every job that tries that host is refused until the key expires (finding 15). Several sources on one regulator's site at one scheduler tick (the M3 load test: 100 jobs due at once) starve each other, and the "tried again on the next run" retries add more reservations. **Fix:** pass `max_wait_ms` to the script. When `free - now > max_wait_ms`, return the wait (or -1) **without** `SET`. `wait_turn` then refuses without consuming a slot. Test it against Valkey: refused attempts leave the key unchanged. | open | reviewer PoC on Valkey |
+| 15 | medium | **The key's lifetime is shorter than the reservations it holds, so the limit resets and is exceeded (acceptance 5).** `rate.py:32` sets `PX interval + 60000`, counted from *now*. The stored value `free + interval` can be up to `max_wait_s + interval` in the future (or further, finding 14). **Failure case** (`valkey_probe.py`):<br>- Five takes at 30 s leave next-free 150 s ahead with a TTL of 90 s.<br>- With interval 1 s and 70 queued takes (horizon 70 s, TTL 61 s), a new caller at t=62 s waits **0 s**, while slots up to t=70 s are still held by sleeping workers. Two requests then go to the host in the same second.<br>At 10 a minute (interval 6 s, horizon up to 126 s, TTL 66 s), a lull of 66 s with no take after a burst of queued single-page jobs lets new jobs start a fresh schedule alongside the 9 still-queued slots. The host then gets up to about 20 requests in a minute, against a limit of 10. **Fix:** expire relative to the reservation, `PX (free + interval - now) + 60000` (or `PXAT`), so the key outlives every slot it hands out. Add an integration test that queues past the TTL and asserts no wait is shorter than the queue. | open | reviewer PoC on Valkey |
+| 16 | medium | **The robots cache is bounded by entry count, not by memory: about 12.5 MiB per large file and up to about 122 GiB in total.** `robots.py:62-64` clears the cache above 10,000 origins, but each entry is a parsed `Protego` object. A 500 KiB robots.txt (24,000 rules) takes about 12.5 MiB once parsed. **Failure case** (`capture_probe.py`): 100 origins under a wildcard domain, each serving a 500 KiB file, hold 1,245 MiB. A hostile page that redirects to fresh subdomains adds up to 5 origins per fetch (the redirect cap), and they stay cached for 24 h. A 200-page crawl of such a site can exhaust a worker's memory long before the 10,000-entry limit is reached. **Fix:** bound the cache by size, for example an LRU with a byte budget estimated from body length (say 64 MiB per process). Alternatively cap rules per origin, or keep only the matching group's rules for `regwatch` and `*`. Add a test with many large files that asserts the budget. | open | reviewer PoC |
+| 17 | low | **A huge Crawl-delay breaks the fetch with a raw Valkey error, or creates a key that lives for decades.** protego accepts any finite float (`Crawl-delay: 1e20` gives 1e20), and `interval` passes it through (`rate.py:43-47`). **Failure case** (`valkey_probe.py`): `1e20` makes the script fail with `redis.exceptions.ResponseError: value is not an integer or out of range`, which escapes `CaptureFetcher.fetch` as a non-`FetchRefusedError`, so the job errors rather than recording a refusal. `Crawl-delay: 1e9` gives the key a TTL of 32 years. Every hostile host reached through redirects can leave such a key, so the key count grows without expiry. `inf`, `nan`, negative and non-numeric values are dropped by protego, which is fine. **Fix:** clamp Crawl-delay. If it is above `max_wait_s` (or a ceiling such as 1 day), refuse with `robots` or `rate-limited` without calling Valkey, and also cap the interval passed to the script. Add a test with hostile values. | open | reviewer PoC on Valkey |
+| 18 | low | **robots.txt requests bypass the rate limit, so acceptance 5 is exceeded by one.** `RobotsPolicy._rules` fetches through a plain `SafeFetcher` (`robots.py:51`), with no slot. **Failure case** (`capture_probe.py`): 30 pages at 10 a minute with a real robots.txt made 31 requests, and the worst minute had **11** requests to the host. It is 10 only because `test_a_200_page_crawl_keeps_to_10_per_minute` stubs robots out. The robots fetch also comes back every 15 minutes after a failure. **Fix:** take the host's slot before a robots fetch (pass the limiter to `RobotsPolicy`, or fetch robots inside `before_hop` after `wait_turn`). Let the acceptance test count robots.txt. | open | reviewer PoC |
+| 19 | low | **A redirect to a private address is reported as `robots`, and with an override it first uses up a rate slot.** `before_hop` (`capture.py:45-49`) runs before SafeFetcher's own checks on the hop (`fetch.py:288`). The robots fetch for `http://evil.example/` is refused at the address, and that is cached as "disallow everything". **Failure case** (`capture_probe.py`): the refusal reads `robots` ("robots.txt could not be read"), not `private-address`, so SSRF attempts disappear from any monitoring keyed on the reason, and a disallow entry is cached for the internal host. With `robots_override`, the reason is right, but `wait_turn` has already reserved a slot on `evil.example`, and could have slept up to 120 s first. **Fix:** in `before_hop`, run `parse_target` and `resolve` (the policy check) before robots and the rate limit. Alternatively let `RobotsPolicy` re-raise address and scheme refusals unchanged rather than caching them. Test it with the private-redirect fixtures through `CaptureFetcher`. | open | reviewer PoC |
+| 20 | low | **Deviations from RFC 9309.**<br>(a) A robots.txt larger than 512 KiB is refused as too large and treated as **disallow everything**, retried every 15 minutes, so such a site is never captured. RFC 9309 2.5 says crawlers SHOULD parse at least 500 KiB and may ignore the rest. Confirmed with a valid 600 KB `Allow: /` file, which is refused. **Fix:** read the first 512 KiB and parse that; this needs a "truncate" mode in SafeFetcher's body cap for this caller.<br>(b) protego matches group names by substring: `User-agent: reg` applies to `regwatch`. RFC 9309 2.2.1 matches the product token. Low impact; note it in the tests or match exactly.<br>(c) A 429 answer for robots.txt is a 4xx, so everything is allowed. That is RFC-compliant, but a site that is throttling us is then crawled unrestricted. Consider treating 429 like 5xx. | open | reviewer PoC |
+| 21 | low | **The tests do not prove acceptance 5 or the Valkey behaviour.**<br>- The 200-page test runs `MemoryRateLimiter` in one sequential loop, with robots stubbed out and `MockTransport` rather than the local test server the criterion names. One worker in a loop cannot exceed the limit whatever the limiter does.<br>- `MemoryRateLimiter` has no expiry and works in float seconds, so it cannot show findings 14 or 15.<br>- The Valkey tests check spacing and atomicity only. They do not cover refusals, the TTL against the horizon, workers taking again over time, or hostile Crawl-delay. The TTL assertion is loose (up to 72 s). The "two clients" share one connection pool, which is fine for atomicity but is not two workers.<br>- The robots tests do not cover group merging, percent-encoding, the size limit, a private redirect target, or the cache's memory. The fixture Crawl-delay test asserts only `is not None`.<br>**Fix:** run the acceptance test through `CaptureFetcher` against the fixture server's robots and pages, with `ValkeyRateLimiter`, several concurrent workers, and robots.txt counted. Add the tests named in findings 14 to 20. | open | code reading |
+| 22 | info | (a) **Override:** a reason that is empty or only whitespace raises `ValueError`, so the override cannot be used without one. But any one-character reason passes, its length is unbounded, and the permission check (`sources.override_robots`) and the audit row are not in this layer. Re-check them when the source routes and run records land. The override also drops the site's Crawl-delay, leaving only the job's rate; decide whether that is intended. (b) **Rounding:** `round(interval_s * 1000)` can shorten the interval by up to 0.5 ms (60/7 s gives 8,571 ms against 8,571.43); use `math.ceil`. A rate over 120,000 a minute rounds to 0 ms, which means no limit; bound `rate_per_minute` when it is configured. `rate_per_minute=0` falls back to the default silently (`capture.py:43`, `or`). (c) **The clock and atomicity are fine:** one script, with `TIME` read inside it, is atomic and safe under Valkey 9's effect replication. The milliseconds come from seconds × 1000 plus `floor(µs/1000)`, and Lua's number formatting is exact for 13-digit millisecond values. (d) If Valkey is unreachable, `redis.ConnectionError` escapes. This fails closed, but it is not a refusal. (e) The robots cache belongs to each `CaptureFetcher`, so connectors should share one per worker. Concurrent checks of one origin each fetch robots.txt. (f) `with_limits` makes a shallow copy, which is correct; resolver, transport and subclass hooks are kept. | n/a | n/a |
+
+### Checked and found fine
+- **RFC 9309 status rules:** 2xx is parsed. Any 4xx, including 401, 403, 404 and 410, allows everything. 5xx, an unreachable server, a refusal by SafeFetcher, or a 3xx without `Location` disallows everything and is retried after 15 minutes. Up to 5 redirects of robots.txt itself are followed.
+- **Cache:** keyed by origin (scheme, host and port), held for at most 24 h on the monotonic clock.
+- **protego (`robots_probe.py`):** the `regwatch` group wins over `*`. Group names match case-insensitively. Two `regwatch` groups are merged. Several `User-agent` lines may share one group. The longest match wins, and equal-length Allow and Disallow ties resolve to Allow. Percent-encoded and UTF-8 paths match each other. `$` anchors and `*` wildcards work. A rule with 14 wildcards against a 1,900-character path takes under 10 ms, so there is no regex blow-up.
+- **Crawl-delay:** returned as a float, then used as `max(60/rate, delay)`. protego drops `inf`, `nan`, negative and non-numeric values.
+- **Every hop:** `before_hop` runs before every hop, the first one and each redirect target (`fetch.py:288`). Robots and the rate limit both apply to the target host. `test_robots_and_rates_apply_to_every_redirect_hop` shows a redirect target's robots.txt refusing.
+- **Override:** `robots_override` skips only robots. The rate limit still applies (`test_an_override_skips_robots_but_not_the_rate`).
+- **Lua script:** atomic. It uses Valkey's clock, so workers on different machines share one limit. Twenty concurrent takes got twenty distinct slots (integration test). A missing key starts at now, and a stale next-free value is raised to now.
+- **`max_wait_s`:** a wait above it is refused with `rate-limited` without sleeping. A wait at or under it is slept through the injectable `sleep`.
+- **Host keys:** `regwatch:rate:` plus the normalised IDNA host (no port). Every key carries a TTL of at least 60 s, so a flood of ordinary hosts expires on its own (except finding 17).
+
+**Sign-off for slices 3 and 4:** not signed off; three medium findings open:
+- 14 and 15: acceptance 5 can be exceeded, and hosts starved, under concurrent load;
+- 16: hostile robots files can exhaust a worker's memory.
+
+Findings 17 to 21 are low and 22 is info. Sign-off can follow when 14 to 16 are fixed with Valkey-backed tests and 21's acceptance test covers them. · M3 SafeFetcher independent review · 2026-11-16
+
+### Evidence (slices 3 and 4)
+1. **Tests:** the four SafeFetcher unit files: 122 passed, 100 percent (397 statements, 110 branches). `-m integration tests/integration/test_valkey_rate.py`: 2 passed, and no test container was left behind.
+2. **`valkey_probe.py`** (throwaway Valkey on 127.0.0.1, removed afterwards):
+   - 50 refused attempts move next-free by 300 s, and the next caller waits 426 s (finding 14).
+   - Five 30 s takes leave next-free 150 s ahead with a TTL of 90 s.
+   - With interval 1 s and 70 takes (horizon 69.99 s, TTL 61 s), a caller at t=62 s waits 0.0 s (finding 15).
+   - An interval of `1e20` raises `ResponseError: value is not an integer or out of range`.
+   - An interval of `1e9` gives a TTL of 32 years (finding 17).
+   - 60/7 s is sent as 8,571 ms.
+3. **`capture_probe.py`:**
+   - A private redirect target gives `robots` without an override and `private-address` with one, and a slot is reserved for `evil.example` (finding 19).
+   - 30 pages at 10 a minute with a real robots.txt make 31 requests, with a worst minute of 11 (finding 18).
+   - robots.txt answered with 429 or 401 allows everything. A 600 KB valid file is refused (finding 20).
+   - 100 origins with 500 KiB files hold 1,245 MiB in the cache (finding 16).
+4. **`robots_probe.py`:**
+   - Group `reg` applies to `regwatch`, and `regwatch-bot` does not. `RegWatch` matches. Merged groups, longest match, the Allow tie, percent-encoding, UTF-8 and `$` behave as RFC 9309 describes.
+   - Crawl-delay: `inf`, `nan`, `-5`, `abc` and `1e400` give None; `1e20` gives 1e20.
+   - Wildcard matching takes 0.00 s.
+   - A 500 KiB file (24,336 lines) parses to 12.9 MiB.
