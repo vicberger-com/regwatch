@@ -9,6 +9,12 @@ Captured text is hostile and rule patterns are entered by administrators, so mat
 time linear in the text (M2 review finding 1, BL-74): regexes use RE2 (google-re2, BSD-3), which
 does not backtrack, and keywords use a plain substring scan. Patterns are compiled with RE2 when
 saved (``compile_pattern``), so syntax RE2 lacks (backreferences, lookaround) is refused there.
+
+RE2's ``\\w``, ``\\d``, ``\\s`` and ``\\b`` are ASCII only: ``\\w+`` finds ``caf`` in ``café``,
+and ``\\bcafé\\b`` never matches. The Unicode classes (``\\pL``) compile to more than the
+``MAX_PROGRAM_SIZE`` budget, so words in other languages belong in ``keywords``, whose
+boundaries use ``str.isalnum`` and know every script; a pattern can bound a word with whitespace and
+punctuation instead, as in ``(?:^|\\s)café(?:$|[\\s.,;:!?])`` (PR 26 peer review; BL-85).
 """
 
 from __future__ import annotations

@@ -307,3 +307,44 @@ async def test_short_lockout_does_not_reveal_accounts(
     for email in ("admin@example.org", "nobody@example.org"):
         services.login_attempts.clear()
         assert (await _login(client, email, "wrong password!!")).status_code == 401, email
+
+
+async def _sql(url: str, statement: str) -> None:
+    from sqlalchemy import text
+
+    engine = create_engine(url, poolclass_null=True)
+    async with session_factory(engine)() as db:
+        await db.execute(text(statement))
+        await db.commit()
+    await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("change", "why"),
+    [
+        ("UPDATE session SET expires_at = now() - interval '1 second'", "absolute lifetime over"),
+        ("UPDATE session SET last_seen_at = now() - interval '25 hours'", "idle past the maximum"),
+        ("UPDATE session SET revoked_at = now()", "revoked"),
+        (
+            "UPDATE \"user\" SET status = 'disabled' WHERE email = 'admin@example.org'",
+            "user disabled",
+        ),
+    ],
+)
+async def test_the_gate_refuses_dead_sessions(
+    client: httpx.AsyncClient, db_url: str, change: str, why: str
+) -> None:
+    """PR 04 peer review: resolve_session itself, not a stub, ends each kind of session."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 200
+    await _sql(db_url, change)
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 401, why
+
+
+async def test_a_wrong_current_password_is_refused(client: httpx.AsyncClient) -> None:
+    """PR 06 peer review: the current-password check itself, not the new == current rule."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    change = {"current_password": "not the password", "new_password": "a brand new pass 9"}
+    resp = await client.post(f"{API_PREFIX}/auth/password", headers=ORIGIN, json=change)
+    assert resp.status_code == 400 and "current password is incorrect" in resp.json()["detail"]
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200  # unchanged

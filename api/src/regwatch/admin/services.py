@@ -43,8 +43,14 @@ from regwatch.core.schemas import Page, check_email, has_control
 from regwatch.core.services import audit
 
 MAX_STRING = 200_000
-HOSTED = {"translation.provider": "http"}
+# Hosted model providers need a recorded data-processing basis first (8.4). The registry has one
+# basis key, named for translation; it covers the classification model too until a CP gives it
+# a general name (BL-85; PR 11 peer review).
+HOSTED = {"translation.provider": "http", "classification.model_provider": "http"}
 BASIS_KEY = "translation.data_processing_basis"
+# Flags that switch on a step using one of those providers.
+FLAG_PROVIDER = {"translation.enabled": "translation.provider",
+                 "classification.model": "classification.model_provider"}  # fmt: skip
 # Bounds the registry types cannot express; the code reads these settings (#31).
 INT_BOUNDS: dict[str, tuple[int, int]] = {
     "auth.lockout_threshold": (3, 100),
@@ -220,9 +226,10 @@ async def set_flag(
     row = await db.get(FeatureFlag, key)
     if row is None:
         raise not_found("feature flag")
-    if enabled and key == "translation.enabled":
-        current = await values(db, ["translation.provider", BASIS_KEY])
-        if current["translation.provider"] == "http" and not current[BASIS_KEY].strip():
+    provider_key = FLAG_PROVIDER.get(key)
+    if enabled and provider_key:
+        current = await values(db, [provider_key, BASIS_KEY])
+        if current[provider_key] == HOSTED[provider_key] and not current[BASIS_KEY].strip():
             raise ProblemError(409, "precondition", f"Record {BASIS_KEY} first (8.4).")
     if row.enabled != enabled:
         audit(db, "feature_flag.update", "feature_flag", key, actor=actor, ip=ip,

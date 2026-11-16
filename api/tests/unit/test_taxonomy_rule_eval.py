@@ -58,3 +58,17 @@ def test_regex_hits_stop_at_the_cap_without_building_every_match() -> None:
     started = time.perf_counter()
     result = evaluate({"regex": ["a"]}, "a" * 10_000_000)  # 10 MB, the captured-body cap
     assert result.hits == MAX_HITS and time.perf_counter() - started < 2.0
+
+
+def test_re2_word_classes_are_ascii_and_keywords_are_not() -> None:
+    """PR 26 peer review: \\w and \\b are ASCII in RE2, and \\pL exceeds the program budget."""
+    import pytest
+
+    from regwatch.taxonomy.rules import PatternError, compile_pattern
+
+    text = "Le café über alles"
+    assert not evaluate({"regex": [r"\bcafé\b"]}, text).matched  # ASCII \b: no match
+    with pytest.raises(PatternError, match="too complex"):
+        compile_pattern(r"caf\pL")  # Unicode classes are over the budget
+    assert evaluate({"regex": [r"(?:^|\s)café(?:$|[\s.,;:!?])"]}, text).matched
+    assert evaluate({"keywords": ["café", "über"]}, text).hits == 2  # keywords know every script

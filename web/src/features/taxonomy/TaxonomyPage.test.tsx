@@ -216,4 +216,39 @@ describe("taxonomy screen", () => {
     expect(screen.queryByText("Level 16")).toBeNull();
     expect(flatten([deep] as never)).toHaveLength(1000);
   });
+  it("starts a fresh term form when another facet is selected (PR 35 review)", async () => {
+    const SECTORS = {
+      ...TOPIC,
+      id: "f3",
+      key: "sectors",
+      label: "Sectors",
+      terms: [],
+    };
+    const api = fakeApi({
+      "GET /auth/me": [200, MANAGER],
+      "GET /taxonomy/facets": [200, [TOPIC, SECTORS]],
+      "POST /taxonomy/facets/sectors/terms": [
+        201,
+        term("t9", "energy", "Energy"),
+      ],
+    });
+    renderAt("/admin/taxonomy");
+    const user = userEvent.setup();
+    const topicForm = await screen.findByRole("form", {
+      name: "Add term to Topic",
+    });
+    await user.selectOptions(within(topicForm).getByLabelText("Parent"), "t1");
+    await user.click(screen.getByRole("button", { name: /Sectors/ }));
+    const form = screen.getByRole("form", { name: "Add term to Sectors" });
+    expect(within(form).getByLabelText("Parent")).toHaveValue("");
+    await user.type(within(form).getByLabelText("Key"), "energy");
+    await user.type(within(form).getByLabelText("Label"), "Energy");
+    await user.click(within(form).getByRole("button", { name: "Add term" }));
+    await vi.waitFor(() => {
+      expect(
+        api.calls.find((c) => c.key === "POST /taxonomy/facets/sectors/terms")
+          ?.body,
+      ).toMatchObject({ key: "energy", parent_id: null });
+    });
+  });
 });

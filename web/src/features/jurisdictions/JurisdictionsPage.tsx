@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { problemText } from "@/lib/auth/session";
 
@@ -80,7 +80,19 @@ export function JurisdictionsPage({ canManage }: { canManage: boolean }) {
           regions={regions.data ?? []}
           countries={countries}
           onDone={() => {
+            // Focus returns to the button that opened the form (screens.md; PR 46 review).
+            const opener =
+              editing === "new"
+                ? "Create jurisdiction"
+                : `Edit ${editing.code}`;
             setEditing(null);
+            requestAnimationFrame(() => {
+              const button = [...document.querySelectorAll("button")].find(
+                (b) =>
+                  (b.getAttribute("aria-label") ?? b.textContent) === opener,
+              );
+              button?.focus();
+            });
           }}
         />
       )}
@@ -146,6 +158,26 @@ function JurisdictionForm({
   countries: { code: string; name: string }[];
   onDone: () => void;
 }) {
+  // The form opens above a long table: bring it into view and move focus to it; Escape closes
+  // it (screens.md dialogs; PR 46 peer review).
+  const heading = useRef<HTMLHeadingElement>(null);
+  const done = useRef(onDone);
+  useEffect(() => {
+    done.current = onDone;
+  });
+  useEffect(() => {
+    // jsdom has no scrollIntoView; browsers always do.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    heading.current?.scrollIntoView?.({ block: "nearest" });
+    heading.current?.focus();
+    const close = (e: KeyboardEvent) => {
+      if (e.key === "Escape") done.current();
+    };
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("keydown", close);
+    };
+  }, []);
   const save = useSaveJurisdiction();
   const [code, setCode] = useState(current?.code ?? "");
   const [name, setName] = useState(current?.name ?? "");
@@ -201,7 +233,9 @@ function JurisdictionForm({
       aria-label={title}
       className="flex flex-col gap-3 rounded border border-border bg-surface p-3"
     >
-      <h2 className="font-semibold">{title}</h2>
+      <h2 ref={heading} tabIndex={-1} className="font-semibold">
+        {title}
+      </h2>
       <div className="flex flex-wrap gap-3">
         {text("Code", code, setCode, current !== null)}
         {text("Name", name, setName)}

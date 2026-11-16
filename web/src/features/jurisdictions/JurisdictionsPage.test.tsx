@@ -159,4 +159,19 @@ describe("jurisdictions screen", () => {
     renderAt("/admin/jurisdictions");
     expect(await screen.findByRole("alert")).toHaveTextContent("Boom");
   });
+  it("moves focus into the edit form, closes on Escape and returns focus (PR 46 review)", async () => {
+    fakeApi({ "GET /auth/me": [200, MANAGER], ...BASE });
+    renderAt("/admin/jurisdictions");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit DE" }));
+    const form = screen.getByRole("form", { name: "Edit DE" });
+    expect(
+      within(form).getByRole("heading", { name: "Edit DE" }),
+    ).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("form", { name: "Edit DE" })).toBeNull();
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Edit DE" })).toHaveFocus();
+    });
+  });
 });

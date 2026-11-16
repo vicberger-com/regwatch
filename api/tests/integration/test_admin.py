@@ -405,3 +405,24 @@ async def test_public_branding_summary(admin: httpx.AsyncClient) -> None:
     await admin.put(_api("/admin/legal"), json={"page_markdown": "# Notices"})
     async with httpx.AsyncClient(transport=admin._transport, base_url="https://localhost") as anon:
         assert (await anon.get(_api("/branding/public"))).json()["has_legal_page"] is True
+
+
+async def test_hosted_classification_model_needs_a_basis(admin: httpx.AsyncClient) -> None:
+    """PR 11 peer review: 8.4 covers the model classifier, not only translation."""
+    put = admin.put
+    assert (await put(_api("/admin/settings/classification.model_provider"),
+                      json={"value": "http"})).status_code == 400  # fmt: skip
+    assert (await put(_api("/admin/settings/classification.model_provider"),
+                      json={"value": "ollama"})).status_code == 200  # fmt: skip
+    # A local provider needs no basis, so the flag may go on.
+    flag = _api("/admin/feature-flags/classification.model")
+    assert (await admin.patch(flag, json={"enabled": True})).status_code == 200
+    await admin.patch(flag, json={"enabled": False})
+    basis = {"value": "Contract with the model provider, 2026-11"}
+    assert (await put(_api("/admin/settings/translation.data_processing_basis"),
+                      json=basis)).status_code == 200  # fmt: skip
+    assert (await put(_api("/admin/settings/classification.model_provider"),
+                      json={"value": "http"})).status_code == 200  # fmt: skip
+    cleared = await put(_api("/admin/settings/translation.data_processing_basis"),
+                        json={"value": ""})  # fmt: skip
+    assert cleared.status_code == 400  # a hosted provider is selected

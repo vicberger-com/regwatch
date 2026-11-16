@@ -122,3 +122,75 @@ def test_int64_bounds_and_bounded_errors() -> None:
 def test_right_to_left_marks_and_a_leading_bom_are_accepted(text: str) -> None:
     """M2 re-verification N4: Persian, Arabic and Hebrew text carries these marks."""
     assert VALIDATOR.validate({"notes": text}).values["notes"] == text.removeprefix("﻿")
+
+
+class _Facet:
+    def __init__(self, fid: int, key: str, value_type: str) -> None:
+        self.id, self.key, self.value_type, self.multi, self.required = (
+            fid,
+            key,
+            value_type,
+            True,
+            False,
+        )
+
+
+class _Rows:
+    def __init__(self, rows: list[tuple[int, str]]) -> None:
+        self._rows = rows
+
+    def tuples(self) -> _Rows:
+        return self
+
+    def all(self) -> list[tuple[int, str]]:
+        return self._rows
+
+
+class _Scalars:
+    def __init__(self, items: list[_Facet]) -> None:
+        self._items = items
+
+    def all(self) -> list[_Facet]:
+        return self._items
+
+
+class _Db:
+    """Stand-in for the session: two facets, active terms for one of them, a version."""
+
+    def __init__(self, version: int) -> None:
+        self.version = version
+        self.loads = 0
+
+    async def scalars(self, stmt: object) -> _Scalars:
+        self.loads += 1
+        return _Scalars([_Facet(1, "topic", "term"), _Facet(2, "notes", "text")])
+
+    async def execute(self, stmt: object) -> _Rows:
+        return _Rows([(1, "privacy"), (1, "ai")])
+
+    async def scalar(self, stmt: object) -> int:
+        return self.version
+
+
+async def test_load_builds_rules_from_facets_and_active_terms() -> None:
+    """PR 25 peer review: the 100% unit floor covers the database loader too (7.1)."""
+    from regwatch.taxonomy import validator
+
+    v = await validator.load(_Db(3), 3)  # type: ignore[arg-type]
+    assert v.version == 3
+    assert v.facets["topic"].terms == frozenset({"privacy", "ai"})
+    assert v.facets["notes"].terms == frozenset()
+
+
+async def test_get_validator_rebuilds_only_when_the_version_moves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from regwatch.taxonomy import validator
+
+    monkeypatch.setattr(validator, "_cached", None)
+    db = _Db(1)
+    first = await validator.get_validator(db)  # type: ignore[arg-type]
+    assert await validator.get_validator(db) is first and db.loads == 1  # type: ignore[arg-type]
+    db.version = 2
+    second = await validator.get_validator(db)  # type: ignore[arg-type]
+    assert second is not first and second.version == 2 and db.loads == 2

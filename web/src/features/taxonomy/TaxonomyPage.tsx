@@ -62,7 +62,15 @@ export function TaxonomyPage({ canManage }: { canManage: boolean }) {
           </ul>
           {canManage && <CreateFacet />}
         </nav>
-        {current && <FacetDetail facet={current} canManage={canManage} />}
+        {/* Keyed by facet, so its forms start fresh: a parent picked in one facet must not be
+            sent with a term of another (peer review of PR 35). */}
+        {current && (
+          <FacetDetail
+            key={current.key}
+            facet={current}
+            canManage={canManage}
+          />
+        )}
       </div>
     </section>
   );

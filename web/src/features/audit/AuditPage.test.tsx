@@ -1,3 +1,4 @@
+import { focusManager } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -267,5 +268,34 @@ describe("audit log screen", () => {
     expect(pages).toHaveLength(50); // 50 pages of 200
     const text = await blobs[0]?.text();
     expect(text?.split("\r\n")).toHaveLength(10_002);
+  });
+  it("hides loaded rows when a refetch of the same page fails (PR 51 review)", async () => {
+    let failing = false;
+    fakeApi({ "GET /auth/me": [200, ME] });
+    const fake = globalThis.fetch;
+    vi.stubGlobal("fetch", (request: Request) => {
+      if (!new URL(request.url).pathname.endsWith("/admin/audit"))
+        return fake(request);
+      const [status, body] = failing
+        ? [401, problem(401, "Sign in again.")]
+        : [200, { items: [ROW], total: 1, page: 1, page_size: 50 }];
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: {
+            "Content-Type":
+              status === 200 ? "application/json" : "application/problem+json",
+          },
+        }),
+      );
+    });
+    renderAt("/admin/audit");
+    await screen.findByRole("table", { name: "Audit entries" });
+    failing = true;
+    focusManager.setFocused(false);
+    focusManager.setFocused(true); // the window regains focus: the same page refetches
+    expect(await screen.findByText("Sign in again.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Audit entries" })).toBeNull();
+    focusManager.setFocused(undefined);
   });
 });

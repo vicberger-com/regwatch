@@ -15,7 +15,8 @@ from fnmatch import fnmatch
 CRITICAL = {
     "SafeFetcher": ["*/regwatch/*safe_fetch*.py", "*/regwatch/*/safe_fetch*/*.py"],
     "permission checks": ["*/regwatch/*/permissions.py"],
-    "attribute validator": ["*/regwatch/*attribute*valid*.py"],
+    # The M2 module is taxonomy/validator.py; the first pattern never matched it (PR 25 review).
+    "attribute validator": ["*/regwatch/*attribute*valid*.py", "*/regwatch/taxonomy/validator.py"],
     "output destination validation": ["*/regwatch/outputs/*destination*.py"],
 }
 

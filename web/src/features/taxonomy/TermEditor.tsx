@@ -114,7 +114,12 @@ export function TermEditor({
         {input("Label", label, setLabel)}
         {area("Synonyms", synonyms, setSynonyms, "one per line")}
         {area("Keywords", keywords, setKeywords, "one per line")}
-        {area("Patterns", regex, setRegex, "one RE2 pattern per line")}
+        {area(
+          "Patterns",
+          regex,
+          setRegex,
+          "one RE2 pattern per line; \\w and \\b match ASCII only, so list words in other languages as keywords instead",
+        )}
         <div className="flex flex-wrap gap-3">
           {input("Languages (comma-separated)", languages, setLanguages)}
           {input("Minimum hits", minHits, setMinHits)}
