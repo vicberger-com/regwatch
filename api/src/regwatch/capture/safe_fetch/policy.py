@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -123,8 +123,20 @@ async def _system_resolver(host: str, port: int) -> list[str]:
     return [str(info[4][0]) for info in infos]
 
 
-async def resolve(target: Target, resolver: Resolver | None = None) -> list[IPAddress]:
-    """Every address of the target's host, all checked; refused if any one is not public."""
+async def resolve(
+    target: Target,
+    resolver: Resolver | None = None,
+    pinned_hosts: Mapping[str, str] | None = None,
+) -> list[IPAddress]:
+    """Every address of the target's host, all checked; refused if any one is not public.
+
+    ``pinned_hosts`` maps a host name to an address used without DNS and without the check.
+    Only tests pass it, so one made-up name can reach the local fixture server while every
+    other spelling of that address (``127.0.0.1``, ``localhost``, ``2130706433``) is still
+    refused, as the fixture contract requires. Configuration never sets it.
+    """
+    if pinned_hosts and target.host in pinned_hosts:
+        return [ipaddress.ip_address(pinned_hosts[target.host])]
     try:
         found = await (resolver or _system_resolver)(target.host, target.port)
     except (OSError, UnicodeError) as exc:

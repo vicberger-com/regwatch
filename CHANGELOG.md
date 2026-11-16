@@ -6,6 +6,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ### Added
 - M3 SafeFetcher, part 1, `regwatch.capture.safe_fetch.policy`: only http and https URLs without user information are fetchable, and only when every address their host resolves to is a public unicast address. Private, loopback, link-local, shared, reserved, multicast and documentation ranges are refused, including when embedded in IPv6 (IPv4-mapped, 6to4, Teredo, NAT64), and numeric spellings such as `2130706433` resolve to the same refusal. Any private answer among several refuses the host. `validate_source_url` is the check when a source is saved (M3, M3 acceptance 3, REQ-05)
+- M3 SafeFetcher, part 2, `SafeFetcher.fetch`: each hop connects to an address it has just checked, with the host name in `Host` and as the TLS server name, so DNS cannot change the answer between check and connection; redirects are followed by hand, at most 5, each re-checked; bodies stop at 10 MB after decompression, so a gzip bomb or a lying `Content-Length` is refused; connect 10 s, read 30 s and a 60 s deadline per hop stop slow servers; environment proxies are ignored and connections are not reused, so each hop's certificate is checked for its own name. httpx is now a runtime dependency (M3, M3 acceptance 3, REQ-05)
 
 ## [G1] - 2026-11-16
 
