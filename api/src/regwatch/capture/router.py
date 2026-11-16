@@ -1,7 +1,7 @@
 """Source, capture job and run routes; mounted under /api/v1.
 
-Sources, capture jobs, source health and run history are implemented (M3); the dry run and
-run-now answer 501 until the scheduler slice.
+Sources, capture jobs, run-now, source health and run history are implemented (M3); the
+dry run answers 501 until the first connector lands.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
-from regwatch.capture import services
+from regwatch.capture import runs, services, tasks
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
@@ -103,10 +103,14 @@ async def update_capture_job(
 
 
 @router.post(
-    "/capture-jobs/{id}/run-now", **spec(CaptureRun, status=202, desc="Run queued", perm=MANAGE)
+    "/capture-jobs/{id}/run-now",
+    **spec(CaptureRun, status=202, desc="Run queued", perm=MANAGE, stub=False),
 )
-async def run_capture_job(id: UUID) -> NoReturn:
-    not_implemented()
+async def run_capture_job(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> CaptureRun:
+    # Looked up at call time, so tests can replace the broker hand-over.
+    return await runs.queue_now(db, id, principal, client_ip(request), tasks.enqueue_run)
 
 
 @router.get("/capture-runs", **spec(Page[CaptureRun], desc="Runs", perm=READ, stub=False))

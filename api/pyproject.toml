@@ -88,6 +88,16 @@ ignore_missing_imports = true
 module = ["defusedxml", "defusedxml.*"]
 ignore_missing_imports = true
 
+# Celery ships no type information (M3, ADR-0006); stubs would be one more dependency. Only the
+# task module uses its untyped decorator, so only it waives that check.
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["regwatch.capture.tasks"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

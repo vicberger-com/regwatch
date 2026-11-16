@@ -16,13 +16,23 @@ def test_admin_requires_a_command(
     assert "create-user" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("func", [entrypoints.worker, entrypoints.beat])
-def test_idle_stubs_wait_for_a_signal(func: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    waited: list[bool] = []
-    monkeypatch.setattr(entrypoints.signal, "signal", lambda *_: None)
-    monkeypatch.setattr(entrypoints.signal, "pause", lambda: waited.append(True))
-    func()  # type: ignore[operator]
-    assert waited == [True]
+def test_worker_and_beat_start_celery(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The worker serves the capture queue; Beat keeps its own state in /tmp (M3, ADR-0006)."""
+    from regwatch.core import worker
+
+    worker.celery_app.cache_clear()
+    calls: list[tuple[str, list[str]]] = []
+    app = worker.celery_app()
+    monkeypatch.setattr(app, "worker_main", lambda argv: calls.append(("worker", argv)))
+    monkeypatch.setattr(app, "start", lambda argv: calls.append(("start", argv)))
+    entrypoints.worker()
+    entrypoints.beat()
+    assert calls[0][0] == "worker" and calls[0][1][:3] == ["worker", "--queues", "capture"]
+    assert calls[1] == ("start", ["beat", "--loglevel", "INFO", "--schedule",
+                                  entrypoints.BEAT_SCHEDULE_FILE])  # fmt: skip
+    worker.celery_app.cache_clear()
 
 
 def test_api_main_passes_trusted_proxies(

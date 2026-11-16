@@ -19,6 +19,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - M3 run history and source health: `GET /capture-runs` lists runs newest first, filtered by job and status, and `GET /sources/{id}/health` gives the 7-day run count, success rate, last success and the last error while it is still current (M3, REQ-02)
 - Celery 5.7.0 and its dependencies, approved by the owner and verified in R-01 addendum C4 to C16; the license scan records six wheels whose metadata says only 'BSD License' as reviewed corrections (M3, REQ-20)
 - M3 job schedules (`regwatch.capture.schedule`): cron expressions with names, ranges, lists, steps and cron's either-day rule, computed in the job's time zone across daylight-saving changes. Saving a job sets `next_run_at`; a schedule that never fires is refused (M3, REQ-02)
+- M3 scheduler: `regwatch-worker` and `regwatch-beat` run Celery (JSON messages only, acknowledged after the task, no result backend). Beat fires `capture.schedule_tick` every minute and `capture.health_check` hourly. The tick starts every due job of an enabled source with up to 30 s of jitter, at most one unfinished run per source. `POST /capture-jobs/{id}/run-now` queues a run and audits it. Runs end with the source's health updated; until a kind has a connector its runs fail as `no-connector`, and runs that never finish are ended after 2 hours (M3, ADR-0006, REQ-02)
 
 ## [G1] - 2026-11-16
 

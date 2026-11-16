@@ -57,7 +57,7 @@ services:
       retries: 10
       start_period: 10s
 
-  # Celery lands with M3; until then both run an idle stub (regwatch.core.entrypoints).
+  # Celery (M3, ADR-0006): the worker serves the capture queue; exactly one beat runs.
   worker:
     <<: *app
     command: ["regwatch-worker"]
