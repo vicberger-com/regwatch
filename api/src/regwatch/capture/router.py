@@ -1,7 +1,7 @@
 """Source, capture job and run routes; mounted under /api/v1.
 
-Sources and capture jobs are implemented (M3); the dry run, run-now, health and run history
-answer 501 until the scheduler slice.
+Sources, capture jobs, source health and run history are implemented (M3); the dry run and
+run-now answer 501 until the scheduler slice.
 """
 
 from __future__ import annotations
@@ -85,9 +85,9 @@ async def test_source(id: UUID) -> NoReturn:
     not_implemented()
 
 
-@router.get("/sources/{id}/health", **spec(SourceHealth, desc="Health", perm=READ))
-async def source_health(id: UUID) -> NoReturn:
-    not_implemented()
+@router.get("/sources/{id}/health", **spec(SourceHealth, desc="Health", perm=READ, stub=False))
+async def source_health(id: UUID, db: DbSession) -> SourceHealth:
+    return await services.source_health(db, id)
 
 
 @router.get("/capture-jobs", **spec(list[CaptureJob], desc="Jobs", perm=READ, stub=False))
@@ -109,8 +109,8 @@ async def run_capture_job(id: UUID) -> NoReturn:
     not_implemented()
 
 
-@router.get("/capture-runs", **spec(Page[CaptureRun], desc="Runs", perm=READ))
+@router.get("/capture-runs", **spec(Page[CaptureRun], desc="Runs", perm=READ, stub=False))
 async def list_capture_runs(
-    paging: Paging, job_id: UUID | None = None, status: str | None = None
-) -> NoReturn:
-    not_implemented()
+    paging: Paging, db: DbSession, job_id: UUID | None = None, status: str | None = None
+) -> Page[CaptureRun]:
+    return await services.list_runs(db, paging.page, paging.page_size, job_id, status)

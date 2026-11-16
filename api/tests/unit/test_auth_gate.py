@@ -108,8 +108,12 @@ async def test_permission_from_contract_is_enforced(
 async def test_permitted_user_reaches_the_handler(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _resolve_to(monkeypatch, _principal({"sources.read"}))
-    assert (await _get(app, "/capture-runs", cookies={"rw_session": "t"})).status_code == 501
+    _resolve_to(monkeypatch, _principal({"items.read"}))
+    assert (
+        await _get(
+            app, "/items/00000000-0000-7000-8000-000000000000/versions", cookies={"rw_session": "t"}
+        )
+    ).status_code == 501
 
 
 async def test_temporary_password_allows_only_the_change(

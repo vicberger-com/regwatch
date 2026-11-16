@@ -14,15 +14,16 @@ import re
 import socket
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.config import validate_config, validate_rules
-from regwatch.capture.models import CaptureJob, Source
+from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.safe_fetch.policy import (
     FetchRefusedError,
     Resolver,
@@ -30,7 +31,8 @@ from regwatch.capture.safe_fetch.policy import (
     validate_source_url,
 )
 from regwatch.capture.schemas import CaptureJob as JobOut
-from regwatch.capture.schemas import CaptureJobWrite, SourceWrite
+from regwatch.capture.schemas import CaptureJobWrite, SourceHealth, SourceWrite
+from regwatch.capture.schemas import CaptureRun as RunOut
 from regwatch.capture.schemas import Source as SourceOut
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.core.schemas import Page, has_control
@@ -484,3 +486,53 @@ async def update_job(db: AsyncSession, job_id: uuid.UUID, body: CaptureJobWrite,
     out = JobOut.model_validate(job, from_attributes=True)
     await db.commit()
     return out
+
+
+RUN_STATUSES = ("running", "success", "partial", "failed", "skipped")
+SUCCEEDED = ("success", "partial")
+
+
+async def list_runs(db: AsyncSession, page: int, page_size: int, job_id: uuid.UUID | None,
+                    status: str | None) -> Page[RunOut]:  # fmt: skip
+    """Run history, newest first (``ix_capture_run_job`` serves the per-job listing)."""
+    if status is not None and status not in RUN_STATUSES:
+        raise ProblemError(422, "validation", f"status is one of {', '.join(RUN_STATUSES)}.")
+    query = select(CaptureRun)
+    if job_id is not None:
+        query = query.where(CaptureRun.job_id == job_id)
+    if status is not None:
+        query = query.where(CaptureRun.status == status)
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = await db.scalars(query.order_by(CaptureRun.started_at.desc(), CaptureRun.id.desc())
+                            .offset((page - 1) * page_size).limit(page_size))  # fmt: skip
+    items = [RunOut.model_validate(r, from_attributes=True) for r in rows]
+    return Page[RunOut](items=items, total=total, page=page, page_size=page_size)
+
+
+async def source_health(db: AsyncSession, source_id: uuid.UUID) -> SourceHealth:
+    """Health over the last 7 days. Runs still going and skipped runs (robots.txt, a paused
+    host) count in neither the runs nor the rate: they say nothing of the source's health."""
+    source, job = await _source_and_job(db, source_id)
+    health = SourceHealth(source_id=source.id, health=source.health,
+                          consecutive_failures=source.consecutive_failures, runs_7d=0,
+                          success_rate_7d=0.0, last_success_at=None, last_error=None)  # fmt: skip
+    if job is None:  # pragma: no cover - every source is created with its job
+        return health
+    since = datetime.now(UTC) - timedelta(days=7)
+    finished = CaptureRun.status.in_(("success", "partial", "failed"))
+    counts = (await db.execute(
+        select(func.count(), func.count(case((CaptureRun.status.in_(SUCCEEDED), 1))))
+        .where(CaptureRun.job_id == job.id, CaptureRun.started_at >= since, finished)
+    )).one()  # fmt: skip
+    health.runs_7d = counts[0]
+    health.success_rate_7d = round(counts[1] / counts[0], 4) if counts[0] else 0.0
+    health.last_success_at = await db.scalar(
+        select(func.max(CaptureRun.finished_at))
+        .where(CaptureRun.job_id == job.id, CaptureRun.status.in_(SUCCEEDED)))  # fmt: skip
+    failed = await db.scalar(
+        select(CaptureRun).where(CaptureRun.job_id == job.id, CaptureRun.status == "failed")
+        .order_by(CaptureRun.started_at.desc()).limit(1))  # fmt: skip
+    if failed is not None and (health.last_success_at is None or (
+            failed.finished_at or failed.started_at) > health.last_success_at):  # fmt: skip
+        health.last_error = ": ".join(x for x in (failed.error_class, failed.error_message) if x)
+    return health

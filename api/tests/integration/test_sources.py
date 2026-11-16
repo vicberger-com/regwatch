@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 import httpx
 import pytest
@@ -281,3 +282,52 @@ async def test_the_real_save_resolver_refuses_private_literals(
                         ("https://93.184.215.14/rss", 201)):  # fmt: skip
         got = await admin.post(_api("/sources"), json=rss(config={"feed_url": url}))
         assert got.status_code == status, f"{url}: {got.text}"
+
+
+async def _insert_runs(url: str, job_id: str, runs: list[tuple[str, int, str | None]]) -> None:
+    """Runs as the scheduler will write them: (status, days ago, error class)."""
+    import asyncpg
+
+    conn = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        for status, days, error in runs:
+            await conn.execute(
+                "INSERT INTO capture_run (job_id, status, started_at, finished_at, error_class,"
+                " error_message) VALUES ($1, $2, now() - make_interval(days => $3),"
+                " now() - make_interval(days => $3), $4, $5)",
+                uuid.UUID(job_id), status, days, error, "timed out" if error else None,
+            )  # fmt: skip
+    finally:
+        await conn.close()
+
+
+async def test_run_history_and_health(admin: httpx.AsyncClient, db_url: str) -> None:
+    """Health counts finished runs of the last 7 days; running and skipped runs count in
+    neither the runs nor the rate (ASSUMPTIONS M3)."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    sid, jid = made["id"], made["job"]["id"]
+    fresh = (await admin.get(_api(f"/sources/{sid}/health"))).json()
+    assert fresh == {"source_id": sid, "health": "unknown", "consecutive_failures": 0,
+                     "last_success_at": None, "success_rate_7d": 0.0, "runs_7d": 0,
+                     "last_error": None}  # fmt: skip
+    await _insert_runs(db_url, jid, [("success", 3, None), ("partial", 2, None),
+                                     ("failed", 1, "timeout"), ("skipped", 1, None),
+                                     ("running", 0, None), ("success", 30, None)])  # fmt: skip
+    health = (await admin.get(_api(f"/sources/{sid}/health"))).json()
+    assert health["runs_7d"] == 3 and health["success_rate_7d"] == 0.6667
+    assert health["last_error"] == "timeout: timed out"  # failed after the last success
+    assert health["last_success_at"] is not None
+
+    runs = (await admin.get(_api("/capture-runs"), params={"job_id": jid})).json()
+    assert runs["total"] == 6
+    assert [r["status"] for r in runs["items"]][:2] == ["running", "skipped"]  # newest first
+    failed = (await admin.get(_api("/capture-runs"), params={"status": "failed"})).json()
+    assert failed["total"] == 1 and failed["items"][0]["error_class"] == "timeout"
+    assert (await admin.get(_api("/capture-runs"), params={"status": "bogus"})).status_code == 422
+    missing = "00000000-0000-7000-8000-000000000000"
+    assert (await admin.get(_api(f"/sources/{missing}/health"))).status_code == 404
+
+    await _insert_runs(db_url, jid, [("success", 0, None)])
+    assert (await admin.get(_api(f"/sources/{sid}/health"))).json()["last_error"] is None
+    viewer = await _as_new_user(admin, "vh@example.org", ["viewer"])
+    assert (await viewer.get(_api("/capture-runs"))).status_code == 403  # no sources.read
