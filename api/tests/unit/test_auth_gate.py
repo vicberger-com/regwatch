@@ -284,3 +284,40 @@ async def test_gate_without_a_route_requires_a_session(
     _resolve_to(monkeypatch, _principal(set(), must_change_password=True))
     with pytest.raises(ProblemError):
         await permissions.authorize(Request(dict(scope)), Settings())
+
+
+def test_rejected_attempts_leave_no_trace() -> None:
+    """Re-verification N1: a request refused by a limit adds no counter entry."""
+    for _ in range(services.LOGIN_RATE_IP[0]):
+        services.check_login_rate("10.0.0.5", f"seed{_}@example.org")
+    before = len(services.all_attempts._hits) + len(services.login_attempts._hits)
+    for i in range(500):
+        with pytest.raises(ProblemError):
+            services.check_login_rate("10.0.0.5", f"random{i}@example.org")
+    assert len(services.all_attempts._hits) + len(services.login_attempts._hits) == before
+
+
+def test_a_refused_client_gets_back_under_the_cap() -> None:
+    """Re-verification N2: refused retries do not count, so the cap clears after its window."""
+    for _ in range(services.LOGIN_ALL_RATE[0]):
+        services.forgive(services.check_login_rate(None, "retry@example.org"))
+    for _ in range(50):  # hammering while refused changes nothing
+        with pytest.raises(ProblemError):
+            services.check_login_rate(None, "retry@example.org")
+    assert (
+        services.all_attempts.count("all:" + "acct:" + services.email_digest("retry@example.org"))
+        == (services.LOGIN_ALL_RATE[0])
+    )
+
+
+def test_sweeps_run_at_most_once_per_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification N1: past MAX_KEYS, the oldest keys go, without a scan per request."""
+    window = services.SlidingWindow(60.0)
+    monkeypatch.setattr(window, "MAX_KEYS", 10)
+    for i in range(12):
+        window.hit(f"k{i}")
+    assert len(window._hits) <= 10  # the first sweep dropped the oldest keys
+    swept_at = window._last_sweep
+    for i in range(12, 30):
+        window.hit(f"k{i}")
+    assert window._last_sweep == swept_at  # no second sweep within the window

@@ -117,7 +117,7 @@ export function loginErrorMessage(problem: Problem): string {
     case 423:
       return "This account is locked. Try again later or ask an administrator.";
     case 429:
-      return "Too many attempts. Wait a minute and try again.";
+      return "Too many attempts. Wait and try again.";
     default:
       return problem.detail ?? "Sign-in failed. Try again.";
   }

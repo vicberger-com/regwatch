@@ -94,6 +94,7 @@ class SlidingWindow:
     def __init__(self, window_s: float) -> None:
         self.window_s = window_s
         self._hits: dict[str, deque[float]] = {}
+        self._last_sweep = float("-inf")
 
     def _prune(self, key: str, now: float) -> deque[float]:
         hits = self._hits.setdefault(key, deque())
@@ -102,18 +103,36 @@ class SlidingWindow:
         return hits
 
     def count(self, key: str) -> int:
-        return len(self._prune(key, time.monotonic()))
+        """Events in the window; looking never creates an entry (re-verification N1)."""
+        if key not in self._hits:
+            return 0
+        hits = self._prune(key, time.monotonic())
+        if not hits:
+            del self._hits[key]
+        return len(hits)
+
+    def _sweep(self, now: float) -> None:
+        # At most once per window, so a flood of keys cannot make every request scan them all
+        # (re-verification N1); if expiry alone is not enough, the oldest keys go first.
+        if now - self._last_sweep < self.window_s:
+            return
+        self._last_sweep = now
+        for k in [k for k, v in self._hits.items() if not v or v[-1] <= now - self.window_s]:
+            del self._hits[k]
+        for k in list(self._hits)[: max(0, len(self._hits) - self.MAX_KEYS * 9 // 10)]:
+            del self._hits[k]
 
     def hit(self, key: str) -> int:
         now = time.monotonic()
         if len(self._hits) > self.MAX_KEYS:
-            for k in [k for k, v in self._hits.items() if not v or v[-1] <= now - self.window_s]:
-                del self._hits[k]
+            self._sweep(now)
         hits = self._prune(key, now)
         hits.append(now)
         return len(hits)
 
     def retry_after(self, key: str) -> int:
+        if key not in self._hits:  # looking never creates an entry
+            return 1
         hits = self._prune(key, time.monotonic())
         return max(1, int(hits[0] + self.window_s - time.monotonic()) + 1) if hits else 1
 
@@ -136,6 +155,7 @@ class SlidingWindow:
 
     def clear(self) -> None:
         self._hits.clear()
+        self._last_sweep = float("-inf")
 
 
 class LockTable:
@@ -184,7 +204,7 @@ def email_digest(email: str) -> str:
 
 def _too_many(window: SlidingWindow, key: str, kind: str = "sign-in") -> ProblemError:
     return ProblemError(
-        429, "rate-limited", f"Too many {kind} attempts. Wait a minute and try again.",
+        429, "rate-limited", f"Too many {kind} attempts. {WAIT}",
         headers={"Retry-After": str(window.retry_after(key))},
     )  # fmt: skip
 
@@ -203,14 +223,23 @@ def address_key(ip: str) -> str:
 
 
 RateTicket = list[tuple[SlidingWindow, str, float]]
+# (window, key, limit, given back on success)
+Limit = tuple[SlidingWindow, str, int, bool]
+
+WAIT = "Wait and try again."
 
 
-def _check(limits: list[tuple[SlidingWindow, str, int]], message: str) -> RateTicket:
-    for window, key, limit in limits:
+def _check(limits: list[Limit], kind: str) -> RateTicket:
+    """Every limit is checked before anything is counted, so a rejected request leaves no
+    trace and cannot keep a client over a cap (re-verification N1, N2); then all are counted
+    in the same synchronous step, so a burst cannot slip under them."""
+    for window, key, limit, _ in limits:
         if window.count(key) >= limit:
-            raise ProblemError(429, "rate-limited", message,
-                               headers={"Retry-After": str(window.retry_after(key))})  # fmt: skip
-    return [(window, key, window.hit_at(key)) for window, key, _ in limits]
+            raise _too_many(window, key, kind)
+    stamps = [
+        (window, key, window.hit_at(key), refundable) for window, key, _, refundable in limits
+    ]
+    return [(window, key, at) for window, key, at, refundable in stamps if refundable]
 
 
 def check_login_rate(ip: str | None, email: str) -> RateTicket:
@@ -221,24 +250,24 @@ def check_login_rate(ip: str | None, email: str) -> RateTicket:
     an attempt is in progress it counts, and at a limit even a correct password gets 429.
     """
     account = _key("acct", email)
-    all_attempts.hit(f"all:{account}")  # never given back
-    if all_attempts.count(f"all:{account}") > LOGIN_ALL_RATE[0]:
-        raise _too_many(all_attempts, f"all:{account}")
-    limits = [(login_attempts, account, LOGIN_RATE_ACCOUNT[0])]
+    limits: list[Limit] = [
+        (all_attempts, f"all:{account}", LOGIN_ALL_RATE[0], False),  # never given back
+        (login_attempts, account, LOGIN_RATE_ACCOUNT[0], True),
+    ]
     if ip:
         addr = address_key(ip)
-        limits += [(login_attempts, addr, LOGIN_RATE_IP[0]),
-                   (login_attempts_hourly, addr, LOGIN_RATE_IP_HOURLY[0])]  # fmt: skip
-    return _check(limits, "Too many sign-in attempts. Wait a minute and try again.")
+        limits += [(login_attempts, addr, LOGIN_RATE_IP[0], True),
+                   (login_attempts_hourly, addr, LOGIN_RATE_IP_HOURLY[0], True)]  # fmt: skip
+    return _check(limits, "sign-in")
 
 
 def check_password_change_rate(user_id: uuid.UUID) -> RateTicket:
     key = f"pwchg:{user_id}"
-    all_attempts.hit(f"all:{key}")  # never given back
-    if all_attempts.count(f"all:{key}") > PASSWORD_CHANGE_ALL_RATE[0]:
-        raise _too_many(all_attempts, f"all:{key}", "password-change")
-    limits = [(password_changes, key, PASSWORD_CHANGE_RATE[0])]
-    return _check(limits, "Too many password-change attempts. Wait a minute and try again.")
+    limits: list[Limit] = [
+        (all_attempts, f"all:{key}", PASSWORD_CHANGE_ALL_RATE[0], False),  # never given back
+        (password_changes, key, PASSWORD_CHANGE_RATE[0], True),
+    ]
+    return _check(limits, "password-change")
 
 
 def forgive(ticket: RateTicket) -> None:
