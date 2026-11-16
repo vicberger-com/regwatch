@@ -331,3 +331,17 @@ Findings 17 to 21 are low and 22 is info. Sign-off can follow when 14 to 16 are 
    - Crawl-delay: `inf`, `nan`, `-5`, `abc` and `1e400` give None; `1e20` gives 1e20.
    - Wildcard matching takes 0.00 s.
    - A 500 KiB file (24,336 lines) parses to 12.9 MiB.
+
+### Author follow-up (`sec/M3-capture-followups`, pending re-verification)
+- **14 (medium):** the Lua script takes the longest acceptable wait (`ARGV[2]`) and returns -1 without reserving anything when the wait is longer, so refusals never push slots back. `MemoryRateLimiter` does the same. Tests: `test_refused_attempts_reserve_nothing` (unit) and `test_refusals_reserve_nothing_and_keys_outlive_their_slots` (Valkey).
+- **15 (medium):** the key's expiry is the last reserved slot plus a minute (`nxt - now + 60000`), so queued slots never expire early. The Valkey test asserts a TTL beyond 70 queued slots.
+- **16 (medium):** the robots cache is an LRU bounded by `CACHE_BUDGET`, 4 MiB of parsed robots.txt text (about 100 MB once parsed, by the review's measurement), with the least recently used evicted first. Entries without rules hold no bytes, and the 10,000-entry cap stays. Test: `test_the_cache_is_bounded_by_bytes_least_recent_first`.
+- **17 (low):** `interval` is clamped to between 1 ms and `MAX_INTERVAL_S` (an hour), so a hostile Crawl-delay can neither break the script nor leave keys that live for years. Intervals round up (`ceil`). Test: `test_huge_crawl_delays_and_rates_are_clamped`.
+- **18 (low):** a robots.txt fetch takes a rate slot of its own when the origin is not cached. Test: `test_robots_fetches_take_a_rate_slot` (30 pages plus robots.txt at 10 a minute: at most 10 in any minute).
+- **19 (low):** `before_hop` runs `SafeFetcher.check_url`, which parses the URL and checks its addresses, before robots and the rate slot. A private redirect is reported as `private-address` and takes no slot. Test: `test_a_private_redirect_is_reported_as_such`.
+- **20 (low):**
+  - robots.txt is read up to 2 MiB and the first 500 KiB are parsed (`test_large_robots_files_are_parsed_up_to_500_kib`);
+  - a 429 means try later (`test_429_means_try_later`);
+  - protego's substring matching of `User-agent` names stays as it is and is recorded in BL-87.
+- **21 (low):** `test_acceptance_5_with_valkey_and_the_fixture_server` runs 30 concurrent fetches plus robots.txt through the real Valkey limiter and the fixture server at 600 a minute, and asserts the 31 requests took at least 3 s.
+- **22 (info):** a rate of 0 is no longer read as "use the default"; it raises. The override's reason length, its permission and its audit row are checked when the source routes land (M3 routes slice).

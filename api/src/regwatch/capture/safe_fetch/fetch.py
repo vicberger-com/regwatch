@@ -181,6 +181,12 @@ class SafeFetcher:
             extensions=extensions,
         )
 
+    async def check_url(self, url: str) -> Target:
+        """The URL's checks without fetching: parse it and check every resolved address."""
+        target = parse_target(url)
+        await self._resolve(target)
+        return target
+
     def with_limits(self, limits: FetchLimits) -> SafeFetcher:
         """The same fetcher (including any test subclass) with other limits."""
         clone = copy.copy(self)

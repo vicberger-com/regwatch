@@ -53,12 +53,23 @@ async def valkey() -> AsyncIterator[redis.Redis]:
 
 async def test_slots_are_shared_and_spaced(valkey: redis.Redis) -> None:
     limiter = ValkeyRateLimiter(valkey)
-    first = await limiter.take("example.org", 6.0)
-    second = await limiter.take("example.org", 6.0)
-    assert first == 0.0 and 5.9 <= second <= 6.0
-    assert await limiter.take("other.example", 6.0) == 0.0
-    ttl = await valkey.pttl("regwatch:rate:example.org")
-    assert 0 < ttl <= 6000 * 2 + 60_000
+    first = await limiter.take("example.org", 6.0, 120)
+    second = await limiter.take("example.org", 6.0, 120)
+    assert first == 0.0 and second is not None and 5.9 <= second <= 6.0
+    assert await limiter.take("other.example", 6.0, 120) == 0.0
+
+
+async def test_refusals_reserve_nothing_and_keys_outlive_their_slots(valkey: redis.Redis) -> None:
+    """Review findings 14 and 15 against the real script."""
+    limiter = ValkeyRateLimiter(valkey)
+    for _ in range(70):
+        assert await limiter.take("queue.example", 1.0, 120) is not None  # 70 s queued
+    ttl = await valkey.pttl("regwatch:rate:queue.example")
+    assert ttl > 70_000  # the key lives past the last queued slot (15)
+    free_before = int(await valkey.get("regwatch:rate:queue.example"))
+    for _ in range(50):
+        assert await limiter.take("queue.example", 1.0, 10) is None  # refused (14)
+    assert int(await valkey.get("regwatch:rate:queue.example")) == free_before
 
 
 async def test_concurrent_workers_never_share_a_slot(valkey: redis.Redis) -> None:
@@ -66,7 +77,31 @@ async def test_concurrent_workers_never_share_a_slot(valkey: redis.Redis) -> Non
     other = redis.Redis(connection_pool=valkey.connection_pool)
     a, b = ValkeyRateLimiter(valkey), ValkeyRateLimiter(other)
     waits = await asyncio.gather(
-        *[(a if i % 2 else b).take("busy.example", 1.0) for i in range(20)]
+        *[(a if i % 2 else b).take("busy.example", 1.0, 120) for i in range(20)]
     )
     steps = sorted(round(w) for w in waits)
     assert steps == list(range(20))
+
+
+async def test_acceptance_5_with_valkey_and_the_fixture_server(valkey: redis.Redis) -> None:
+    """Acceptance 5 end to end, sped up: 30 pages at 600 a minute (one per 100 ms), robots.txt
+    included, through the real Valkey limiter and the fixture server; at most 10 a second."""
+    from regwatch.capture.safe_fetch import CaptureFetcher
+    from tests.support.fixture_server import FixtureServer
+    from tests.unit.test_safe_fetch_fetch import FIXTURES, PinnedFetcher
+
+    server = FixtureServer().start()
+    try:
+        server.state.reset()
+        fetcher = PinnedFetcher({FIXTURES: "127.0.0.1"})
+        capture = CaptureFetcher(fetcher, ValkeyRateLimiter(valkey), rate_per_minute=600)
+        started = time.monotonic()
+        await asyncio.gather(*[
+            capture.fetch(f"http://{FIXTURES}:{server.port}/pages/listing/item-{n}.html")
+            for n in range(30)
+        ])  # fmt: skip
+        elapsed = time.monotonic() - started
+        assert len(server.state.requests) == 31  # robots.txt and 30 pages
+        assert elapsed >= 2.9  # 31 slots, 100 ms apart
+    finally:
+        server.stop()

@@ -73,19 +73,50 @@ async def test_an_override_needs_a_reason_and_skips_the_rules() -> None:
         await policy.check("https://example.org/x", override_reason="   ")
 
 
-async def test_the_cache_expires_and_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_the_cache_expires(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [1000.0]
     monkeypatch.setattr(robots_module.time, "monotonic", lambda: clock[0])
     policy = mocked(404)
     await policy.check("https://example.org/x")
+    assert policy.is_cached("https://example.org")
     clock[0] += robots_module.CACHE_SECONDS + 1
+    assert not policy.is_cached("https://example.org")
     await policy.check("https://example.org/x")
     assert policy.calls == ["/robots.txt", "/robots.txt"]  # type: ignore[attr-defined]
-    policy._cache.update({f"https://h{i}.example": policy._cache["https://example.org"]
-                          for i in range(10_001)})  # fmt: skip
-    clock[0] += robots_module.CACHE_SECONDS + 1
-    await policy.check("https://example.org/x")
-    assert len(policy._cache) == 1
+
+
+async def test_the_cache_is_bounded_by_bytes_least_recent_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review finding 16: memory, not the number of sites, bounds the cache."""
+    monkeypatch.setattr(robots_module, "CACHE_BUDGET", 2500)
+    body = b"User-agent: *\nDisallow: /x\n" + b"# pad\n" * 160  # about 1 KB each
+    policy = mocked(200, body)
+    await policy.check("https://example.org/a")
+    await policy.check("https://other.example/a")
+    await policy.check("https://example.org/b")  # example.org is now the most recent
+    await policy.check("https://v6.example/a")  # over budget: other.example goes first
+    assert policy.is_cached("https://example.org") and policy.is_cached("https://v6.example")
+    assert not policy.is_cached("https://other.example")
+    assert policy._held <= 2500
+    for i in range(10_001):  # entries without rules hold no bytes but still count
+        policy._store(f"https://h{i}.example", robots_module._Rules(None, False, 1e18))
+    assert len(policy._cache) <= 10_000
+
+
+async def test_large_robots_files_are_parsed_up_to_500_kib() -> None:
+    """Review finding 20: a file over 500 KiB is parsed in part, not refused outright."""
+    body = b"User-agent: *\nDisallow: /private\n" + b"# padding line\n" * 50_000
+    assert len(body) > robots_module.PARSE_BYTES
+    policy = mocked(200, body)
+    with pytest.raises(FetchRefusedError):
+        await policy.check("https://example.org/private/x")
+    assert policy._held == robots_module.PARSE_BYTES
+
+
+async def test_429_means_try_later() -> None:
+    with pytest.raises(FetchRefusedError, match="could not be read"):
+        await mocked(429).check("https://example.org/x")
 
 
 async def test_robots_from_the_fixture_server(server: FixtureServer) -> None:
