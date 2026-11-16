@@ -281,3 +281,20 @@ async def test_robots_fetches_take_a_rate_slot(monkeypatch: pytest.MonkeyPatch) 
         await capture.fetch(f"https://example.org/p/{n}")
     assert len(times) == 31  # one robots.txt, 30 pages
     assert max(sum(1 for t in times if s <= t < s + 60) for s in times) <= 10
+
+
+@pytest.mark.parametrize("wait", [float("nan"), -1.0, float("inf")])
+async def test_the_longest_wait_must_be_finite(wait: float) -> None:
+    """Review finding 27: both limiters refuse a NaN, negative or infinite ``max_wait_s``."""
+    from regwatch.capture.safe_fetch import ValkeyRateLimiter
+
+    class Client:
+        def register_script(self, source: str):  # noqa: ANN201 - a stand-in for redis-py
+            async def script(keys: list[str], args: list[int]) -> int:
+                raise AssertionError("not reached")
+
+            return script
+
+    for limiter in (MemoryRateLimiter(), ValkeyRateLimiter(Client())):
+        with pytest.raises(ValueError, match="longest wait"):
+            await limiter.take("example.org", 1.0, wait)

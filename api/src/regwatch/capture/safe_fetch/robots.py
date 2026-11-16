@@ -50,7 +50,8 @@ BeforeFetch = Callable[[], Awaitable[None]]
 def _parse_text(body: bytes) -> str:
     """The part of the body that is parsed: whole lines only, at most ``PARSE_BYTES``."""
     if len(body) > PARSE_BYTES:
-        cut = body.rfind(b"\n", 0, PARSE_BYTES + 1)
+        # CR alone ends a line too (RFC 9309), so a CR-only file is not cut to nothing (26).
+        cut = max(body.rfind(b"\n", 0, PARSE_BYTES + 1), body.rfind(b"\r", 0, PARSE_BYTES + 1))
         body = body[: cut + 1] if cut >= 0 else b""
     return body.decode("utf-8", errors="replace")
 

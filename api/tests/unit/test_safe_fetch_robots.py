@@ -125,6 +125,14 @@ async def test_a_rule_cut_by_the_parse_limit_is_dropped() -> None:
         await policy.check("https://example.org/anything")
 
 
+async def test_a_cr_only_file_is_cut_at_a_line_break_too() -> None:
+    """Review finding 26: CR alone ends a line (RFC 9309)."""
+    body = b"User-agent: *\rDisallow: /\r" + b"# padding line\r" * 40_000
+    assert len(body) > robots_module.PARSE_BYTES and b"\n" not in body
+    with pytest.raises(FetchRefusedError):
+        await mocked(200, body).check("https://example.org/anything")
+
+
 async def test_a_file_without_a_line_break_in_the_limit_has_no_rules() -> None:
     assert (
         await mocked(200, b"#" * (robots_module.PARSE_BYTES + 10)).check("https://example.org/x")

@@ -55,6 +55,12 @@ def interval(rate_per_minute: int, crawl_delay: float | None = None) -> float:
     return _clamp(max(60.0 / rate_per_minute, crawl_delay or 0.0))
 
 
+def _check_wait(max_wait_s: float) -> None:
+    """A NaN or negative longest wait would accept every request or none (review finding 27)."""
+    if not 0 <= max_wait_s < math.inf:
+        raise ValueError("the longest wait must be a finite number of seconds, at least 0")
+
+
 def _clamp(seconds: float) -> float:
     """Every limiter clamps too, so none relies on its callers using ``interval`` (25 (b))."""
     if seconds != seconds:  # NaN
@@ -69,6 +75,7 @@ class ValkeyRateLimiter:
         self._script = client.register_script(_TAKE)  # type: ignore[attr-defined]
 
     async def take(self, host: str, interval_s: float, max_wait_s: float) -> float | None:
+        _check_wait(max_wait_s)
         # ceil: an interval is never shortened
         args = [math.ceil(_clamp(interval_s) * 1000), math.floor(max_wait_s * 1000)]
         wait_ms = int(await self._script(keys=[self._prefix + host], args=args))
@@ -80,6 +87,7 @@ class MemoryRateLimiter:
         self._free: dict[str, float] = {}
 
     async def take(self, host: str, interval_s: float, max_wait_s: float) -> float | None:
+        _check_wait(max_wait_s)
         now = time.monotonic()
         free = max(self._free.get(host, now), now)
         if free - now > max_wait_s:
