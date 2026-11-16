@@ -401,3 +401,49 @@ Findings 17 to 21 are low and 22 is info. Sign-off can follow when 14 to 16 are 
    - 30 jobs at 600 a minute: 31 requests, 60 slots, 5.9 s.
    - 40 jobs at 600 a minute with `max_wait` 2 s: 21 requests, 41 slots, 20 refused, 4.0 s (25).
 5. **`robots_probe.py`:** RFC behaviour is unchanged. The Crawl-delay `1e20` now gives an interval of 3,600 s (3,600,000 ms).
+
+### Re-verification of findings 23 to 25 and residual 21 (`sec/M3-fetch-followups` at `511079e`)
+**Method:**
+- **Code and tests:** I read `git diff 511079e~1 511079e`. The four SafeFetcher unit files pass (135 tests), and coverage of `regwatch.capture.safe_fetch` is 100 percent (462 statements, 126 branches). `tests/integration/test_valkey_rate.py` passes (4 tests); its container was removed.
+- **Probes rerun:** `capture_probe2.py` (all parts, including c and f) and `concurrency.py`.
+- **New probes:** `fix3.py` covers truncation edge cases, the lock handoff, cleanup and the clamps. `clamp_valkey.py` calls `ValkeyRateLimiter.take` directly on a throwaway Valkey from the locally present pinned image, bound to 127.0.0.1 and removed afterwards.
+- **Isolation:** no dev-stack data was changed, no bind was widened, no external network was used, and no image was pulled. Only this record was changed, and it is not committed.
+
+| # | Verdict | Evidence |
+| --- | --- | --- |
+| 23 | closed | `capture_probe2.py` f: a 1 s resolver with a 0.2 s deadline is refused as `timeout`, "DNS for example.org took longer than 0.2 s", **after 0.2 s** (it was 3.2 s). The fetch is now stopped at the first lookup (1 lookup made, against 3 before). `check_url` wraps `_resolve` in `asyncio.timeout(total_s)` (`fetch.py:184-195`). The extra lookup on hops that pass is not removed, as the author says; it now has a deadline, so I accept it. There is still no rebinding gap, because `_hop` re-resolves and connects to an address from its own checked lookup. |
+| 24 | closed for LF and CRLF files; a new low issue for CR-only files (26) | `capture_probe2.py` c: the file whose `Allow: /public-docs` straddles the limit is now refused (`robots`), because `Disallow: /` applies. Before, it was allowed. `fix3.py`: a newline at `PARSE_BYTES - 1` cuts there (511,999 characters parsed), and a newline at exactly `PARSE_BYTES` is kept (512,001). A CRLF file over the limit keeps its rules. |
+| 25(a) | closed | `concurrency.py` (resolver that yields):<br>- 30 concurrent pages at 600 a minute: 31 requests, **31 slots reserved, 3.0 s** (it was 60 slots and 5.9 s).<br>- 40 jobs with a 20-interval `max_wait`: 21 requests, 21 slots, 20 refused, 2.0 s (it was 41 slots and 4.0 s).<br><br>`fix3.py`:<br>- 20 concurrent checks of one origin: 1 robots.txt fetch, 1 `before_fetch` call, 0 locks left.<br>- When `before_fetch` refuses for the first two waiters: those two get `rate-limited`, the third waiter tries for itself and fetches once, the rest are served from the cache, and 0 locks are left.<br>- Three checks cancelled mid-fetch leave 0 locks and nothing cached.<br><br>The user count is decremented in `finally` and the entry is deleted at zero, which is correct under cancellation as well. |
+| 25(b) | closed | `_clamp` (`rate.py:58`) is applied inside both limiters. Direct `ValkeyRateLimiter.take` calls with `1e20`, `1e9`, `inf` and `nan` now succeed: two takes give a TTL of 7,260 s, which is two clamped 3,600 s slots plus 60 s. `-5` gives a 1 ms interval (TTL 60 s). `MemoryRateLimiter` gives 3,600 s for `1e20`, `inf` and `nan`, and 0.001 s for `-5` and `0`. The `ResponseError` from finding 17 can no longer occur. |
+| 21 | closed | `RecordedRequest.at` exists. The acceptance-5 test now asserts that any 11 consecutive arrivals span at least 0.95 s, which is the sliding-window check: at most 10 per second at 600 a minute. It also asserts the run takes 2.9 to 4.5 s, which would catch the 25(a) slot waste (5.9 s). This proves acceptance 5 at a sped-up rate against the real Valkey script and the fixture server. |
+
+### New findings
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| 26 | low | **A robots.txt over 500 KiB with CR-only line endings is parsed as empty, so everything is allowed.** RFC 9309 2.2 allows CR, LF and CRLF as line ends, and protego splits on a bare CR. `_parse_text` (`robots.py:50-55`) looks only for `\n`; with none found, it parses `b""`. **Failure case** (`fix3.py` 1): a 512,083-byte CR-only file whose first rule is `Disallow: /private` lets `/private/x` through, while the same file under the limit refuses it. This is a politeness and legal issue (8.3), not a security one, and such files are rare. A single line longer than 500 KiB is also parsed as empty, so everything is allowed (`fix3.py` 2). Ignoring content beyond the limit is RFC-consistent, so I note that case only. **Fix:** cut at the last of `\n` or `\r` at or before the limit, e.g. `max(body.rfind(b"\n", 0, L + 1), body.rfind(b"\r", 0, L + 1))`. Optionally treat a truncated file with no complete line as unreadable (disallow, retry after 15 minutes). Add a CR-only test. | open | reviewer PoC |
+| 27 | info | `max_wait_s` is not validated. In `MemoryRateLimiter`, a NaN `max_wait_s` accepts every take, because comparisons with NaN are false. In `ValkeyRateLimiter`, `math.floor(nan)` raises `ValueError`. The value comes from code (`MAX_WAIT_S`), not configuration. Validate it if it ever becomes configurable. | n/a | n/a |
+
+**Sign-off at this re-verification:** signed off; no high, critical or medium finding open. Findings 21, 23, 24, 25(a) and 25(b) are closed. Finding 26 is low and tracked for a follow-up, and 27 is info. 20(b) stays deferred to BL-87, and 22(a) to the routes slice. · M3 SafeFetcher independent review · 2026-11-16
+
+### Evidence (this re-verification)
+1. **Tests:** the four unit files: 135 passed, 100 percent (462 statements, 126 branches). Valkey integration: 4 passed.
+2. **`capture_probe2.py`:**
+   - a: `private-address`, with no slot, with and without an override.
+   - b: 31 requests, worst minute 10.
+   - c: 429 gives `robots`; 401 allows; 600 KB `Allow` allows; 2.5 MB gives `robots`. The boundary file is now **refused** (24).
+   - d: 8 entries, 3.91 MiB; memory 112, 45 and 15 MiB.
+   - e: the LRU fuzz holds.
+   - f: `timeout` after 0.2 s, with 1 lookup (23).
+   - g: 31 requests and 31 slots, 3.0 s.
+3. **`concurrency.py`:**
+   - 30 jobs: 31 requests, 31 slots, 0 refused, 3.0 s.
+   - 40 jobs with `max_wait` 2 s: 21 requests, 21 slots, 20 refused, 2.0 s.
+4. **`fix3.py`, truncation:**
+   - Over the limit: CR-only allows (26); one long line allows; CRLF refuses.
+   - A newline at `PARSE_BYTES - 1` gives a refusal with 511,999 characters parsed. A newline at exactly `PARSE_BYTES` gives a refusal with 512,001.
+5. **`fix3.py`, the lock:**
+   - 20 concurrent checks: 1 fetch, 1 `before_fetch` call, 0 locks left.
+   - With a flaky `before_fetch`: `[rate-limited, rate-limited, allowed, allowed, allowed]`, 3 `before_fetch` calls, 1 fetch, 0 locks left.
+   - Cancelled checks: 0 locks left, nothing cached.
+6. **`fix3.py`, clamps:** `MemoryRateLimiter` intervals: 3,600 s for `1e20`, `inf` and `nan`; 0.001 s for `-5` and `0`. A NaN `max_wait_s` accepts the take (27).
+7. **`clamp_valkey.py`:** `1e20`, `1e9`, `inf` and `nan` all succeed, each with a TTL of 7,260 s after two takes. `-5` gives a TTL of 60 s.
