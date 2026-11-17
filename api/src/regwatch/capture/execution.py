@@ -56,6 +56,10 @@ MAX_ATTEMPTS = 3
 RETRY_WAIT_S = 1.0  # first backoff; doubles per attempt, at most 10 s
 TRANSIENT = frozenset({"timeout", "connect"})
 SKIPPING = frozenset({"robots", "rate-limited"})
+# A document the provider does not have in the asked form (EUR-Lex review finding 1): skipped,
+# not failed, so the cursor still moves past it.
+UNAVAILABLE = frozenset({"unavailable"})
+STOPPING = frozenset({"blocked-by-provider"})
 REFUSALS = {
     "robots": "robots.txt does not allow it",
     "rate-limited": "the host is busy; tried again next run",
@@ -190,8 +194,13 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
                     else:
                         failures += 1
-                except ConnectorError:
-                    failures += 1
+                except ConnectorError as exc:
+                    if exc.reason in STOPPING:  # a block on one document stops the run (3)
+                        raise
+                    if exc.reason in UNAVAILABLE:  # the provider has no such document: a skip
+                        refused[exc.reason] = refused.get(exc.reason, 0) + 1
+                    else:
+                        failures += 1
     except TimeoutError:
         if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
             raise
@@ -275,10 +284,11 @@ def _verdict(fetched: int, failures: int, refused: dict[str, int],
     if failures and not fetched:
         return "failed", "fetch-failed", f"none of {total} documents could be fetched"
     if skipped and not fetched:
-        reason = "robots" if refused.get("robots") else "rate-limited"
+        reason = "robots" if refused.get("robots") else sorted(refused)[0]
         return "skipped", reason, f"all {skipped} documents were refused ({reason})"
     if failures:
         return "partial", "some-failed", f"{failures} of {total} documents failed"
     if skipped:
-        return "success", None, f"{skipped} documents were refused by robots.txt or a busy host"
+        return "success", None, (f"{skipped} documents were refused by robots.txt or a busy "
+                                 "host, or are not available")  # fmt: skip
     return "success", None, None

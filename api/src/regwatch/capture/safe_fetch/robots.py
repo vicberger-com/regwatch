@@ -123,6 +123,8 @@ class RobotsPolicy:
         except FetchRefusedError:
             return _Rules(None, True, time.monotonic() + UNREACHABLE_SECONDS)
         now = time.monotonic()
+        if "x-amzn-waf-action" in got.headers:  # a firewall challenge is no robots.txt (R-06)
+            return _Rules(None, True, now + UNREACHABLE_SECONDS)
         if 200 <= got.status < 300:
             text = _parse_text(got.body)
             return _Rules(Protego.parse(text), False, now + CACHE_SECONDS, len(text))

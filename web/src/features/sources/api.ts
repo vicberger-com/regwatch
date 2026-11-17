@@ -44,6 +44,8 @@ export const REASONS: Record<string, string> = {
   "needs-contact":
     "This provider refuses anonymous requests. Set the contact email in Settings (general.contact_email) first.",
   "http-status": "The site answered with an error status.",
+  unavailable:
+    "The provider does not have the document in the asked form or language.",
   robots: "robots.txt does not allow it.",
   "rate-limited": "The site was busy; the next run tries again.",
   "private-address": "The address does not resolve to public addresses only.",

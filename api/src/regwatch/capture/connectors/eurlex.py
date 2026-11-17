@@ -54,7 +54,17 @@ FIRST_RUN = timedelta(days=30)
 MAX_REGEX = 200
 _CONCEPT = re.compile(r"http://eurovoc\.europa\.eu/[A-Za-z0-9_]{1,40}")
 _CELEX = re.compile(r"[0-9][0-9A-Z]{4,20}(\([0-9]{1,3}\))?(-[0-9]{8})?")
-_LANGUAGE = re.compile(r"[A-Z]{3}")
+# The EU's 24 official languages: Cellar's three-letter code and the two-letter one a candidate
+# carries (review finding 9; ENG is en, EST et, SLK sk, not their first two letters).
+LANGUAGE_CODES = {"BUL": "bg", "CES": "cs", "DAN": "da", "DEU": "de", "ELL": "el", "ENG": "en",
+                  "EST": "et", "FIN": "fi", "FRA": "fr", "GLE": "ga", "HRV": "hr", "HUN": "hu",
+                  "ITA": "it", "LAV": "lv", "LIT": "lt", "MLT": "mt", "NLD": "nl", "POL": "pl",
+                  "POR": "pt", "RON": "ro", "SLK": "sk", "SLV": "sl", "SPA": "es",
+                  "SWE": "sv"}  # fmt: skip
+# Cellar's answer for a work it has no XHTML of in that language (review finding 1): a skip.
+UNAVAILABLE_STATUSES = frozenset({404, 406})
+# Well under the 2,048 characters some proxies allow a request line (review finding 5).
+MAX_QUERY_URL = 1800
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
@@ -104,8 +114,11 @@ def check(params: dict[str, Any]) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
             raise ConnectorError("bad-config", f"{key} is {low} to {high}")
     language = params.get("content_language", "ENG")
-    if not isinstance(language, str) or not _LANGUAGE.fullmatch(language):
-        raise ConnectorError("bad-config", "content_language is a three-letter code such as ENG")
+    if not isinstance(language, str) or language not in LANGUAGE_CODES:
+        raise ConnectorError("bad-config", "content_language is an EU language code such as ENG")
+    if len(query_url(params, "2000-01-01")) > MAX_QUERY_URL:
+        raise ConnectorError("bad-config", "too many eurovoc_concepts for one query; split the "
+                             "source in two")  # fmt: skip
 
 
 def since(params: dict[str, Any], job: JobSettings, now: datetime) -> str:
@@ -138,6 +151,10 @@ SELECT DISTINCT ?celex ?date ?title WHERE {{
 }} ORDER BY ASC(?date) ?celex LIMIT {int(params.get("limit", 500))}"""
 
 
+def query_url(params: dict[str, Any], start: str) -> str:
+    return f"{ENDPOINT}?{urlencode({'query': sparql(params, start)})}"
+
+
 def _content(celex: str) -> str:
     return CONTENT.format(celex=quote(celex, safe="()-"))
 
@@ -152,7 +169,7 @@ def _cellar_hop(url: str) -> bool:
 
 
 async def _get(ctx: ConnectorContext, url: str, job: JobSettings, accept: str,
-               language: str | None = None) -> Any:  # fmt: skip
+               language: str | None = None, unavailable: bool = False) -> Any:  # fmt: skip
     headers = {"Accept": accept, **({"Accept-Language": language} if language else {})}
     try:
         got = await ctx.fetcher.fetch(
@@ -165,6 +182,8 @@ async def _get(ctx: ConnectorContext, url: str, job: JobSettings, accept: str,
         raise
     if "x-amzn-waf-action" in got.headers:
         raise ConnectorError("blocked-by-provider", "the provider's firewall refused the request")
+    if unavailable and got.status in UNAVAILABLE_STATUSES:
+        raise ConnectorError("unavailable", f"Cellar has no such document (HTTP {got.status})")
     if not 200 <= got.status < 300:
         raise ConnectorError("http-status", f"Cellar answered HTTP {got.status}")
     return got
@@ -176,6 +195,17 @@ def _value(binding: Any, key: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _published(day: str) -> datetime | None:
+    """The work's date, or None when it is no real date: 2026-02-30 matches the pattern but is
+    not a day, and must not end the run (review finding 2)."""
+    if not _DATE.fullmatch(day[:10]):
+        return None
+    try:
+        return datetime.combine(date.fromisoformat(day[:10]), datetime.min.time(), UTC)
+    except ValueError:
+        return None
+
+
 async def discover(params: dict[str, Any], job: JobSettings,
                    ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
     from regwatch.capture.connectors.api_feed import parse_json  # one module imports the other
@@ -183,8 +213,8 @@ async def discover(params: dict[str, Any], job: JobSettings,
     check(params)
     exclude = _exclusion(params.get("exclude_celex_regex"))
     ctx.notes.add("resumes")  # reads oldest first from the cursor
-    query = urlencode({"query": sparql(params, since(params, job, ctx.now()))})
-    got = await _get(ctx, f"{ENDPOINT}?{query}", job, "application/sparql-results+json")
+    got = await _get(ctx, query_url(params, since(params, job, ctx.now())), job,
+                     "application/sparql-results+json")  # fmt: skip
     data = await anyio.to_thread.run_sync(parse_json, got.body)
     results = data.get("results") if isinstance(data, dict) else None
     bindings = results.get("bindings") if isinstance(results, dict) else None
@@ -199,14 +229,12 @@ async def discover(params: dict[str, Any], job: JobSettings,
             continue
         seen.add(celex)
         link = entry_link({"link": DISPLAY.format(celex=celex)}, ENDPOINT)
-        day = _value(binding, "date") or ""
-        published = (datetime.combine(date.fromisoformat(day[:10]), datetime.min.time(), UTC)
-                     if _DATE.fullmatch(day[:10]) else None)  # fmt: skip
+        published = _published(_value(binding, "date") or "")
         if link is None:  # pragma: no cover - a checked CELEX always makes a valid link
             continue
         yield Candidate(url=link, title=plain_text(_value(binding, "title"), MAX_TITLE),
                         published_at=published, external_id=celex,
-                        language=params.get("content_language", "ENG").lower()[:2],
+                        language=LANGUAGE_CODES[params.get("content_language", "ENG")],
                         hints={"provider": PROVIDER, "fetch": _content(celex)})  # fmt: skip
     if len(bindings) >= int(params.get("limit", 500)):
         ctx.notes.add("truncated")  # a full page: more works remain
@@ -218,7 +246,7 @@ async def fetch(candidate: Candidate, job: JobSettings, ctx: ConnectorContext) -
         raise ConnectorError("bad-link", "the document is not in Cellar")
     language = (job.config.params if hasattr(job.config, "params") else {}).get(
         "content_language", "ENG").lower()  # fmt: skip
-    got = await _get(ctx, target, job, "application/xhtml+xml", language)
+    got = await _get(ctx, target, job, "application/xhtml+xml", language, unavailable=True)
     key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
     await ctx.store(key, got.body)
     return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=got.status, body_ref=key,

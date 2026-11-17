@@ -58,6 +58,18 @@ async def test_an_unreachable_robots_file_disallows_everything() -> None:
     assert exc.value.reason == "robots"
 
 
+async def test_a_firewall_challenge_is_no_robots_file() -> None:
+    """EUR-Lex review finding 4: a 2xx challenge page with no rules is unreadable, not allowed."""
+
+    def challenge(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(202, headers={"x-amzn-waf-action": "challenge"},
+                              stream=httpx.ByteStream(b""))  # fmt: skip
+
+    policy = RobotsPolicy(SafeFetcher(UA, resolver=dns, transport=httpx.MockTransport(challenge)))
+    with pytest.raises(FetchRefusedError, match="could not be read"):
+        await policy.check("https://example.org/x")
+
+
 async def test_a_302_without_location_disallows() -> None:
     with pytest.raises(FetchRefusedError):
         await mocked(302).check("https://example.org/x")

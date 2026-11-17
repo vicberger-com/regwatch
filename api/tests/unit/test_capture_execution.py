@@ -397,3 +397,44 @@ def test_the_cursor_only_moves_forward() -> None:
     future = Candidate(url="https://e.org/f", published_at=datetime(2099, 1, 1, tzinfo=UTC))
     held = execution._cursor(None, [(future, doc)], NOW)  # held at tomorrow (review, low)
     assert held == {"publication_date": "2026-11-18"}
+
+
+class Raises(Fake):
+    """Fetches as Fake does, but raises the given connector error for some URLs."""
+
+    def __init__(self, urls: list[str], errors: dict[str, ConnectorError]) -> None:
+        super().__init__(urls)
+        self.errors = errors
+
+    async def discover(self, job: JobSettings, ctx: ConnectorContext) -> AsyncIterator[Candidate]:
+        ctx.notes.add("resumes")
+        async for c in super().discover(job, ctx):
+            yield c
+
+    async def fetch(self, candidate: Candidate, job: JobSettings,
+                    ctx: ConnectorContext) -> RawDocument:  # fmt: skip
+        if candidate.url in self.errors:
+            raise self.errors[candidate.url]
+        return await super().fetch(candidate, job, ctx)
+
+
+async def test_a_document_the_provider_does_not_have_is_a_skip(h: Harness) -> None:
+    """EUR-Lex review finding 1: it does not fail the run, and the cursor still moves."""
+    gone = ConnectorError("unavailable", "Cellar has no such document (HTTP 404)")
+    got = await h.run(Raises(["https://e.org/a", "https://e.org/b"], {"https://e.org/b": gone}))
+    assert (got.status, got.items_new, got.error_class) == ("success", 1, None)
+    assert got.cursor == {"publication_date": NOW.date().isoformat()}
+    assert "not available" in (got.error_message or "")
+    none = await h.run(Raises(["https://e.org/a"], {"https://e.org/a": gone}))
+    assert (none.status, none.error_class) == ("skipped", "unavailable")
+
+
+async def test_a_block_on_one_document_stops_the_run(h: Harness) -> None:
+    """EUR-Lex review finding 3: no request follows the first challenge."""
+    block = ConnectorError("blocked-by-provider", "the provider's firewall refused the request")
+    urls = [f"https://e.org/{n}" for n in range(5)]
+    got = await h.run(Raises(urls, {"https://e.org/1": block, "https://e.org/2": block}))
+    assert (got.status, got.error_class, got.items_new) == ("partial", "blocked-by-provider", 1)
+    assert [u for u, _ in h.fetcher.calls] == ["https://e.org/feed", "https://e.org/0"]
+    first = await h.run(Raises(urls, {"https://e.org/0": block}))
+    assert (first.status, first.error_class) == ("failed", "blocked-by-provider")

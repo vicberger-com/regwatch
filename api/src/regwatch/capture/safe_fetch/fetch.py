@@ -51,6 +51,8 @@ def checked_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
     """Allowlisted request headers with short printable values, or ``ValueError``."""
     out: dict[str, str] = {}
     for name, value in (headers or {}).items():
+        if name.lower() in {n.lower() for n in out}:  # Accept and accept: one header (review 10)
+            raise ValueError(f"the {name} header is given twice")
         if name.lower() not in REQUEST_HEADERS:
             raise ValueError(f"SafeFetcher does not send a {name!r} header")
         if (not isinstance(value, str) or len(value) > MAX_HEADER_VALUE

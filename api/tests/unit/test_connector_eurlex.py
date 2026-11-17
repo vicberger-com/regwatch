@@ -138,17 +138,19 @@ async def test_works_become_candidates() -> None:
             row("32026R2354"),
             row("not a celex"),
             row("32026L0001", day="soon"),
+            row("32026L0002", day="2026-02-30"),  # matches the pattern, is no day (finding 2)
         ]
     )
     notes: set[str] = set()
     got = await discover(site, notes)
-    assert [c.external_id for c in got] == ["32026R2354", "32023R2854R(07)", "32026L0001"]
+    assert [c.external_id for c in got] == ["32026R2354", "32023R2854R(07)", "32026L0001",
+                                            "32026L0002"]  # fmt: skip
     first = got[0]
     assert first.url == "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32026R2354"
     assert first.title == "A Regulation" and first.language == "en"
     assert first.published_at == datetime(2026, 11, 10, tzinfo=UTC)
     assert first.hints["fetch"] == "https://publications.europa.eu/resource/celex/32026R2354"
-    assert got[1].title is None and got[2].published_at is None
+    assert got[1].title is None and got[2].published_at is None and got[3].published_at is None
     assert notes == {"resumes"}  # fewer rows than the limit: not truncated
     sparql = [r for r in site.requests if r.url.path == "/webapi/rdf/sparql"]
     assert len(sparql) == 1 and sparql[0].headers["accept"] == "application/sparql-results+json"
@@ -275,6 +277,51 @@ async def test_error_statuses_and_other_refusals() -> None:
     assert exc.value.reason == "http-status"
 
 
+@pytest.mark.parametrize(("code", "two"), [("ENG", "en"), ("EST", "et"), ("SLK", "sk"),
+                                           ("GLE", "ga")])  # fmt: skip
+async def test_the_language_is_the_two_letter_code(code: str, two: str) -> None:
+    """Review finding 9: not the first two letters of Cellar's code."""
+    got = await discover(Cellar([row("32026R2354")]), content_language=code)
+    assert got[0].language == two
+
+
+@pytest.mark.parametrize("status", [404, 406])
+async def test_a_document_cellar_does_not_have_is_unavailable(status: int) -> None:
+    """Review finding 1: a skip for the run, not a failure; the query itself is still an error."""
+
+    class Missing(Cellar):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path.startswith("/resource/"):
+                return httpx.Response(status, stream=httpx.ByteStream(b"no"))
+            return super().__call__(request)
+
+    ctx, stored = context(Missing([]))
+    doc = Candidate(url="https://eur-lex.europa.eu/x",
+                    hints={"provider": "eur_lex",
+                           "fetch": "https://publications.europa.eu/resource/celex/3"})  # fmt: skip
+    with pytest.raises(ConnectorError) as exc:
+        await ApiFeedConnector().fetch(doc, job(), ctx)
+    assert exc.value.reason == "unavailable" and stored == {}
+
+    class QueryMissing(Cellar):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/webapi/rdf/sparql":
+                return httpx.Response(status, stream=httpx.ByteStream(b"no"))
+            return super().__call__(request)
+
+    with pytest.raises(ConnectorError) as exc:
+        await discover(QueryMissing([]))
+    assert exc.value.reason == "http-status"
+
+
+def test_the_starter_number_of_concepts_fits_in_one_query() -> None:
+    """Review finding 5: R-06's starter has 12 concepts; the URL stays under the limit."""
+    concepts = [f"http://eurovoc.europa.eu/c_{n:08x}" for n in range(12)]
+    many = {**PARAMS, "eurovoc_concepts": concepts}
+    check_params(ApiFeedConfig(provider="eur_lex", params=many))  # type: ignore[arg-type]
+    assert len(eurlex.query_url(many, "2026-01-01")) <= eurlex.MAX_QUERY_URL
+
+
 async def test_the_rate_is_capped_at_ten() -> None:
     calls: list[dict[str, Any]] = []
 
@@ -310,6 +357,8 @@ async def test_the_rate_is_capped_at_ten() -> None:
         {"limit": 5000},
         {"limit": True},
         {"content_language": 'eng"'},
+        {"content_language": "XYZ"},
+        {"eurovoc_concepts": [f"http://eurovoc.europa.eu/c_{n:08x}" for n in range(25)]},
         {"unknown": 1},
     ],
 )

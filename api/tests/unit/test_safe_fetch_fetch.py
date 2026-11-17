@@ -547,7 +547,7 @@ async def test_allowlisted_request_headers_are_sent_on_every_hop() -> None:
     "headers",
     [{"Host": "evil.example"}, {"Cookie": "a=b"}, {"Authorization": "Bearer x"},
      {"User-Agent": "spoof"}, {"Accept": "a\r\nInjected: 1"}, {"Accept": "x" * 300},
-     {"Accept": "é"}],
+     {"Accept": "é"}, {"Accept": "text/html", "accept": "application/json"}],
 )  # fmt: skip
 async def test_other_headers_and_bad_values_are_refused(headers: dict[str, str]) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
