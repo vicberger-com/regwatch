@@ -127,3 +127,18 @@
 - 14 should be fixed before the scheduler runs anywhere Beat restarts often. 15 should be fixed with the first connector. Both are low. 16 is info.
 
 · M3 scheduler independent review · 2026-11-17
+
+## Re-verification 2
+**Scope:** commit `dc4c34e` on `sec/M3-scheduler-followups`: `capture/runs.py` (`tick`, `queue_now`) and `test_capture_runs.py`. · **Reviewer session label:** M3 scheduler independent review · **Date:** 2026-11-17
+
+**Method:** `test_capture_runs.py` gave 9 passed, and the throwaway PostgreSQL was removed. I re-ran `/tmp/m3sched-review/test_reverify.py` against the new code. No repository file other than this record was changed.
+
+| # | Original finding | Re-verified | Status |
+| --- | --- | --- | --- |
+| 14 | No sweep while Beat restarts at least hourly | `tick` calls `sweep(db, now)` last, after its commit, the `bad-schedule` runs and the hand-overs, so it holds no job or run lock from the tick. **Lock order:** the sweep keeps its own lock order: runs with `SKIP LOCKED`, then each run's source, then its job. My earlier reasoning still holds. Two ticks, or a tick and the hourly `health_check`, sweeping at once take disjoint runs, because of `SKIP LOCKED`. Probe `r1`, with every tick now sweeping, gave no deadlock, no database error, no 5xx and at most one unfinished run per job. **Failure case now fixed:** probe `r2` (5 hours of ticks with no `health_check`) now ends the stuck run and starts the job again (3 runs started; it asserted 0 before the fix). **Caveat (info):** a run created over 2 hours ago with hand-overs left can be handed over and then swept in the same tick; the extra message finds nothing to claim, so this is harmless. | closed |
+| 16 | A retry after a 503 got the failed run with 202 | The 60 s coalescing now leaves out runs whose `error_class` is `queue-unavailable` (`IS DISTINCT FROM`, so runs with no error class still coalesce). The down-broker test asserts that the retry queues a new run. | closed |
+| 11, 15 | Error text cleaning beyond one printable line; duplicate hand-overs under a backlog | Recorded in BL-90 (g) and (h) for the connector slice. | tracked |
+
+**New note (info):** the sweep now runs every minute. Its query (`finished_at IS NULL AND created_at < …`) has no supporting index, since `ix_capture_run_job` is on `(job_id, started_at)`, so it scans `capture_run` as the table grows. A partial index `ON capture_run (created_at) WHERE finished_at IS NULL` serves both the sweep and `_lost`. Add it with CP-11 or BL-90.
+
+**Sign-off at re-verification 2:** signed off. Findings 14 and 16 are closed. Still open and tracked: 8 (CP-11 and the ADR-0006 amendment, waiting for the owner's approval), the Valkey ACL from 6 (BL-90 a), the lock held across a connector run from 10 (BL-90 c), and 11 and 15 (BL-90 g and h). · M3 scheduler independent review · 2026-11-17
