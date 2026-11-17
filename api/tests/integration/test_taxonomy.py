@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -476,13 +477,67 @@ async def test_concurrent_merge_and_delete_keep_every_tag(
     dst = (await admin.post(terms, json={"key": "race-dst", "label": "Dst"})).json()
     for _ in range(3):
         _tag_item(postgres, db_url, src["id"])
-    await asyncio.gather(
+    merged, deleted = await asyncio.gather(
         admin.post(_api(f"/taxonomy/terms/{src['id']}/merge"), json={"into_term_id": dst["id"]}),
         admin.delete(_api(f"/taxonomy/terms/{dst['id']}")),
     )
+    # Either order is a clean answer, never an error (BL-89): the merge first, then the delete
+    # deactivates the target that now carries the tags; or the delete first, then the merge
+    # finds its target gone (404).
+    assert deleted.status_code == 204
+    assert merged.status_code in (200, 404), merged.text
     database = db_url.rsplit("/", 1)[1]
     tags = postgres.psql(database, "SELECT count(*) FROM item_term;").strip()
     assert tags == "3"
+
+
+async def _holding_the_facet_lock(url: str, facet_key: str, then_sql: str,
+                                  release: asyncio.Event) -> None:  # fmt: skip
+    """Hold the facet's row lock in a second connection until ``release``, then run
+    ``then_sql`` in the same transaction and commit, so a waiting request resumes after it."""
+    import asyncpg
+
+    conn = await asyncpg.connect(url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        async with conn.transaction():
+            await conn.execute("SELECT id FROM facet WHERE key = $1 FOR UPDATE", facet_key)
+            await release.wait()
+            await conn.execute(then_sql)
+    finally:
+        await conn.close()
+
+
+@pytest.mark.parametrize(
+    ("change", "status"),
+    [("DELETE FROM term WHERE id = '{dst}'", 404),
+     ("UPDATE term SET active = false WHERE id = '{dst}'", 422)],
+)  # fmt: skip
+async def test_a_target_removed_while_the_merge_waits_is_a_clean_answer(
+    admin: httpx.AsyncClient, postgres: Postgres, db_url: str, change: str, status: int
+) -> None:
+    """BL-89, deterministic: the merge has read its target and waits for the facet lock while
+    another transaction deletes or deactivates the target. It answers 404 or 422, moves no tag."""
+    terms = _api("/taxonomy/facets/topic/terms")
+    src = (await admin.post(terms, json={"key": "w-src", "label": "Src"})).json()
+    dst = (await admin.post(terms, json={"key": "w-dst", "label": "Dst"})).json()
+    _tag_item(postgres, db_url, src["id"])
+    release = asyncio.Event()
+    holder = asyncio.create_task(_holding_the_facet_lock(
+        db_url, "topic", change.format(dst=uuid.UUID(dst["id"])), release))  # fmt: skip
+    await asyncio.sleep(0.3)  # the holder has the lock
+    merge = asyncio.create_task(admin.post(_api(f"/taxonomy/terms/{src['id']}/merge"),
+                                           json={"into_term_id": dst["id"]}))  # fmt: skip
+    await asyncio.sleep(0.5)  # the merge has read both terms and waits for the facet lock
+    assert not merge.done()
+    release.set()
+    await holder
+    got = await merge
+    assert got.status_code == status, got.text
+    database = db_url.rsplit("/", 1)[1]
+    still = postgres.psql(
+        database, f"SELECT count(*) FROM item_term WHERE term_id = '{uuid.UUID(src['id'])}';"
+    )
+    assert still.strip() == "1"  # nothing moved
 
 
 async def test_concurrent_parent_changes_cannot_form_a_cycle(admin: httpx.AsyncClient) -> None:

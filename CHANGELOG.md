@@ -22,6 +22,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 - M3 scheduler: `regwatch-worker` and `regwatch-beat` run Celery (JSON messages only, acknowledged after the task, no result backend). Beat fires `capture.schedule_tick` every minute and `capture.health_check` hourly. The tick starts every due job of an enabled source with up to 30 s of jitter, at most one unfinished run per source. `POST /capture-jobs/{id}/run-now` queues a run and audits it. Runs end with the source's health updated; until a kind has a connector its runs fail as `no-connector`, and runs that never finish are ended after 2 hours (M3, ADR-0006, REQ-02)
 - M3 scheduler review follow-ups: Beat keeps its schedule in memory, so no pickle file is read at start; broker calls have 5 s timeouts, a bounded retry and a 15 s deadline on their own threads; remote control is off and a dying worker's task is not redelivered without end; a job with a broken schedule fails alone; lost messages are handed over again up to three times, as ADR-0006 says, and our own failures no longer count against a source; the sweep ends runs in one transaction and never overwrites an ended run; cron times never go back during a repeated hour; run-now coalesces calls within 60 s and refuses a disabled job; error messages are cleaned to one printable line. After re-verification: every tick also ends abandoned runs, so a Beat restarted more often than hourly cannot strand a job, and a retry after a refused hand-over queues a new run (M3, BL-90, REQ-05)
 
+### Fixed
+- A term merge racing a delete of its target answered 500; a term deleted or deactivated while a merge or delete waited for its lock now answers 404 or 422, and nothing moves. A deterministic test replaces the flaky one (M2, BL-89, REQ-03)
+
 ## [G1] - 2026-11-16
 
 Phase 1 Foundation (M0, M1, M2), approved by the owner on 2026-11-16 (`docs/evidence/phase-1/G1-gate-review.md`).

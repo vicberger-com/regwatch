@@ -499,6 +499,16 @@ async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, A
     return term_out(term, facet.key)
 
 
+async def _reload(db: AsyncSession, term: Term, what: str = "term") -> Term:
+    """The term's row as committed now, after waiting for a lock: a concurrent delete may have
+    removed it, in which case the answer is 404, not an error (BL-89)."""
+    fresh = await db.scalar(select(Term).where(Term.id == term.id)
+                            .execution_options(populate_existing=True))  # fmt: skip
+    if fresh is None:
+        raise not_found(what)
+    return fresh
+
+
 async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
                       ip: str | None) -> None:  # fmt: skip
     """Delete a term no item uses; deactivate one that items use (M2 design notes)."""
@@ -506,7 +516,7 @@ async def delete_term(db: AsyncSession, term_id: uuid.UUID, actor: uuid.UUID,
     await lock_facet(db, facet.id)
     # The row lock makes a concurrent tag insert wait, so the count below stays true.
     await db.execute(select(Term.id).where(Term.id == term.id).with_for_update())
-    await db.refresh(term)  # a rename committed while we waited changed the key (N2)
+    term = await _reload(db, term)  # a rename or delete committed while we waited (N2, BL-89)
     before = term_snapshot(term)
     used = (await _item_counts(db, [term.id])).get(term.id, 0)
     used += await term_references(db, facet.key, term)  # attributes and source defaults
@@ -549,8 +559,10 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
     await lock_facet(db, facet.id)
     for locked in sorted((source.id, target.id)):
         await db.execute(select(Term.id).where(Term.id == locked).with_for_update())
-    await db.refresh(source)
-    await db.refresh(target)
+    source = await _reload(db, source)
+    target = await _reload(db, target, "target term")  # deleted while we waited: 404 (BL-89)
+    if not target.active:  # deactivated while we waited
+        raise validation("into_term_id", "the target term is inactive")
     await check_parent(db, source, facet, target.id)  # the target is not below the source
     ids = {"src": source.id, "dst": target.id}
     moved = int(await db.scalar(
