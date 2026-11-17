@@ -298,3 +298,25 @@ async def test_the_longest_wait_must_be_finite(wait: float) -> None:
     for limiter in (MemoryRateLimiter(), ValkeyRateLimiter(Client())):
         with pytest.raises(ValueError, match="longest wait"):
             await limiter.take("example.org", 1.0, wait)
+
+
+async def test_refused_hosts_are_never_contacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API feed review 5: a host in refuse_hosts is refused before robots.txt, the rate slot
+    and the request, also when a redirect leads there."""
+    clock = Clock()
+    monkeypatch.setattr(rate_module.time, "monotonic", clock.monotonic)
+    hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hosts.append(str(request.headers.get("host")))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=httpx.ByteStream(b""))
+        return httpx.Response(302, headers={"Location": "https://other.example/blocked"})
+
+    limiter = MemoryRateLimiter()
+    fetcher = SafeFetcher(UA, resolver=dns, transport=httpx.MockTransport(handler))
+    capture = CaptureFetcher(fetcher, limiter, sleep=clock.sleep)
+    with pytest.raises(FetchRefusedError) as exc:
+        await capture.fetch("https://example.org/", refuse_hosts=frozenset({"other.example"}))
+    assert exc.value.reason == "refused-host"
+    assert "other.example" not in hosts and "other.example" not in limiter._free

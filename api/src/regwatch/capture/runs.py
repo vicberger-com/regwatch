@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.execution import ContextFactory, Outcome, run_connector
@@ -285,7 +285,12 @@ async def execute(db: AsyncSession, job_id: uuid.UUID,
         outcome = Outcome("failed", "no-connector", "no fetcher was configured for this run")
     else:
         try:
-            outcome = await run_connector(run.id, job, source, make_context)
+            # The start of the last successful run, not the last run of any outcome: a block or
+            # outage must not move an incremental window past documents (API feed review 1).
+            last_success = await db.scalar(
+                select(func.max(CaptureRun.started_at))
+                .where(CaptureRun.job_id == job.id, CaptureRun.status == "success"))  # fmt: skip
+            outcome = await run_connector(run.id, job, source, make_context, last_success)
         except Exception as exc:  # noqa: BLE001 - the run must end with an outcome (finding 2)
             _log.exception("capture_run_internal_error", run_id=str(run.id), job_id=str(job_id))
             # A store, broker or memory failure is ours, not the source's; the message names

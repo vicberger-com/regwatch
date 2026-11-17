@@ -12,6 +12,7 @@ import pytest
 
 from regwatch.capture.connectors.api_feed import (
     FEDERAL_REGISTER,
+    MAX_JSON_BYTES,
     MAX_JSON_DEPTH,
     MAX_PAGES,
     ApiFeedConnector,
@@ -82,14 +83,16 @@ def context(site: FR) -> tuple[ConnectorContext, dict[str, bytes]]:
 
 
 def job(params: dict[str, Any] | None = None, provider: str = "federal_register",
-        last_run_at: datetime | None = None) -> JobSettings:  # fmt: skip
+        last_success_at: datetime | None = None) -> JobSettings:  # fmt: skip
     config = ApiFeedConfig(provider=provider, params=params or {"per_page": "100"})  # type: ignore[arg-type]
     return JobSettings(source_id="s1", kind="api_feed", config=config, rules=ExtractionRules(),
-                       rate_per_minute=6000, last_run_at=last_run_at)  # fmt: skip
+                       rate_per_minute=6000, last_success_at=last_success_at)  # fmt: skip
 
 
-async def discover(site: FR, **kw: Any) -> list[Candidate]:
+async def discover(site: FR, notes: set[str] | None = None, **kw: Any) -> list[Candidate]:
     ctx, _ = context(site)
+    if notes is not None:
+        ctx.notes = notes
     return [c async for c in ApiFeedConnector().discover(job(**kw), ctx)]
 
 
@@ -107,11 +110,30 @@ async def test_pages_are_followed_by_next_page_url_only() -> None:
     assert REGISTRY["api_feed"].kind == "api_feed"
 
 
-async def test_paging_is_capped() -> None:
-    nxt = f"{FEDERAL_REGISTER}?page=2"
-    site = FR([page([doc(n)], nxt) for n in range(1, MAX_PAGES + 5)])
-    got = await discover(site)
-    assert len(site.requests) == 1 + MAX_PAGES and len(got) <= MAX_PAGES
+async def test_paging_is_capped_and_reported_as_truncated() -> None:
+    """Review findings 2 and 12: each page names a new next page; the cap stops paging and the
+    connector says it stopped early, so the run is partial, not success."""
+    pages = [page([doc(n)], f"{FEDERAL_REGISTER}?page={n + 1}") for n in range(1, MAX_PAGES + 5)]
+    site = FR(pages)
+    notes: set[str] = set()
+    got = await discover(site, notes)
+    assert len(site.requests) == 1 + MAX_PAGES and len(got) == MAX_PAGES
+    assert notes == {"truncated"}
+    done: set[str] = set()
+    await discover(FR([page([doc(1)])]), done)
+    assert done == set()  # the last page offered no next page: not truncated
+
+
+@pytest.mark.parametrize(
+    "following",
+    [f"{FEDERAL_REGISTER}?per_page=100",  # the same URL as the first page
+     "https://www.federalregister.gov/api/v1/other.json?page=2"],  # another path
+)  # fmt: skip
+async def test_a_next_page_must_be_new_and_the_same_endpoint(following: str) -> None:
+    """Review finding 9."""
+    with pytest.raises(ConnectorError) as exc:
+        await discover(FR([page([doc(1)], following), page([doc(2)], following)]))
+    assert exc.value.reason == "malformed-answer"
 
 
 async def test_a_next_page_on_another_host_is_refused() -> None:
@@ -122,71 +144,90 @@ async def test_a_next_page_on_another_host_is_refused() -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "headers"), [(202, {"x-amzn-waf-action": "challenge"})],
+    ("status", "headers"),
+    [(202, {"x-amzn-waf-action": "challenge"}), (403, {"x-amzn-waf-action": "block"}),
+     (405, {"X-Amzn-Waf-Action": "captcha"})],
 )  # fmt: skip
 async def test_a_firewall_block_is_a_typed_failure(status: int, headers: dict[str, str]) -> None:
-    """R-06 note 2: blocked_by_provider, never content and never worked around."""
+    """R-06 note 2: blocked_by_provider at any status, never content, never worked around."""
     with pytest.raises(ConnectorError) as exc:
         await discover(FR([b"<html>captcha</html>"], status=status, headers=headers))
     assert exc.value.reason == "blocked-by-provider"
 
 
 async def test_a_redirect_to_the_unblock_page_is_a_block() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/robots.txt":
-            return httpx.Response(404, stream=httpx.ByteStream(b""))
-        # SafeFetcher connects to the checked address; the name is in Host.
-        if request.headers.get("host") == "unblock.federalregister.gov":
-            return httpx.Response(200, stream=httpx.ByteStream(b"<html>please</html>"))
-        return httpx.Response(302, headers={"Location": "https://unblock.federalregister.gov/"})
+    """Review finding 5: the block page and its robots.txt are never contacted."""
+    hosts: list[str] = []
 
     class Redirecting(FR):
         def __call__(self, request: httpx.Request) -> httpx.Response:
-            return handler(request)
+            # SafeFetcher connects to the checked address; the name is in Host.
+            hosts.append(str(request.headers.get("host")))
+            if request.url.path == "/robots.txt":
+                return httpx.Response(404, stream=httpx.ByteStream(b""))
+            return httpx.Response(302, headers={"Location": "https://unblock.federalregister.gov/"})
 
     with pytest.raises(ConnectorError) as exc:
         await discover(Redirecting([]))
     assert exc.value.reason == "blocked-by-provider"
+    assert hosts and "unblock.federalregister.gov" not in hosts
 
 
 @pytest.mark.parametrize(
-    ("body", "status"),
-    [(b"not json", 200), (b'{"results": "nope"}', 200), (b"[]", 200), (b"{}", 500),
-     (b"[" * (MAX_JSON_DEPTH + 2) + b"]" * (MAX_JSON_DEPTH + 2), 200)],
+    ("body", "status", "reason"),
+    [(b"not json", 200, "malformed-answer"), (b'{"results": "nope"}', 200, "malformed-answer"),
+     (b"[]", 200, "malformed-answer"), (b"{}", 500, "http-status"),
+     (b"[" * (MAX_JSON_DEPTH + 2) + b"]" * (MAX_JSON_DEPTH + 2), 200, "malformed-answer"),
+     (b'{"results": [], "pad": "' + b"x" * (MAX_JSON_BYTES + 1) + b'"}', 200, "too-large")],
 )  # fmt: skip
-async def test_bad_answers_are_refused(body: bytes, status: int) -> None:
+async def test_bad_answers_are_refused(body: bytes, status: int, reason: str) -> None:
     with pytest.raises(ConnectorError) as exc:
         await discover(FR([body], status=status))
-    assert exc.value.reason in ("malformed-answer", "http-status")
+    assert exc.value.reason == reason
 
 
 async def test_unsafe_links_and_odd_records_are_dropped() -> None:
-    site = FR(
-        [
-            page(
-                [
-                    doc(1, html_url="javascript:alert(1)"),
-                    doc(2, html_url="http://10.0.0.5/x"),
-                    "not a record",
-                    doc(3, agencies="nope", publication_date="soon"),
-                ]
-            )
-        ]
-    )  # type: ignore[list-item]
-    got = await discover(site)
+    """Review finding 4: links are checked and kept to the provider's hosts, in the candidate
+    and in the stored record."""
+    records: list[Any] = [
+        doc(1, html_url="javascript:alert(1)"), doc(2, html_url="http://10.0.0.5/x"),
+        doc(4, html_url="https://evil.example/x"), "not a record",
+        doc(3, agencies="nope", publication_date="soon",
+            pdf_url="http://169.254.169.254/latest/meta-data"),
+    ]  # fmt: skip
+    got = await discover(FR([page(records)]))
     assert [c.external_id for c in got] == ["2026-00003"]
-    assert got[0].published_at is None and "agencies" not in got[0].hints["record"]
+    record = got[0].hints["record"]
+    assert got[0].published_at is None and "agencies" not in record and "pdf_url" not in record
+    ok = await discover(FR([page([doc(5, pdf_url="https://www.govinfo.gov/content/x.pdf")])]))
+    assert ok[0].hints["record"]["pdf_url"] == "https://www.govinfo.gov/content/x.pdf"
+
+
+async def test_one_document_under_two_links_is_one_candidate() -> None:
+    """Review finding 10, and long ids are kept as a hash."""
+    twin = doc(1, html_url="https://www.federalregister.gov/d/2026-00001")
+    long_id = doc(9, document_number="X" * 600)
+    got = await discover(FR([page([doc(1), twin, long_id])]))
+    assert len(got) == 2 and (got[1].external_id or "").startswith("sha256:")
 
 
 def test_the_query_fills_the_last_success_placeholder_and_checks_types() -> None:
     since = {"conditions[publication_date][gte]": "{last_success_date - 3 days}",
              "conditions[type][]": ["RULE", "NOTICE"], "per_page": "100"}  # fmt: skip
     q = dict(parse_qsl(query(since, datetime(2026, 11, 10, tzinfo=UTC), NOW)))
-    assert q["conditions[publication_date][gte]"] == "2026-11-07"
+    assert q["conditions[publication_date][gte]"] == "2026-11-06"  # US Eastern date
     first = dict(parse_qsl(query(since, None, NOW)))  # first run: 30 days back, less 3
     assert first["conditions[publication_date][gte]"] == "2026-10-15"
     assert parse_qsl(query({"t": ["A", "B"]}, None, NOW)) == [("t", "A"), ("t", "B")]
-    for bad in ({"n": 5}, {"x": "y" * 3000}, {f"k{i}": "v" for i in range(60)}, {"l": [1]}):
+    numbers = dict(parse_qsl(query({"per_page": 100, "flag": True}, None, NOW)))
+    assert numbers == {"per_page": "100", "flag": "true"}  # as R-06 writes them (finding 7)
+    bad_params: list[dict[str, Any]] = [
+        {"n": {"a": 1}}, {"x": "y" * 3000}, {f"k{i}": "v" for i in range(60)},
+        {"l": [{"x": 1}]}, {"page": "2"}, {"l": ["v"] * 60},
+        {"d": "{last_success_date minus a week}"}, {f"k{i}": "v" * 100 for i in range(20)},
+        {"k" * 300: "v"},
+    ]  # fmt: skip
+    for bad in bad_params:
         with pytest.raises(ConnectorError) as exc:
             query(bad, None, NOW)
         assert exc.value.reason == "bad-config"
@@ -237,3 +278,41 @@ def test_records_keep_only_known_text_fields() -> None:
                       "type": 7})  # fmt: skip
     assert record == {"abstract": "Kept"}  # empty after cleaning, unknown, or not text: left out
     assert _published(20261116) is None and _published("2026-11-16T09:00") is not None
+
+
+@pytest.mark.parametrize(
+    ("config", "ok"),
+    [({"provider": "federal_register", "params": {"conditions[publication_date][gte]":
+       "{last_success_date - 3 days}", "per_page": 100}}, True),
+     ({"provider": "federal_register", "params": {"per_page": 100}}, False),  # no date bound
+     ({"provider": "federal_register", "params": {"page": "2",
+       "conditions[publication_date][gte]": "2026-01-01"}}, False),
+     ({"provider": "federal_register", "endpoint_url": "https://x.example/",
+       "params": {"conditions[publication_date][gte]": "2026-01-01"}}, False),
+     ({"provider": "generic_json", "endpoint_url": "https://x.example/"}, True)],
+)  # fmt: skip
+def test_settings_are_checked_when_saved(config: dict[str, Any], ok: bool) -> None:
+    """Review findings 7 and 8."""
+    from regwatch.capture.connectors.api_feed import check_params
+
+    parsed = ApiFeedConfig.model_validate(config)
+    if ok:
+        check_params(parsed)
+    else:
+        with pytest.raises(ConnectorError):
+            check_params(parsed)
+
+
+async def test_other_refusals_pass_through() -> None:
+    """robots.txt disallowing the API is the run's robots decision, not a block."""
+    from regwatch.capture.safe_fetch import FetchRefusedError
+
+    class Disallowed(FR):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/robots.txt":
+                return httpx.Response(200, stream=httpx.ByteStream(b"User-agent: *\nDisallow: /\n"))
+            return super().__call__(request)
+
+    with pytest.raises(FetchRefusedError) as exc:
+        await discover(Disallowed([page([doc(1)])]))
+    assert exc.value.reason == "robots"

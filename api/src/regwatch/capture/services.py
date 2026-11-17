@@ -22,7 +22,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from regwatch.capture.connectors.config import validate_config, validate_rules
+from regwatch.capture.connectors.api_feed import check_params
+from regwatch.capture.connectors.base import ConnectorError
+from regwatch.capture.connectors.config import ApiFeedConfig, validate_config, validate_rules
 from regwatch.capture.execution import RUN_DEADLINE_S
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.safe_fetch.policy import (
@@ -100,6 +102,11 @@ async def check_urls(kind: str, values: dict[str, Any]) -> None:
     urls: list[tuple[str, str]] = []
     if "config" in values:
         parsed = validate_config(kind, values["config"])
+        if isinstance(parsed, ApiFeedConfig):  # its query parameters too (API feed review 7)
+            try:
+                check_params(parsed)
+            except ConnectorError as exc:
+                raise invalid("config.params", exc.detail) from None
         values["config"] = parsed.model_dump(mode="json", exclude_unset=True)
         for name in _URL_FIELDS.get(kind, ()):
             value = getattr(parsed, name)

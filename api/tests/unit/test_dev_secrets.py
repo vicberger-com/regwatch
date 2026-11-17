@@ -39,11 +39,13 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
     assert "deploy/db.env" in run.stdout
     app = (tmp_path / "deploy/.env").read_text()
     db = (tmp_path / "deploy/db.env").read_text()
-    # No owner login in any database URL (the Valkey user is also called regwatch, so look at
-    # database URLs only).
-    db_urls = [line for line in app.splitlines() if "postgresql" in line]
+    # The owner's password itself is in no file the app containers or the queue read, whatever
+    # the variable or URL scheme it might be written under (API feed review finding 11).
+    owner_password = next(line.split("=", 1)[1] for line in db.splitlines()
+                          if line.startswith("POSTGRES_PASSWORD="))  # fmt: skip
+    assert len(owner_password) >= 32 and owner_password not in app
+    db_urls = [line for line in app.splitlines() if "postgres" in line.lower()]
     assert db_urls and all("regwatch_api:" in line for line in db_urls)
-    assert not any("//regwatch:" in line for line in db_urls)
     assert not any(line.startswith(OWNER_VARS) for line in app.splitlines())
     assert all(any(line.startswith(v + "=") for line in db.splitlines()) for v in OWNER_VARS)
     assert oct((tmp_path / "deploy/db.env").stat().st_mode)[-3:] == "600"
@@ -54,6 +56,7 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
     assert len(password) == 48 and f"valkey://regwatch:{password}@queue:6379/0" in app
     assert oct((tmp_path / "deploy/queue.env").stat().st_mode)[-3:] == "600"
     assert "VALKEY_PASSWORD" not in app and "VALKEY_PASSWORD" not in db
+    assert owner_password not in queue
 
     # A setup from before the queue password: only queue.env and the queue URL line change.
     (tmp_path / "deploy/queue.env").unlink()

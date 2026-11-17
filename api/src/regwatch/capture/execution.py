@@ -23,6 +23,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, cast
 
 from tenacity import (
@@ -86,7 +87,8 @@ class Outcome:
     documents: list[RawDocument] = field(default_factory=list)
 
 
-def job_settings(job: CaptureJob, source: Source) -> JobSettings:
+def job_settings(job: CaptureJob, source: Source,
+                 last_success_at: datetime | None = None) -> JobSettings:  # fmt: skip
     """What the connector needs; a stored config that no longer validates is a ``bad-config``
     failure rather than a crash."""
     try:
@@ -98,7 +100,7 @@ def job_settings(job: CaptureJob, source: Source) -> JobSettings:
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
                        render_js=job.render_js, robots_override=override,
-                       last_run_at=job.last_run_at)  # fmt: skip
+                       last_success_at=last_success_at)  # fmt: skip
 
 
 def _transient(exc: BaseException) -> bool:
@@ -150,26 +152,31 @@ def _robots_answer(exc: FetchRefusedError) -> str:
 
 
 async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
-                        make_context: ContextFactory) -> Outcome:  # fmt: skip
+                        make_context: ContextFactory,
+                        last_success_at: datetime | None = None) -> Outcome:  # fmt: skip
     connector = REGISTRY.get(source.kind)
     if connector is None:
         return Outcome("failed", "no-connector", f"no connector runs {source.kind} sources yet")
     try:
-        settings = job_settings(job, source)
+        settings = job_settings(job, source, last_success_at)
     except ConnectorError as exc:
         return Outcome("failed", exc.reason, exc.detail)
     base = await make_context(settings)
     counter = _CountingFetcher(base.fetcher)
-    ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now)
+    ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
+                           notes=base.notes)  # fmt: skip
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
     failures = 0
     refused: dict[str, int] = {}  # robots.txt or a busy host refused these pages: not failures
     cut_short = False
+    truncated = False  # more was offered than the run took (API feed review 2)
+    stopped: tuple[str, str] | None = None  # discovery stopped after documents were fetched (3)
     try:
         async with asyncio.timeout(RUN_DEADLINE_S) as deadline:  # end inside the worker's limit
             async for candidate in connector.discover(settings, ctx):
                 if len(entries) + failures + sum(refused.values()) >= settings.max_items:
+                    truncated = True  # a candidate arrived past the limit: there is more
                     break
                 try:
                     async for attempt in _retrying():
@@ -187,19 +194,30 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
             raise
         cut_short = True
-    except FetchRefusedError as exc:  # the feed or page the job starts from
-        if exc.reason == "robots":
+    except FetchRefusedError as exc:
+        if entries:  # a later page failed: keep what was fetched (finding 3)
+            stopped = (exc.reason, _refusal(exc))
+        elif exc.reason == "robots":  # the feed or page the job starts from
             return Outcome("skipped", "robots", _refusal(exc), robots_decision=_robots_answer(exc),
                            bytes_fetched=counter.fetched)  # fmt: skip
-        if exc.reason == "rate-limited":
+        elif exc.reason == "rate-limited":
             return Outcome("skipped", "rate-limited", _refusal(exc), bytes_fetched=counter.fetched)
-        return Outcome("failed", exc.reason, _refusal(exc), bytes_fetched=counter.fetched)
+        else:
+            return Outcome("failed", exc.reason, _refusal(exc), bytes_fetched=counter.fetched)
     except ConnectorError as exc:  # raised after the start was fetched: robots.txt allowed it
-        return Outcome("failed", exc.reason, exc.detail, robots_decision=allowed,
-                       bytes_fetched=counter.fetched)  # fmt: skip
+        if entries:
+            stopped = (exc.reason, exc.detail)
+        else:
+            return Outcome("failed", exc.reason, exc.detail, robots_decision=allowed,
+                           bytes_fetched=counter.fetched)  # fmt: skip
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries), failures, refused, cut_short)
+    if stopped is not None:  # some documents, then discovery failed: partial, with its reason
+        status, (error_class, message) = "partial", stopped
+    elif status == "success" and (truncated or "truncated" in ctx.notes):
+        status, error_class = "partial", "truncated"
+        message = "more documents were offered than one run takes; the next run continues"
     return Outcome(status, error_class, message,
                    robots_decision=_decision(allowed, refused, len(entries) + failures),
                    items_new=len(entries), bytes_fetched=counter.fetched,

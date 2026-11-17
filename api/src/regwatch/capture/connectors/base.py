@@ -71,7 +71,7 @@ class JobSettings:
     rate_per_minute: int = 30
     render_js: bool = False
     robots_override: str | None = None  # the admin's recorded reason, or None to obey
-    last_run_at: datetime | None = None  # the job's last run, for incremental queries
+    last_success_at: datetime | None = None  # when the last successful run started
 
 
 @dataclass
@@ -79,6 +79,9 @@ class ConnectorContext:
     fetcher: CaptureFetcher
     store: Callable[[str, bytes], Awaitable[None]]  # object store put(key, body)
     now: Callable[[], datetime]
+    # What a connector reports beside its candidates, such as "truncated" when it stopped
+    # before the source ran out (API feed review finding 2).
+    notes: set[str] = field(default_factory=set)
 
 
 class Connector(Protocol):

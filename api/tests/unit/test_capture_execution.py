@@ -299,3 +299,61 @@ async def test_every_page_disallowed_is_disallowed(h: Harness) -> None:
     h.fetcher.fail = {"https://e.org/a": [no], "https://e.org/b": [no]}
     got = await h.run(Fake(["https://e.org/a", "https://e.org/b"]))
     assert (got.status, got.robots_decision) == ("skipped", "disallowed")
+
+
+async def test_a_run_that_took_less_than_was_offered_is_partial(h: Harness) -> None:
+    """API feed review 2: the item limit, or a connector that stopped early, is partial."""
+    got = await h.run(Fake([f"https://e.org/{n}" for n in range(5)]), max_items=3)
+    assert (got.status, got.error_class, got.items_new) == ("partial", "truncated", 3)
+
+    class Stops(Fake):
+        async def discover(self, job: JobSettings,
+                           ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
+            async for c in super().discover(job, ctx):
+                yield c
+            ctx.notes.add("truncated")
+
+    stopped = await h.run(Stops(["https://e.org/a"]))
+    assert (stopped.status, stopped.error_class) == ("partial", "truncated")
+    exact = await h.run(Fake([f"https://e.org/{n}" for n in range(3)]), max_items=3)
+    assert exact.status == "success"  # exactly the limit, nothing more offered
+
+
+async def test_a_later_page_failing_keeps_what_was_fetched(h: Harness) -> None:
+    """API feed review 3: page 1's documents are kept, with a manifest, as a partial run."""
+
+    class FailsLater(Fake):
+        def __init__(self, error: Exception) -> None:
+            super().__init__(["https://e.org/a", "https://e.org/b"])
+            self.error = error
+
+        async def discover(self, job: JobSettings,
+                           ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
+            async for c in super().discover(job, ctx):
+                yield c
+            raise self.error
+
+    for error, reason in ((ConnectorError("malformed-answer", "page 2"), "malformed-answer"),
+                          (FetchRefusedError("timeout", "slow"), "timeout")):  # fmt: skip
+        h.stored.clear()
+        got = await h.run(FailsLater(error))
+        assert (got.status, got.error_class, got.items_new) == ("partial", reason, 2)
+        assert len(h.manifest()["documents"]) == 2
+
+
+async def test_the_connector_gets_the_last_successful_run(h: Harness) -> None:
+    """API feed review 1: incremental windows start from the last success, not the last run."""
+    seen: list[datetime | None] = []
+
+    class Records(Fake):
+        async def discover(self, job: JobSettings,
+                           ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
+            seen.append(job.last_success_at)
+            async for c in super().discover(job, ctx):
+                yield c
+
+    h.monkeypatch.setitem(REGISTRY, "rss", Records([]))
+    job, source = rows()
+    job.last_run_at = datetime(2026, 11, 16, tzinfo=UTC)  # a failed run, more recent
+    await execution.run_connector(RUN, job, source, h.factory(), NOW)
+    assert seen == [NOW]

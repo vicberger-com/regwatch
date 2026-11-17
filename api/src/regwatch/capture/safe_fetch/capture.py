@@ -15,6 +15,7 @@ This is what connectors use. For each hop, the first request and every redirect 
 from __future__ import annotations
 
 from regwatch.capture.safe_fetch.fetch import FetchResult, SafeFetcher
+from regwatch.capture.safe_fetch.policy import FetchRefusedError
 from regwatch.capture.safe_fetch.rate import RateLimiter, Sleep, interval, wait_turn
 from regwatch.capture.safe_fetch.robots import RobotsPolicy
 
@@ -41,13 +42,18 @@ class CaptureFetcher:
         self._sleep = sleep
 
     async def fetch(
-        self, url: str, *, rate_per_minute: int | None = None, robots_override: str | None = None
-    ) -> FetchResult:
+        self, url: str, *, rate_per_minute: int | None = None, robots_override: str | None = None,
+        refuse_hosts: frozenset[str] = frozenset(),
+    ) -> FetchResult:  # fmt: skip
+        """``refuse_hosts`` are hosts no hop may reach, checked before robots.txt, the rate slot
+        and the request: a provider's block page is never contacted (API feed review 5)."""
         rate = self.rate_per_minute if rate_per_minute is None else rate_per_minute
         kwargs = {"sleep": self._sleep} if self._sleep is not None else {}
 
         async def before_hop(hop_url: str) -> None:
             target = await self.fetcher.check_url(hop_url)
+            if target.host in refuse_hosts:
+                raise FetchRefusedError("refused-host", f"{target.host} is not contacted")
 
             async def robots_slot() -> None:
                 await wait_turn(

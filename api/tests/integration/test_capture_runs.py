@@ -469,3 +469,29 @@ async def test_an_unexpected_failure_still_ends_the_run(
     assert run["error_class"] == "internal-error" and run["error_message"] == (
         "the run failed: OSError")  # fmt: skip
     assert (await admin.get(_api(f"/sources/{made['id']}/health"))).json()["health"] == "unknown"
+
+
+async def test_execute_passes_the_last_successful_run(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """API feed review 1: a newer failed run does not move the incremental window."""
+    from regwatch.capture import execution
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    good = datetime.now(UTC) - timedelta(days=5)
+    db.add(CaptureRun(job_id=jid, status="success", started_at=good, finished_at=good))
+    bad = datetime.now(UTC) - timedelta(days=1)
+    db.add(CaptureRun(job_id=jid, status="failed", started_at=bad, finished_at=bad))
+    db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))  # the run to execute
+    await db.commit()
+    seen: list[Any] = []
+
+    async def recording(run_id: Any, job: Any, source: Any, make: Any,
+                        last_success: Any = None) -> Any:  # fmt: skip
+        seen.append(last_success)
+        return execution.Outcome("success")
+
+    monkeypatch.setattr(runs, "run_connector", recording)
+    assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
+    assert seen and abs((seen[0] - good).total_seconds()) < 1

@@ -34,7 +34,9 @@ from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode, urlsplit
+from zoneinfo import ZoneInfo
 
+import anyio
 from pydantic import BaseModel
 
 from regwatch.capture.connectors.base import (
@@ -47,10 +49,24 @@ from regwatch.capture.connectors.base import (
     register,
 )
 from regwatch.capture.connectors.config import ApiFeedConfig
-from regwatch.capture.connectors.rss import MAX_SUMMARY, MAX_TITLE, entry_link, plain_text
+from regwatch.capture.connectors.rss import (
+    MAX_SUMMARY,
+    MAX_TITLE,
+    entry_link,
+    identifier,
+    plain_text,
+)
+from regwatch.capture.safe_fetch.policy import FetchRefusedError
 
 FEDERAL_REGISTER = "https://www.federalregister.gov/api/v1/documents.json"
 FR_BLOCK_HOST = "unblock.federalregister.gov"
+# Hosts a Federal Register record may link to: its own pages, and the PDFs on GovInfo.
+FR_LINK_HOSTS = frozenset({"www.federalregister.gov", "federalregister.gov", "www.govinfo.gov",
+                           "govinfo.gov"})  # fmt: skip
+FR_EASTERN = ZoneInfo("America/New_York")  # Federal Register dates are US Eastern
+MAX_JSON_BYTES = 5 * 1024 * 1024  # a page of 1,000 records is about 2 MiB (review finding 6)
+MAX_LIST = 50
+MAX_QUERY = 1500  # stays well under SafeFetcher's 2,048-character URL limit
 MAX_PAGES = 10
 MAX_PARAMS = 50
 MAX_PARAM_VALUE = 2000
@@ -79,7 +95,10 @@ def _depth(value: Any, limit: int) -> int:
 
 
 def parse_json(body: bytes) -> Any:
-    """An API answer as JSON, or ``malformed-answer``; deep nesting is refused."""
+    """An API answer as JSON, or ``malformed-answer``; large bodies and deep nesting are
+    refused."""
+    if len(body) > MAX_JSON_BYTES:
+        raise ConnectorError("too-large", f"the API's answer is over {MAX_JSON_BYTES} bytes")
     try:
         data = json.loads(body)
     except (ValueError, RecursionError):
@@ -89,31 +108,67 @@ def parse_json(body: bytes) -> Any:
     return data
 
 
-def query(params: dict[str, Any], last_run: datetime | None, now: datetime) -> str:
-    """The query string for the job's ``params``: strings and lists of strings only, with the
-    last-success placeholder filled in (R-06 section 4)."""
+def _scalar(key: str, item: Any) -> str:
+    if isinstance(item, bool):
+        return "true" if item else "false"
+    if isinstance(item, (int, float)) and not isinstance(item, bool):
+        return str(item)  # the R-06 starter config writes per_page: 100 (review finding 7)
+    if isinstance(item, str) and len(item) <= MAX_PARAM_VALUE:
+        return item
+    raise ConnectorError("bad-config", f"query parameter {key[:50]!r} is not a short value")
+
+
+def query(params: dict[str, Any], last_success: datetime | None, now: datetime) -> str:
+    """The query string for the job's ``params``: short texts, numbers and booleans, or lists of
+    them, with the last-success placeholder filled in (R-06 section 4)."""
     if len(params) > MAX_PARAMS:
         raise ConnectorError("bad-config", f"at most {MAX_PARAMS} query parameters")
     pairs: list[tuple[str, str]] = []
     for key, value in params.items():
+        if len(key) > 200:
+            raise ConnectorError("bad-config", "a query parameter name is too long")
+        if key == "page":  # paging is by next_page_url only (E-FR-8; review finding 8)
+            raise ConnectorError("bad-config", "page is set by the API's next_page_url")
         values = value if isinstance(value, list) else [value]
-        for item in values:
-            if not isinstance(item, str) or len(item) > MAX_PARAM_VALUE or len(key) > 200:
-                raise ConnectorError(
-                    "bad-config", f"query parameter {key[:50]!r} is not a short text"
-                )
-            placeholder = _PLACEHOLDER.match(item.strip())
-            if placeholder:
-                since = (last_run or now - FIRST_RUN_LOOKBACK) - timedelta(
+        if len(values) > MAX_LIST:
+            raise ConnectorError("bad-config", f"query parameter {key[:50]!r} has too many values")
+        for raw in values:
+            item = _scalar(key, raw)
+            if "{last_success_date" in item:
+                placeholder = _PLACEHOLDER.match(item.strip())
+                if placeholder is None:
+                    raise ConnectorError("bad-config", "write the placeholder as "
+                                         "{last_success_date - N days}")  # fmt: skip
+                since = (last_success or now - FIRST_RUN_LOOKBACK) - timedelta(
                     days=int(placeholder.group(1)))  # fmt: skip
-                item = since.date().isoformat()
+                item = since.astimezone(FR_EASTERN).date().isoformat()
             pairs.append((key, item))
-    return urlencode(pairs)
+    text = urlencode(pairs)
+    if len(text) > MAX_QUERY:
+        raise ConnectorError("bad-config", f"the query is longer than {MAX_QUERY} characters")
+    return text
 
 
-def _blocked(status: int, headers: dict[str, str], url: str) -> bool:
-    host = urlsplit(url).hostname or ""
-    return (status == 202 and "x-amzn-waf-action" in headers) or host == FR_BLOCK_HOST
+def check_params(config: ApiFeedConfig) -> None:
+    """The checks a source's settings must pass when saved (review findings 7 and 8)."""
+    if config.provider != "generic_json" and config.endpoint_url is not None:
+        raise ConnectorError("bad-config", "endpoint_url is for generic_json only")
+    if config.provider == "federal_register":
+        query(config.params, None, datetime.now(UTC))
+        if not any("publication_date" in key for key in config.params):
+            raise ConnectorError("bad-config", "bound each run with a publication_date "
+                                 "condition (R-06)")  # fmt: skip
+
+
+def _blocked(headers: dict[str, str], url: str) -> bool:
+    """The firewall's header, at any status (a 202, 403 or 405; review finding 5)."""
+    return "x-amzn-waf-action" in headers or (urlsplit(url).hostname or "") == FR_BLOCK_HOST
+
+
+def _fr_link(value: Any) -> str | None:
+    """A Federal Register or GovInfo link, checked as any captured link (finding 4)."""
+    link = entry_link({"link": value}, FEDERAL_REGISTER)
+    return link if link is not None and urlsplit(link).hostname in FR_LINK_HOSTS else None
 
 
 def _published(value: Any) -> datetime | None:
@@ -128,8 +183,19 @@ def _published(value: Any) -> datetime | None:
 def _record(result: dict[str, Any]) -> dict[str, Any]:
     """The stored document: known fields only, text fields as plain text."""
     record: dict[str, Any] = {}
+    for key in ("html_url", "pdf_url"):
+        link = _fr_link(result.get(key))
+        if link is not None:
+            record[key] = link
     for key in _RECORD_FIELDS:
         value = result.get(key)
+        if key in ("html_url", "pdf_url"):
+            continue
+        if key == "document_number":
+            ident = identifier(value)
+            if ident is not None:
+                record[key] = ident
+            continue
         if isinstance(value, str):
             text = plain_text(value, MAX_SUMMARY if key == "abstract" else MAX_TITLE)
             if text is not None:
@@ -155,29 +221,39 @@ class ApiFeedConnector:
 
     async def _federal_register(self, config: ApiFeedConfig, job: JobSettings,
                                 ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
-        url = f"{FEDERAL_REGISTER}?{query(config.params, job.last_run_at, ctx.now())}"
+        url = f"{FEDERAL_REGISTER}?{query(config.params, job.last_success_at, ctx.now())}"
         origin = urlsplit(FEDERAL_REGISTER)
         seen: set[str] = set()
+        asked: set[str] = set()
         for _ in range(MAX_PAGES):
-            got = await ctx.fetcher.fetch(url, rate_per_minute=job.rate_per_minute,
-                                          robots_override=job.robots_override)  # fmt: skip
-            if _blocked(got.status, got.headers, got.url):
+            asked.add(url)
+            try:
+                got = await ctx.fetcher.fetch(url, rate_per_minute=job.rate_per_minute,
+                                              robots_override=job.robots_override,
+                                              refuse_hosts=frozenset({FR_BLOCK_HOST}))  # fmt: skip
+            except FetchRefusedError as exc:
+                if exc.reason == "refused-host":  # redirected to the block page; not contacted
+                    raise ConnectorError("blocked-by-provider", "the Federal Register's "
+                                         "firewall refused the request") from None  # fmt: skip
+                raise
+            if _blocked(got.headers, got.url):
                 refused = "the Federal Register's firewall refused the request"
                 raise ConnectorError("blocked-by-provider", refused)
             if not 200 <= got.status < 300:
                 raise ConnectorError("http-status", f"the API answered HTTP {got.status}")
-            data = parse_json(got.body)
+            data = await anyio.to_thread.run_sync(parse_json, got.body)  # off the loop (6)
             results = data.get("results") if isinstance(data, dict) else None
             if not isinstance(results, list):
                 raise ConnectorError("malformed-answer", "the API's answer has no results list")
             for result in results:
                 if not isinstance(result, dict):
                     continue
-                link = entry_link({"link": result.get("html_url")}, FEDERAL_REGISTER)
-                if link is None or link in seen:
-                    continue
-                seen.add(link)
                 record = _record(result)
+                link = record.get("html_url")
+                number = record.get("document_number")
+                if link is None or link in seen or (number and number in seen):
+                    continue  # one document under two links is still one document (finding 10)
+                seen.update(x for x in (link, number) if x)
                 yield Candidate(url=link, title=record.get("title"),
                                 published_at=_published(result.get("publication_date")),
                                 external_id=record.get("document_number"),
@@ -187,9 +263,13 @@ class ApiFeedConnector:
             if not isinstance(following, str) or not following:
                 return
             parts = urlsplit(following)
-            if (parts.scheme, parts.netloc) != (origin.scheme, origin.netloc):
-                raise ConnectorError("malformed-answer", "the next page is on another host")
+            if (parts.scheme, parts.netloc, parts.path) != (origin.scheme, origin.netloc,
+                                                            origin.path):  # fmt: skip
+                raise ConnectorError("malformed-answer", "the next page is not the same endpoint")
+            if following in asked:
+                raise ConnectorError("malformed-answer", "the next page repeats an earlier one")
             url = following
+        ctx.notes.add("truncated")  # pages remained past MAX_PAGES (review finding 2)
 
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
