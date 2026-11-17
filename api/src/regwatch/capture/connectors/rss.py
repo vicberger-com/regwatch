@@ -7,8 +7,9 @@ off. Feeds are hostile (8.1), so:
 - feedparser only ever gets an in-memory stream. Given a string it fetches it as a URL, and
   given a string or bytes it first tries to ``open()`` them as a local path, which read local
   files and let ``/dev/zero`` exhaust memory (RSS review finding 1).
-- Before feedparser sees it, ``precheck`` parses the body once with expat and refuses any DTD
-  internal subset, any entity declaration, nesting past ``MAX_DEPTH``, more than
+- Before feedparser sees it, ``precheck`` parses the body once with expat and refuses any
+  DOCTYPE, any entity declaration (also found by a plain search, as a backstop), bodies over
+  ``MAX_FEED_BYTES``, nesting past ``MAX_DEPTH``, more than
   ``MAX_ELEMENTS`` elements, and anything that is not well-formed XML. feedparser keeps simple
   entity declarations and, when expat stops at its amplification limit, re-parses with its
   loose parser and expands them without limit (gigabytes from a 100 KB feed, finding 2); its
@@ -31,6 +32,7 @@ import hashlib
 import html
 import io
 import re
+import unicodedata
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
@@ -63,13 +65,40 @@ MAX_TITLE = 1000
 MAX_SUMMARY = 5000
 MAX_ID = 500
 MAX_URL = 2048
+MAX_FEED_BYTES = 5 * 1024 * 1024  # no real feed is larger; halves feedparser's worst case (12)
 MAX_DEPTH = 64
 MAX_ELEMENTS = 200_000
 CLEAN_ROUNDS = 5
 # Hosts written as numbers (2130706433, 0x7f.1, 017700000001): IP addresses in disguise, which
 # getaddrinfo accepts and ipaddress does not; no real feed links to one.
 _NUMERIC_HOST = re.compile(r"^(0x[0-9a-f]*|[0-9]+)(\.(0x[0-9a-f]*|[0-9]+)){0,3}\.?$", re.I)
+# Names that are never public (RFC 6761, RFC 6762, RFC 8375, ICANN's .internal). SafeFetcher
+# refuses them at fetch time once they resolve; a stored link should not name one either.
+_LOCAL_SUFFIXES = ("localhost", "local", "internal", "home.arpa", "lan", "intranet", "corp")
+
+
+def _local_name(host: str) -> bool:
+    name = host.rstrip(".").lower()
+    return "." not in name or any(name == s or name.endswith("." + s) for s in _LOCAL_SUFFIXES)
+
+
 _LANGUAGE = re.compile(r"^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8}){0,4}$")
+
+
+_ENTITY = re.compile(rb"<!\s*entity", re.I)
+
+
+def _maybe_utf16(body: bytes) -> bool:
+    return body[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in body[:200]
+
+
+def _as_utf8(body: bytes) -> bytes:
+    for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            return body.decode(encoding).encode("utf-8")
+        except UnicodeDecodeError:
+            continue
+    return b""
 
 
 class _RefusedError(Exception):
@@ -93,12 +122,18 @@ def precheck(body: bytes) -> None:
         state["depth"] -= 1
 
     def doctype(name: str, sysid: str | None, pubid: str | None, internal: int) -> None:
-        if internal:
-            raise _RefusedError("the feed declares a DTD of its own")
+        # Any DOCTYPE, not only one with a subset: with an external DTD named, expat skips
+        # undefined entities, and feedparser's own regexes can rebuild a subset from text in
+        # a comment (re-verification 1, finding 2b). RSS 0.91's Netscape DOCTYPE goes too.
+        raise _RefusedError("the feed has a DOCTYPE")
 
     def entity(*args: object) -> None:  # pragma: no cover - only inside a subset, refused first
         raise _RefusedError("the feed declares entities")
 
+    if len(body) > MAX_FEED_BYTES:
+        raise ConnectorError("too-large", f"the feed is larger than {MAX_FEED_BYTES} bytes")
+    if _ENTITY.search(body) or (_maybe_utf16(body) and _ENTITY.search(_as_utf8(body))):
+        raise ConnectorError("unsafe-feed", "the feed declares entities")  # backstop, 2b
     parser.StartElementHandler = start
     parser.EndElementHandler = end
     parser.StartDoctypeDeclHandler = doctype
@@ -149,11 +184,13 @@ def entry_link(entry: Any, base: str) -> str | None:
     link = entry.get("link")
     if not isinstance(link, str) or not link.strip() or "\\" in link:
         return None
+    if any(unicodedata.category(c) in ("Cf", "Cc", "Zl", "Zp") for c in link):
+        return None  # bidi overrides and other invisible controls (re-verification 11)
     try:
         target = parse_target(urljoin(base, link.strip()))
         if is_ip(target.host):
             check_address(target.host)
-        elif _NUMERIC_HOST.match(target.host):
+        elif _NUMERIC_HOST.match(target.host) or "%" in target.host or _local_name(target.host):
             return None
     except (FetchRefusedError, ValueError):
         return None
@@ -177,9 +214,14 @@ def _parse(body: bytes, url: str, content_type: str) -> Any:
     if not isinstance(body, bytes):
         raise TypeError("feeds are parsed from bytes only")
     precheck(body)
+    # The media type only: with the HTTP charset, feedparser decodes the body differently from
+    # the expat pre-pass (a UTF-7 body looks like plain ASCII to expat), so the checked text
+    # would not be the parsed text (re-verification 1, finding 2a). Both now go by the XML
+    # declaration or byte-order mark.
+    media = content_type.split(";", 1)[0].strip()
     try:
         return feedparser.parse(io.BytesIO(body), response_headers={
-            "content-location": url, "content-type": content_type})  # fmt: skip
+            "content-location": url, "content-type": media})  # fmt: skip
     except Exception:  # noqa: BLE001 - any parser failure; its text may quote the feed (6)
         raise ConnectorError("malformed-feed", "the feed could not be parsed") from None
 

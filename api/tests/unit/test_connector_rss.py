@@ -177,8 +177,9 @@ async def test_deep_or_huge_trees_are_refused(body: bytes) -> None:
 
 
 async def test_tag_soup_is_refused_quickly() -> None:
-    """Finding 3: 9 MB of tag soup took 77 s in feedparser's loose parser; refused at once."""
-    soup = b"<rss><channel>" + b"<item><title>x<b>y</i></item>" * 300_000
+    """Finding 3: 9 MB of tag soup took 77 s in feedparser's loose parser; 4.8 MB, under the
+    5 MiB cap, is refused at once."""
+    soup = b"<rss><channel>" + b"<item><title>x<b>y</i></item>" * 160_000
     started = time.monotonic()
     with pytest.raises(ConnectorError) as exc:
         await discover(Site(soup))
@@ -253,7 +254,10 @@ async def test_fetch_stores_the_page_or_the_entry_text() -> None:
      ("http://10.0.0.5/admin", None), ("http://[::1]/", None), ("http://2130706433/", None),
      ("http://0x7f.1/", None), ("http://017700000001/", None), ("http://1.2.3.4.example/", "http://1.2.3.4.example/"),
      ("https://BÜCHER.example/a#frag", "https://xn--bcher-kva.example/a"),
-     ("https://example.org:443/a?q=1", "https://example.org/a?q=1")],
+     ("https://example.org:443/a?q=1", "https://example.org/a?q=1"),
+     ("http://%31%32%37.0.0.1/", None), ("http://localhost/", None), ("http://intranet/", None),
+     ("http://db.internal/", None), ("http://printer.local/", None), ("http://x.home.arpa/", None),
+     ("https://example.org/\u202egnp.exe", None), ("https://example.org/\u200ba", None)],
 )  # fmt: skip
 def test_entry_links(link: str, expected: str | None) -> None:
     assert entry_link({"link": link}, FEED_URL) == expected
@@ -325,12 +329,88 @@ async def test_error_pages_are_not_stored() -> None:
     assert exc.value.reason == "http-status" and stored == {}
 
 
-async def test_an_external_dtd_is_named_but_never_fetched(no_files_or_sockets: None) -> None:
-    feed = (b'<?xml version="1.0"?><!DOCTYPE rss SYSTEM "http://10.0.0.5/rss.dtd">'
-            b'<rss version="2.0"><channel><item><title>x</title>'
+def u7(text: str) -> bytes:
+    """UTF-7 with every character but letters, digits and space in base64 form: it reads as
+    harmless ASCII to expat and as markup to a decoder told the charset is UTF-7."""
+    import base64
+
+    out, run = [], ""
+    for c in [*text, None]:
+        if c is not None and not ((c.isalnum() and c.isascii()) or c == " "):
+            run += c
+            continue
+        if run:
+            out.append(b"+" + base64.b64encode(run.encode("utf-16-be")).rstrip(b"=") + b"-")
+            run = ""
+        if c is not None:
+            out.append(c.encode())
+    return b"".join(out)
+
+
+BOMB = "Z" * 1000
+BYPASSES = {
+    # Re-verification 1, 2a: hidden in a comment as UTF-7, served with charset=utf-7.
+    "utf-7": (b'<?xml version="1.0"?>\n<!--'
+              + u7(f'\n<!DOCTYPE rss [\n<!ENTITY e "{BOMB}">\n]>\n x') + b" -->\n"
+              + b'<rss version="2.0"><channel><item><title>' + u7("&e;" * 50)
+              + b"</title><link>https://example.org/x</link></item></channel></rss>",
+              "application/rss+xml; charset=utf-7"),
+    # 2b: an external DTD named, and an entity declaration inside a comment.
+    "external DTD and comment": (
+        ('<?xml version="1.0"?>\n<!DOCTYPE rss SYSTEM "rss.dtd">\n<!-- x\n'
+         f'<!ENTITY e "{BOMB}">\n x -->\n<rss version="2.0"><channel><item><title>'
+         + "&e;" * 50 + "</title><link>https://example.org/x</link></item></channel></rss>"
+         ).encode(), "application/rss+xml"),
+    # 2b backstop: a declaration in a comment with no DOCTYPE at all.
+    "comment only": (
+        ('<?xml version="1.0"?>\n<!-- x\n<!DOCTYPE rss [\n'
+         f'<!ENTITY e "{BOMB}">\n]>\n x -->\n<rss version="2.0"><channel><item>'
+         "<title>t</title><link>https://example.org/x</link></item></channel></rss>"
+         ).encode(), "application/rss+xml"),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", list(BYPASSES))
+def test_the_reviewed_bypasses_never_expand(name: str) -> None:
+    """Re-verification 1, finding 2: each is refused before feedparser, or parses to a title
+    that never grew from expanded entities."""
+    body, content_type = BYPASSES[name]
+    started = time.monotonic()
+    try:
+        feed = _parse(body, FEED_URL, content_type)
+    except ConnectorError:
+        return
+    finally:
+        assert time.monotonic() - started < 2
+    assert all(len(e.get("title", "")) < 2000 for e in feed.entries)  # pragma: no cover
+
+
+def test_utf16_entity_declarations_are_caught_too() -> None:
+    feed = ('<?xml version="1.0" encoding="utf-16"?><!-- <!ENTITY e "x"> -->'
+            '<rss version="2.0"><channel></channel></rss>').encode("utf-16")  # fmt: skip
+    with pytest.raises(ConnectorError) as exc:
+        _parse(feed, FEED_URL, "application/rss+xml")
+    assert exc.value.reason == "unsafe-feed"
+
+
+def test_a_feed_over_5_mib_is_refused() -> None:
+    from regwatch.capture.connectors import rss
+
+    with pytest.raises(ConnectorError) as exc:
+        _parse(b" " * (rss.MAX_FEED_BYTES + 1), FEED_URL, "")
+    assert exc.value.reason == "too-large"
+
+
+async def test_any_doctype_is_refused(no_files_or_sockets: None) -> None:
+    """Even an external DTD only, such as RSS 0.91's Netscape DOCTYPE (finding 2b)."""
+    feed = (b'<?xml version="1.0"?><!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS'
+            b' 0.91//EN" "http://my.netscape.com/publish/formats/rss-0.91.dtd">'
+            b'<rss version="0.91"><channel><item><title>x</title>'
             b"<link>https://example.org/x</link></item></channel></rss>")  # fmt: skip
     site = Site(feed)
-    assert [c.url for c in await discover(site)] == ["https://example.org/x"]
+    with pytest.raises(ConnectorError) as exc:
+        await discover(site)
+    assert exc.value.reason == "unsafe-feed"
     assert site.paths == ["/robots.txt", "/feeds/news.xml"]
 
 
@@ -347,4 +427,10 @@ async def test_a_broken_feed_without_usable_links_is_refused() -> None:
 
     with pytest.raises(ConnectorError) as exc:
         await discover(Plain(feed))
+    assert exc.value.reason == "malformed-feed"
+
+
+def test_bytes_that_only_look_like_utf16_are_refused_cleanly() -> None:
+    with pytest.raises(ConnectorError) as exc:
+        _parse(b"<rss>\x00\x00", FEED_URL, "")  # NUL bytes, odd length: not UTF-16
     assert exc.value.reason == "malformed-feed"
