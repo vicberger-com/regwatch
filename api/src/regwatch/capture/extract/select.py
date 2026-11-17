@@ -33,8 +33,8 @@ _TOKEN = re.compile(
     # Combinators before plain whitespace, so " > " and " , " are one token each.
     rf"""(?P<child>{_WS}*>{_WS}*)|(?P<comma>{_WS}*,{_WS}*)|(?P<space>{_WS}+)|(?P<type>{_NAME}|\*)
     |\#(?P<id>{_NAME})|\.(?P<cls>{_NAME})
-    |\[\s*(?P<attr>{_NAME})\s*(?:(?P<op>[~^$*]?=)\s*(?:(?P<bare>{_NAME})|"(?P<dq>[^"\\]*)"|'(?P<sq>[^'\\]*)')\s*)?\]
-    |:(?P<pseudo>first-child|last-child)\b|:nth-child\(\s*(?P<nth>[^)]*?)\s*\)|:not\((?P<neg>[^()]*)\)
+    |\[{_WS}*(?P<attr>{_NAME}){_WS}*(?:(?P<op>[~^$*]?=){_WS}*(?:(?P<bare>{_NAME})|"(?P<dq>[^"\\]*)"|'(?P<sq>[^'\\]*)'){_WS}*)?\]
+    |:(?P<pseudo>first-child|last-child)\b|:nth-child\({_WS}*(?P<nth>[^)]*?){_WS}*\)|:not\((?P<neg>[^()]*)\)
     """,
     re.VERBOSE,
 )
@@ -59,7 +59,8 @@ class _Compound:
 
     def matches(self, el: ET.Element, position: int, count: int) -> bool:
         # SVG and MathML elements carry their namespace in html5lib's tree (finding 4).
-        if self.tag is not None and el.tag.rsplit("}", 1)[-1].lower() != self.tag:
+        name = el.tag.rsplit("}", 1)[-1] if el.tag.startswith("{") else el.tag  # R6: a}p
+        if self.tag is not None and name.lower() != self.tag:
             return False
         if self.ids and any(el.get("id") != i for i in self.ids):
             return False
@@ -183,7 +184,8 @@ def _inner(text: str, body: str) -> _Compound:
 
 def _parse_nth(text: str, expr: str) -> tuple[int, int]:
     # Spaces only around the sign: "2n + 1", not "2 n+1" (review finding 6).
-    expr = {"odd": "2n+1", "even": "2n"}.get(expr.lower(), re.sub(r" *([+-]) *(?=[0-9])",
+    # Spaces around the sign of b only: "2n + 1", not "+ 3" or "2 n+1" (R6).
+    expr = {"odd": "2n+1", "even": "2n"}.get(expr.lower(), re.sub(r"(?<=n) *([+-]) *(?=[0-9])",
                                                               r"\1", expr.strip()))  # fmt: skip
     m = _NTH.fullmatch(expr)
     if m is None:

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import os
 import subprocess
 import sys
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -73,3 +76,29 @@ def test_the_child_answers_a_page_and_limits_itself() -> None:
     out = subprocess.run([sys.executable, "-I", "-c", probe], capture_output=True, check=True,  # noqa: S603 - a fixed probe
                          text=True).stdout.split()  # fmt: skip
     assert [int(x) for x in out] == [child.CPU_SECONDS, child.ADDRESS_SPACE_BYTES]
+
+
+async def test_a_cancelled_caller_leaves_no_child(monkeypatch: pytest.MonkeyPatch,
+                                                  tmp_path: Any) -> None:  # fmt: skip
+    """Re-verification R1: a soft time limit or an aborted run cancels the call."""
+    pid_file = tmp_path / "pid"
+    script = (
+        f"import os, time; open({str(pid_file)!r}, 'w').write(str(os.getpid())); time.sleep(60)"
+    )
+    monkeypatch.setattr(isolate, "COMMAND", (sys.executable, "-I", "-c", script))
+    task = asyncio.create_task(isolate.extract_isolated(b"<p>x</p>", None, ExtractionRules()))
+    for _ in range(100):
+        if pid_file.exists() and pid_file.read_text():
+            break
+        await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+async def test_only_what_is_parsed_is_sent() -> None:
+    """R5: a 6 MiB body sends 2 MiB and one byte; the child still reports the cut."""
+    got = await isolate.extract_isolated(b"<p>" + b"word " * 1_200_000, None, ExtractionRules())
+    assert got.warnings[0].startswith("the page was longer")

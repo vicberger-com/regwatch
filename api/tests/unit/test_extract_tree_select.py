@@ -57,7 +57,8 @@ def test_the_subset_matches_as_css_does(selector: str, expected: list[str]) -> N
      (".x div", None), ("p.a.b", None), ("a, " * 10 + "a", "at most 10"),
      (" ".join(["p"] * 9), "at most 8"), ("p.x*", "must come first"),
      ("li:nth-child(\u0663)", "an\\+b"), ("li:nth-child(\uff13)", "an\\+b"),
-     ("li:nth-child(2 n+1)", "an\\+b"), ("#1x", "not supported"), ("a\u3000b", "not supported")],
+     ("li:nth-child(2 n+1)", "an\\+b"), ("li:nth-child(+ 3)", "an\\+b"),
+     ("li:nth-child(- 3)", "an\\+b"), ("#1x", "not supported"), ("a\u3000b", "not supported")],
 )  # fmt: skip
 def test_selectors_outside_the_subset_are_refused(selector: str, message: str | None) -> None:
     if message is None:
@@ -131,3 +132,7 @@ def test_matching_follows_the_browser() -> None:
 
 def test_a_charset_label_that_is_no_text_is_ignored() -> None:
     assert tree.parse(b"<p>x</p>", "\ud800").root.find(".//p").text == "x"  # type: ignore[union-attr]
+
+
+def test_a_brace_in_a_tag_name_is_not_a_namespace() -> None:
+    assert texts("p", b"<a}p>x</a}p>") == []

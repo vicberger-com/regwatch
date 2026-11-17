@@ -58,6 +58,12 @@ def normalize(text: str) -> str:
     return "\n".join(line for line in lines if line)[:MAX_TEXT]
 
 
+def _hidden(el: ET.Element) -> bool:
+    """Boilerplate, or SVG and MathML (their names carry a namespace in html5lib's tree), whose
+    text a reader does not read as the page's (re-verification R3)."""
+    return el.tag in BOILERPLATE or el.tag.startswith("{")
+
+
 def _sep(el: ET.Element) -> str:
     return "\n" if el.tag in BLOCKS else (" " if el.tag in CELLS else "")
 
@@ -79,7 +85,7 @@ def text_of(el: ET.Element, skip: set[int]) -> str:
         if isinstance(item, str):
             out.append(item)
             continue
-        if not isinstance(item.tag, str) or id(item) in skip or item.tag in BOILERPLATE:
+        if not isinstance(item.tag, str) or id(item) in skip or _hidden(item):
             continue
         out.append(_sep(item) + _flat(item.text))
         for child in reversed(list(item)):
@@ -103,8 +109,14 @@ def _length(value: str | None) -> int:
 def _main(page: Page, skip: set[int], minimum: int, walk: Walk) -> tuple[str, str]:
     """(text, method) by the heuristic in the module docstring. Text and link-text lengths are
     summed bottom-up in one pass, so nesting does not make scoring quadratic."""
+    # Inside boilerplate or an excluded element is not on the page as read (R3): a main in a
+    # template or nav, or a paragraph in an aside, is never the main text.
+    hidden: dict[int, bool] = {}
+    for el, parent, *_rest in walk:
+        hidden[id(el)] = (id(el) in skip or _hidden(el)
+                          or (parent is not None and hidden[id(parent)]))  # fmt: skip
     for tag in ("main", "article"):
-        found = [el for el in page.root.iter(tag) if id(el) not in skip]
+        found = [el for el, *_rest in walk if el.tag == tag and not hidden[id(el)]]
         if len(found) == 1:
             text = text_of(found[0], skip)
             if len(text) >= minimum:
@@ -112,7 +124,7 @@ def _main(page: Page, skip: set[int], minimum: int, walk: Walk) -> tuple[str, st
     total: dict[int, int] = {}
     links: dict[int, int] = {}
     for el, _parent, *_rest in reversed(walk):  # children before their parents
-        if id(el) in skip or el.tag in BOILERPLATE:
+        if hidden[id(el)]:
             total[id(el)] = links[id(el)] = 0
             continue
         kids = [k for k in el if isinstance(k.tag, str)]
@@ -149,7 +161,7 @@ def parse_date(value: str | None, fmt: str | None = None) -> datetime | None:
     for form in candidates:
         try:  # fromisoformat reads a date alone too, as midnight
             got = datetime.strptime(value, form) if form else datetime.fromisoformat(value)
-        except ValueError:
+        except (ValueError, re.error):  # re.error: a format strptime cannot compile (R2)
             continue
         return got if got.tzinfo else got.replace(tzinfo=UTC)
     return None

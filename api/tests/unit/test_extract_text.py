@@ -103,7 +103,7 @@ def test_no_title_and_an_h1_title() -> None:
      ("2026/11/17", None, datetime(2026, 11, 17, tzinfo=UTC)),
      ("17/11/26", "%d/%m/%y", datetime(2026, 11, 17, tzinfo=UTC)),
      ("2026-02-30", None, None), ("nonsense", None, None), ("", None, None), (None, None, None),
-     ("2026-11-17", "%d.%m.%Y", None)],
+     ("2026-11-17", "%d.%m.%Y", None), ("17.11.2026 17", "%d.%m.%Y %d", None)],
 )  # fmt: skip
 def test_dates(value: str | None, fmt: str | None, expected: datetime | None) -> None:
     assert text.parse_date(value, fmt) == expected
@@ -130,7 +130,7 @@ def test_deep_and_wide_pages_stay_fast() -> None:
      ({"exclude_selectors": ["x"] * 21}, "exclude_selectors"),
      ({"title_selector": "a ~ b"}, "title_selector"), ({"date_selector": "::x"}, "date_selector"),
      ({"date_format": "%s"}, "date_format"), ({"date_format": "no directive"}, "date_format"),
-     ({"date_format": "%Y" * 21}, "date_format")],
+     ({"date_format": "%Y" * 21}, "date_format"), ({"date_format": "%d.%m.%Y %d"}, "date_format")],
 )  # fmt: skip
 def test_rules_are_checked_when_saved(rules: dict[str, Any], field: str) -> None:
     with pytest.raises(ProblemError) as exc:
@@ -139,3 +139,19 @@ def test_rules_are_checked_when_saved(rules: dict[str, Any], field: str) -> None
     ok = validate_rules({"content_selectors": ["main p"], "title_selector": "h1",
                          "date_selector": "time", "date_format": "%d.%m.%Y"})  # fmt: skip
     assert ok.date_format == "%d.%m.%Y"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"<svg><text>SVG-SECRET</text></svg><main><p>" + b"v" * 300 + b"</p></main>",
+     b"<template><main><p>HIDDEN" + b"h" * 300 + b"</p></main></template><article><p>"
+     + b"v" * 300 + b"</p></article>",
+     b"<nav><main><p>HIDDEN" + b"h" * 300 + b"</p></main></nav><div><p>" + b"v" * 300
+     + b"</p></div>",
+     b"<aside><p>HIDDEN" + b"h" * 900 + b"</p></aside><div><p>" + b"v" * 300 + b"</p></div>",
+     b"<math><mi>SVG-SECRET</mi></math><div><p>" + b"v" * 300 + b"</p></div>"],
+)  # fmt: skip
+def test_hidden_and_graphic_text_is_never_the_main_text(body: bytes) -> None:
+    """Re-verification R3: what monitoring hashes is what a reader sees."""
+    got = text.extract(tree.parse(body), ExtractionRules())
+    assert got.text == "v" * 300

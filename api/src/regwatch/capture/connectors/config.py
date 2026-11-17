@@ -9,6 +9,7 @@ a config are only checked for shape here; the source routes also run SafeFetcher
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -67,6 +68,13 @@ class ExtractionRules(_Strict):
                                   or "%" not in value):  # fmt: skip
             raise ValueError("a strptime format of at most 40 characters, using %d %m %y %Y %b "
                              "%B %H %M %S %z and literal text")  # fmt: skip
+        if value is not None:
+            try:  # a directive given twice compiles to a bad pattern (re-verification R2)
+                datetime.strptime("", value)
+            except re.error:
+                raise ValueError("each directive may appear once in date_format") from None
+            except ValueError:
+                pass  # the empty text does not match: the format itself is fine
         return value
 
 

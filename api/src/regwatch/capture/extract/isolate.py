@@ -21,7 +21,7 @@ from typing import Any
 
 from regwatch.capture.connectors.config import ExtractionRules
 from regwatch.capture.extract.text import Extracted
-from regwatch.capture.extract.tree import ParseError
+from regwatch.capture.extract.tree import MAX_PARSE_BYTES, ParseError
 
 WALL_SECONDS = 20.0  # over the child's CPU limit (10 s), for start-up and a busy host
 MAX_ANSWER = 16 * 1024 * 1024
@@ -30,6 +30,8 @@ COMMAND = (sys.executable, "-I", "-m", "regwatch.capture.extract.child")
 
 async def extract_isolated(body: bytes, encoding: str | None,
                            rules: ExtractionRules) -> Extracted:  # fmt: skip
+    # Only what the child parses, plus one byte so it knows the page was cut (R5).
+    body = body[: MAX_PARSE_BYTES + 1]
     request = json.dumps({"body": base64.b64encode(body).decode(), "encoding": encoding,
                           "rules": rules.model_dump(mode="json")}).encode()  # fmt: skip
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C"}
@@ -39,9 +41,13 @@ async def extract_isolated(body: bytes, encoding: str | None,
     try:
         out, _ = await asyncio.wait_for(child.communicate(request), WALL_SECONDS)
     except TimeoutError:
-        child.kill()
-        await child.wait()
         raise ParseError("too-slow", f"extraction took longer than {WALL_SECONDS:g} s") from None
+    finally:
+        # On a timeout, and on a cancellation too (a soft time limit, an aborted run): never
+        # leave a child running after its caller has gone (re-verification R1).
+        if child.returncode is None:
+            child.kill()
+            await asyncio.shield(child.wait())
     if child.returncode in (-signal.SIGXCPU, -signal.SIGKILL):  # its CPU limit
         raise ParseError("too-slow", "extraction ran past its CPU limit")
     if child.returncode != 0 or len(out) > MAX_ANSWER:
