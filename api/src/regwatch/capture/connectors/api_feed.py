@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 import anyio
 from pydantic import BaseModel
 
+from regwatch.capture.connectors import legislation
 from regwatch.capture.connectors.base import (
     Candidate,
     ConnectorContext,
@@ -183,6 +184,8 @@ def check_params(config: ApiFeedConfig) -> None:
     if config.provider == "federal_register":
         query(config.params, None, datetime.now(UTC))
         _check_lower_bound(config.params.get(LOWER_BOUND))
+    elif config.provider == "legislation_gov_uk":
+        legislation.check(config.params)
 
 
 def _check_lower_bound(value: Any) -> None:
@@ -256,6 +259,10 @@ class ApiFeedConnector:
 
     async def discover(self, job: JobSettings, ctx: ConnectorContext) -> AsyncIterator[Candidate]:
         config = _config(job)
+        if config.provider == "legislation_gov_uk":
+            async for candidate in legislation.discover(config.params, job, ctx):
+                yield candidate
+            return
         if config.provider != "federal_register":
             raise ConnectorError("not-implemented",
                                  f"the {config.provider} adapter is not built yet")  # fmt: skip
@@ -320,7 +327,10 @@ class ApiFeedConnector:
 
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
-        """The API's own record is the document: full text is blocked (R-06, E-FR-14)."""
+        """legislation.gov.uk: the entry's data.xml. Federal Register: the API's own record is
+        the document, as full text is blocked (R-06, E-FR-14)."""
+        if candidate.hints.get("provider") == "legislation_gov_uk":
+            return await legislation.fetch(candidate, job, ctx)
         record = candidate.hints.get("record") or {}
         body = json.dumps(record, sort_keys=True).encode("utf-8")
         key = f"raw/{job.source_id}/{hashlib.sha256(body).hexdigest()}.json"

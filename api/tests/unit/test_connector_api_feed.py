@@ -239,7 +239,7 @@ def test_json_depth_is_bounded() -> None:
         parse_json(b'{"a":' * 40 + b"1" + b"}" * 40)
 
 
-@pytest.mark.parametrize("provider", ["eur_lex", "legislation_gov_uk", "generic_json"])
+@pytest.mark.parametrize("provider", ["eur_lex", "generic_json"])
 async def test_other_providers_say_they_are_not_built_yet(provider: str) -> None:
     with pytest.raises(ConnectorError) as exc:
         await discover(FR([]), provider=provider)

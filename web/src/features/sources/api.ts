@@ -41,6 +41,8 @@ export const REASONS: Record<string, string> = {
   "malformed-answer":
     "The API's answer could not be read. Check the provider settings.",
   "not-implemented": "This provider's adapter is not built yet.",
+  "needs-contact":
+    "This provider refuses anonymous requests. Set the contact email in Settings (general.contact_email) first.",
   "http-status": "The site answered with an error status.",
   robots: "robots.txt does not allow it.",
   "rate-limited": "The site was busy; the next run tries again.",

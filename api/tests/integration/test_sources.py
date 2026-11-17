@@ -128,6 +128,9 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
         ({"name": "FR", "kind": "api_feed",
           "config": {"provider": "federal_register", "params": {"per_page": 100}}},
          "config.params"),  # no publication_date bound (API feed review 7)
+        ({"name": "UK", "kind": "api_feed",
+          "config": {"provider": "legislation_gov_uk", "params": {"title_terms": []}}},
+         "config.params"),  # legislation.gov.uk needs at least one title term
         (rss(job={"cron": "\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "*/\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "\u0661 * * * *"}), "job.cron"),
