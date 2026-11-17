@@ -32,6 +32,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from regwatch.capture.connectors import api_feed as _api_feed  # noqa: F401 - registers it
 from regwatch.capture.connectors import rss as _rss  # noqa: F401 - registers the connector
 from regwatch.capture.connectors.base import (
     REGISTRY,
@@ -96,7 +97,8 @@ def job_settings(job: CaptureJob, source: Source) -> JobSettings:
     override = source.override_reason if source.robots_policy == "override" else None
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
-                       render_js=job.render_js, robots_override=override)  # fmt: skip
+                       render_js=job.render_js, robots_override=override,
+                       last_run_at=job.last_run_at)  # fmt: skip
 
 
 def _transient(exc: BaseException) -> bool:

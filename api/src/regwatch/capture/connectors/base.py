@@ -71,6 +71,7 @@ class JobSettings:
     rate_per_minute: int = 30
     render_js: bool = False
     robots_override: str | None = None  # the admin's recorded reason, or None to obey
+    last_run_at: datetime | None = None  # the job's last run, for incremental queries
 
 
 @dataclass

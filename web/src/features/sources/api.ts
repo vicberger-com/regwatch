@@ -30,6 +30,11 @@ export const REASONS: Record<string, string> = {
   "malformed-feed":
     "The answer is not a well-formed RSS or Atom feed. Check the feed address.",
   "too-large": "The answer is larger than the size limit.",
+  "blocked-by-provider":
+    "The provider's firewall refused the request. It is not retried or worked around; ask the provider to allow the address.",
+  "malformed-answer":
+    "The API's answer could not be read. Check the provider settings.",
+  "not-implemented": "This provider's adapter is not built yet.",
   "http-status": "The site answered with an error status.",
   robots: "robots.txt does not allow it.",
   "rate-limited": "The site was busy; the next run tries again.",
