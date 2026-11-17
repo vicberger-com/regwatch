@@ -103,3 +103,18 @@
 | R3 | info | A source saved with `robots_policy: override` before this change still runs: `check_robots` applies only when a source is saved. The adapter now obeys robots.txt, but `run_connector` still records `robots_decision` `overridden` (`execution.py:170`). Re-saving such a source is refused. Record it in BL-96, or reset these sources in a migration. | | |
 
 **Sign-off at re-verification 1:** signed off, on condition that R1 is fixed, or recorded in BL-96, before this branch merges. The fix is a one-line change to the condition in `_get` plus three tests, and it is what makes finding 1's claim true. The medium part of finding 1 is closed: the rate is held at 12 a minute, robots.txt is always obeyed and can no longer be overridden, and disallowed links never become fetch targets. Finding 2 is closed in code; only the live fixture is outstanding, in BL-96 (a). Findings 5 and 9 are closed. Findings 3 and 4 are partly closed, as R1 and R2. Findings 7, 8 and 11 are tracked in BL-96, and 6 (b) should be added there. · M3 legislation.gov.uk independent review · 2026-11-17
+
+## Re-verification 2 (R1 and R2)
+**Scope:** commit `fe15d58` on `sec/M3-legislation-followups`: `CaptureFetcher.fetch(allow_hop=...)`, `legislation._strict`, `_disallowed`, `_same_search`, their tests, and BL-96 (f) and (g). · **Date:** 2026-11-17 · M3 legislation.gov.uk independent review
+
+**Method:**
+- **Tests:** the legislation, API feed and rate unit files gave 107 passed under `unshare -rn`. `make test-api` gave 947 unit and 188 integration tests passed, total coverage 97.26 %, and the throwaway PostgreSQL was removed.
+- **Probes:** I re-ran `/tmp/m3leg-review/rv1/test_rv1.py` against the new code.
+
+| # | Severity | Re-verified | Status |
+| --- | --- | --- | --- |
+| R1 | low | `before_hop` now calls `allow_hop(current)` for the first URL and for every redirect target, after `urljoin`. It does this after SafeFetcher's URL check and before robots.txt, the rate slot and the request. `_get` passes `_strict`: https, host `www.legislation.gov.uk` exactly (a trailing dot or userinfo trick does not pass both `urlsplit` and `parse_target`), the default port, and no `data.pdf` or `data.docx` segment. `refused-host` becomes `off-host`. **Probes:** A (`data.pdf` on the host, robots.txt 404), C (http), D (port 8443) and E (another host and back) are all refused as `off-host` with nothing stored. The requests logged for C and E stop at the refused hop, so it was never contacted. `_disallowed` decodes the path and compares whole segments without `;params`, so `/data.pdf/`, `/data.pdf;x`, `/data%2Epdf` and `DATA.PDF` are refused (probe F). **Info:** (a) `/data.pdf%20`, a segment that is not exactly the name, still passes `_own`, though robots.txt's prefix rule refuses it while readable; no real link looks like that. (b) The robots.txt request itself is made by `RobotsPolicy` without `allow_hop`, as in BL-94 (d). | closed |
+| R2 | low | `_same_search` allows only `title`, `sort` and `page`, with exactly one `title` equal to the term and at most one `sort` equal to the job's. The probes with a repeated `title` (G) and with `sort=title&text=zz` (H) now fail with `malformed-answer` "the next page is another search", as do the new tests. | closed |
+| R3 | info | Recorded in BL-96 (g), and finding 6 (b) in BL-96 (f). | tracked |
+
+**Sign-off at re-verification 2:** signed off. Every finding of the review and of re-verification 1 is closed, or recorded in BL-96 (a) to (g). The live fixture (BL-96 (a)) is the one item that still needs a networked session. · M3 legislation.gov.uk independent review · 2026-11-17
