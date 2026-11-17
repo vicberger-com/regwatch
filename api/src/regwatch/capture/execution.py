@@ -270,7 +270,16 @@ def _decision(allowed: str, refused: dict[str, int], others: int) -> str:
     """Every page disallowed is ``disallowed``; some is ``partly-disallowed`` (R2)."""
     if not refused.get("robots"):
         return allowed
-    return "partly-disallowed" if others or refused.get("rate-limited") else "disallowed"
+    # Any document not refused by robots.txt (fetched, failed, busy or unavailable) makes it
+    # partly disallowed (EUR-Lex re-verification R1).
+    if others or sum(refused.values()) > refused["robots"]:
+        return "partly-disallowed"
+    return "disallowed"
+
+
+def _counts(refused: dict[str, int]) -> str:
+    """Each skip reason with its count, such as ``robots 2, unavailable 1`` (R1)."""
+    return ", ".join(f"{reason} {n}" for reason, n in sorted(refused.items()) if n)
 
 
 def _verdict(fetched: int, failures: int, refused: dict[str, int],
@@ -285,10 +294,9 @@ def _verdict(fetched: int, failures: int, refused: dict[str, int],
         return "failed", "fetch-failed", f"none of {total} documents could be fetched"
     if skipped and not fetched:
         reason = "robots" if refused.get("robots") else sorted(refused)[0]
-        return "skipped", reason, f"all {skipped} documents were refused ({reason})"
+        return "skipped", reason, f"all {skipped} documents were refused ({_counts(refused)})"
     if failures:
         return "partial", "some-failed", f"{failures} of {total} documents failed"
     if skipped:
-        return "success", None, (f"{skipped} documents were refused by robots.txt or a busy "
-                                 "host, or are not available")  # fmt: skip
+        return "success", None, f"{skipped} documents were skipped ({_counts(refused)})"
     return "success", None, None

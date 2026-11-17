@@ -424,9 +424,17 @@ async def test_a_document_the_provider_does_not_have_is_a_skip(h: Harness) -> No
     got = await h.run(Raises(["https://e.org/a", "https://e.org/b"], {"https://e.org/b": gone}))
     assert (got.status, got.items_new, got.error_class) == ("success", 1, None)
     assert got.cursor == {"publication_date": NOW.date().isoformat()}
-    assert "not available" in (got.error_message or "")
+    assert got.error_message == "1 documents were skipped (unavailable 1)"
     none = await h.run(Raises(["https://e.org/a"], {"https://e.org/a": gone}))
     assert (none.status, none.error_class) == ("skipped", "unavailable")
+    # Re-verification R1: with robots refusals too, each reason is counted and some pages were
+    # not disallowed, so robots.txt partly disallowed the run.
+    no = FetchRefusedError("robots", "disallowed")
+    h.fetcher.fail = {"https://e.org/b": [no], "https://e.org/c": [no]}
+    mixed = await h.run(Raises([f"https://e.org/{x}" for x in "abc"], {"https://e.org/a": gone}))
+    outcome = (mixed.status, mixed.error_class, mixed.robots_decision)
+    assert outcome == ("skipped", "robots", "partly-disallowed")
+    assert mixed.error_message == "all 3 documents were refused (robots 2, unavailable 1)"
 
 
 async def test_a_block_on_one_document_stops_the_run(h: Harness) -> None:

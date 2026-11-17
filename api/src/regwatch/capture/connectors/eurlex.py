@@ -63,7 +63,7 @@ LANGUAGE_CODES = {"BUL": "bg", "CES": "cs", "DAN": "da", "DEU": "de", "ELL": "el
                   "SWE": "sv"}  # fmt: skip
 # Cellar's answer for a work it has no XHTML of in that language (review finding 1): a skip.
 UNAVAILABLE_STATUSES = frozenset({404, 406})
-# Well under the 2,048 characters some proxies allow a request line (review finding 5).
+# Under SafeFetcher's 2,048-character URL limit (review finding 5): about 18 to 21 concepts.
 MAX_QUERY_URL = 1800
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
