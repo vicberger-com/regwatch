@@ -8,15 +8,28 @@ a config are only checked for shape here; the source routes also run SafeFetcher
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from regwatch.capture.extract.select import SelectorError, compile_selector
 from regwatch.core.errors import ProblemError, ProblemFieldError
 
 
 class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+MAX_SELECTORS = 20
+_DATE_FORMAT = re.compile(r"(?:%[dmyYbBHMSz]|[^%])+")  # these directives, and literal text
+
+
+def _check_selector(value: str) -> None:
+    try:
+        compile_selector(value)
+    except SelectorError as exc:
+        raise ValueError(str(exc)) from None
 
 
 class ExtractionRules(_Strict):
@@ -29,6 +42,32 @@ class ExtractionRules(_Strict):
     exclude_url_patterns: list[str] = []
     strip_query_params: bool = True
     min_text_length: int = 200
+
+    # Checked when saved (CP-15), so a rule outside the subset is refused at once, not at a run.
+    @field_validator("content_selectors", "exclude_selectors")
+    @classmethod
+    def _selectors(cls, value: list[str]) -> list[str]:
+        if len(value) > MAX_SELECTORS:
+            raise ValueError(f"at most {MAX_SELECTORS} selectors")
+        for selector in value:
+            _check_selector(selector)
+        return value
+
+    @field_validator("title_selector", "date_selector")
+    @classmethod
+    def _selector(cls, value: str | None) -> str | None:
+        if value is not None:
+            _check_selector(value)
+        return value
+
+    @field_validator("date_format")
+    @classmethod
+    def _date_format(cls, value: str | None) -> str | None:
+        if value is not None and (len(value) > 40 or not _DATE_FORMAT.fullmatch(value)
+                                  or "%" not in value):  # fmt: skip
+            raise ValueError("a strptime format of at most 40 characters, using %d %m %y %Y %b "
+                             "%B %H %M %S %z and literal text")  # fmt: skip
+        return value
 
 
 class RssConfig(_Strict):
