@@ -19,7 +19,7 @@ export const CONNECTORS = {
         "type": "string"
       },
       "exclude_selectors": {
-        "description": "removed before hashing and extraction (dates",
+        "description": "removed before hashing and extraction (dates, counters, navigation)",
         "items": {
           "type": "string"
         },
@@ -67,7 +67,7 @@ export const CONNECTORS = {
           "type": "string"
         },
         "field_map": {
-          "description": "generic_json only; maps url",
+          "description": "generic_json only; maps url, title, published_at, summary, external_id to JSONPaths",
           "type": "object"
         },
         "item_path": {
@@ -75,7 +75,7 @@ export const CONNECTORS = {
           "type": "string"
         },
         "params": {
-          "description": "provider-specific query parameters",
+          "description": "provider-specific query parameters, validated by the adapter",
           "type": "object"
         },
         "provider": {

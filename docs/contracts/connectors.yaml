@@ -6,7 +6,7 @@ common_extraction_rules: &rules
   additionalProperties: false
   properties:
     content_selectors: { type: array, items: { type: string }, description: CSS selectors whose text forms the content; empty means trafilatura main-text extraction }
-    exclude_selectors: { type: array, items: { type: string }, description: removed before hashing and extraction (dates, counters, navigation) }
+    exclude_selectors: { type: array, items: { type: string }, description: "removed before hashing and extraction (dates, counters, navigation)" }
     title_selector: { type: string }
     date_selector: { type: string }
     date_format: { type: string, description: strptime format; omitted means dateparser }
@@ -75,10 +75,10 @@ api_feed:
     required: [provider]
     properties:
       provider: { type: string, enum: [federal_register, eur_lex, legislation_gov_uk, generic_json] }
-      params: { type: object, description: provider-specific query parameters, validated by the adapter }
+      params: { type: object, description: "provider-specific query parameters, validated by the adapter" }
       endpoint_url: { type: string, format: uri, description: generic_json only }
       item_path: { type: string, description: generic_json only; JSONPath to the array of entries }
-      field_map: { type: object, description: generic_json only; maps url, title, published_at, summary, external_id to JSONPaths }
+      field_map: { type: object, description: "generic_json only; maps url, title, published_at, summary, external_id to JSONPaths" }
       api_key_secret_name: { type: string, description: name of an environment variable holding the key; never the key itself }
   extraction_rules: *rules
 
