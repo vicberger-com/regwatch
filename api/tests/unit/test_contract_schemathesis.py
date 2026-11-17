@@ -20,6 +20,10 @@ from typing import Any
 import schemathesis
 from hypothesis import HealthCheck, settings
 from schemathesis.checks import not_a_server_error, positive_data_acceptance
+from schemathesis.config._checks import (
+    NEGATIVE_DATA_REJECTION_EXPECTED_STATUSES,
+    NegativeDataRejectionConfig,
+)
 
 from regwatch.api.app import create_app
 from regwatch.core.settings import Settings
@@ -47,6 +51,14 @@ gated = (
     .exclude(path="/branding/public")
     .exclude(path="/legal")
 )
+
+
+# A fuzzed body over the 2 MB cap is refused with 413 before anything reads it, which is a
+# correct rejection of invalid data; schemathesis's default list for that check omits 413.
+for _schema in (gated,):
+    _schema.config.checks.negative_data_rejection = NegativeDataRejectionConfig(
+        expected_statuses=[*NEGATIVE_DATA_REJECTION_EXPECTED_STATUSES, "413"]
+    )
 
 
 def _implemented(ctx: Any) -> bool:
@@ -87,3 +99,10 @@ def test_gated_api_conforms(case: schemathesis.Case) -> None:
 @settings(max_examples=8, deadline=None, suppress_health_check=list(HealthCheck))
 def test_stub_api_conforms(case: schemathesis.Case) -> None:
     _validate(case)
+
+
+def test_a_body_over_the_cap_counts_as_rejected() -> None:
+    """The 413 allowance above reaches the negative-data check (it lives in a private
+    schemathesis module, so an upgrade that moves it fails here, not by chance in a fuzz run)."""
+    statuses = gated.config.checks.negative_data_rejection.expected_statuses
+    assert "413" in statuses and "422" in statuses
