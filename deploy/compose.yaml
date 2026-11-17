@@ -121,11 +121,25 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Valkey with a password (BL-90 (a)): the default user is off and only `regwatch`, whose
+  # password is in deploy/queue.env, may connect. The ACL is written to a file inside the
+  # container at start, so the password is never on a command line or in the image. No port is
+  # published.
   queue:
     image: valkey/valkey:9@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
     networks: [regwatch]
+    env_file: queue.env
+    command:
+      - sh
+      - -c
+      - >-
+        : "$${VALKEY_PASSWORD:?set in deploy/queue.env; run scripts/dev-env.sh}";
+        umask 077;
+        printf 'user default off\nuser regwatch on >%s ~* &* +@all\n' "$$VALKEY_PASSWORD"
+        > /tmp/users.acl;
+        exec valkey-server --aclfile /tmp/users.acl
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$VALKEY_PASSWORD\" valkey-cli --user regwatch ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
