@@ -114,3 +114,25 @@ Both can be fixed in the UI, by sending only changed fields and keeping stored k
 | 16 | info | (a) A stored key the schema lacks is resent and refused with 422 (R4). That is better than silent loss, but the message does not say which key; the API's error names the field. (b) The read-only `<pre>` of an object field is not tied to its caption (a `span`). Its `aria-describedby` is on a non-interactive element, so screen readers do not link "Params" to its value. Use a `<dl>`, or `aria-labelledby` on a `role="group"`. (c) `_clean` would also drop a legitimate `default: null`; a check that fails on null-valued keys outside `default` would keep finding 3's guard. | | |
 
 **Sign-off at re-verification 1:** not signed off. Findings 1 and 2 (medium) are closed, and so are 4, 5, 7 to 11 and 13. Finding 14 is new and medium: the re-enable control, added for finding 6, leaves the job off, so a re-enabled source never captures and Run now answers 409. Its test passes only because of an unrealistic fixture. It is small to fix (send `job.enabled` with the source's). Finding 3 is partly closed until CP-12 is recorded where it can be tracked. 15 is low and 16 is info; they can go to BL-92. · M3 sources UI independent review · 2026-11-17
+
+## Re-verification 2
+**Scope:** commit `eb910f7` on `sec/M3-sources-ui-followups`, after `28247e1`. It changes `SourceEditor.tsx`, `SourcesPage.test.tsx`, `scripts/gen_connector_forms.py` and `BACKLOG.md` (BL-93). · **Reviewer session label:** M3 sources UI independent review · **Date:** 2026-11-17
+
+**Method:**
+- **Tests:** the web suite gave 121 passed. The drift test passed, and `gen_connector_forms.py --check` exited 0.
+- **Probes:** I re-ran R1 and R2 from `/tmp/m3ui-review/probe/reverify.test.tsx`. I read the diff and the files as they now stand in the working tree.
+- **Unchanged:** no repository file other than this record was changed.
+
+| # | Original finding | Re-verified | Status |
+| --- | --- | --- | --- |
+| 14 | Re-enabling leaves the job off | R1 now sends `{"enabled":true,"job":{"enabled":true}}`. The test's fixture has the job off, as `DELETE` leaves it, and asserts that body. An overridden source still needs the override permission (`check_robots`, `check_resume`), and the 403 shows in the alert. | closed |
+| 15 | The note understates what is refused | The settings are locked: `ConnectorFields` gets `disabled` for editors without the permission on an overridden source (`SourceEditor.tsx:225-226`). R2 can no longer change `max_entries`, and the test asserts the Feed url field is disabled. **The note was not changed.** `SourceEditor.tsx:356-358` still reads "Changing its addresses, or turning it back on, needs the override permission". The wording the commit message describes (rename, schedule, respect again) is in neither the commit nor the working tree. | partly closed: change the note's text |
+| 3 | Bogus keys dropped silently | The generator keeps `default: null` and names each of the 7 dropped keys on stderr (seen with `--check`). The drift test still compares the whole file. CP-12 is tracked as BL-93, and its draft exists at the path given. The descriptions stay cut short until the owner approves CP-12. | closed in code; contract tracked (BL-93) |
+| 16 | (b) The read-only object value is not labelled | **Not in the commit.** `ConnectorFields.tsx` was last changed in `d515315`, and it has no `role="group"` or `aria-labelledby`: the `<pre>` still sits beside a bare caption `span`. (a), the 422 for unknown stored keys, is accepted as is. | (b) open, info |
+
+**Sign-off at re-verification 2:** signed off for merge. Finding 14, the only open medium, is closed and verified. The remaining items are small and do not block:
+- 15's note text: the controls are already locked, and the API refuses the change anyway.
+- 16 (b): info.
+- 3: tracked as BL-93.
+
+The commit message claims both 15's note text and 16 (b), but neither change is there. Fix them in the next change, or record them in BL-92. · M3 sources UI independent review · 2026-11-17
