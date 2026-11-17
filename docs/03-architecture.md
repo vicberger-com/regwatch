@@ -88,7 +88,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | click-didyoumean 0.3.1, click-plugins 1.1.1.2, click-repl 0.4.1, prompt-toolkit 3.0.53, wcwidth 0.9.4 | Celery's command line | MIT, BSD-3, MIT, BSD-3, MIT (wcwidth's Unicode tables carry a no-conditions notice) | V `e571cc8`, `4ac07e5`, `4cc38ff`, `583b341`, `2a8edf1`, R-01 C9 to C13 | dependency | M3 |
 | python-dateutil 2.9.0.post0, six 1.17.0, tzlocal 5.4.5 | Celery's schedule and time-zone handling | Apache-2.0 AND BSD-3, MIT, MIT | V `1ae8077`, `ebd9b3a`, `ab833e7`, R-01 C14 to C16 | dependency | M3 |
 | Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
-| feedparser | RSS and Atom parsing | BSD-2 | V `14425f6` | dependency | M3 |
+| feedparser 6.0.14 | RSS and Atom parsing (the RSS connector) | BSD-2 | V `14425f6` (v6.0.14), R-01 C17 | dependency | M3 |
+| feedparser-sgmllib 2.1.0 | feedparser's tolerant HTML and SGML tokenizer | Python-2.0 | V `36924f1` (v2.1.0), R-01 C18 | dependency | M3 |
 | Scrapy | crawling framework | BSD-3 | V `8026dee` | dependency | M3 |
 | trafilatura 1.8+ | main-text extraction | Apache-2.0 (GPLv3 before 1.8.0) | V `e2f85c9` | dependency | M3 |
 | readability-lxml | fallback extraction | Apache-2.0 | V `7159b09` | dependency | M3 |

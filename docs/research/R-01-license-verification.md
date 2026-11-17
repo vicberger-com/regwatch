@@ -185,8 +185,10 @@ Read the same way as the BL-68 addendum: from each project's own repository at t
 | C14 | python-dateutil | dateutil/dateutil | 2.9.0.post0 | 1ae807774053c071acc9e7d3d27778fba0a7773e | LICENSE | Apache-2.0 AND BSD-3-Clause (Apache-2.0 for contributions after 2017-12-01 and re-licensed code, BSD-3 for the rest) | allowed |
 | C15 | six | benjaminp/six | 1.17.0 | ebd9b3af90247b8858d415a05e96e9ee61e48d07 | LICENSE | MIT | allowed |
 | C16 | tzlocal | regebro/tzlocal | 5.4.5 | ab833e7364aa89ff2d0560d94b74261a32a7af35 | LICENSE.txt | MIT | allowed |
+| C17 | feedparser | kurtmckee/feedparser | v6.0.14 | 14425f6851790184fbf7bbd8076de237d5f444f9 | LICENSE | BSD-2-Clause (code and tests; the docs/ directory under a 2-clause licence of its own, not in the wheel) | allowed |
+| C18 | feedparser-sgmllib | python-syndication/feedparser-sgmllib | v2.1.0 | 36924f1700d36901b31c4db30d91f0b55ee82ad2 | LICENSE | Python-2.0 (the PSF, BeOpen, CNRI and CWI licence stack Python itself carries) | allowed (BL-59) |
 
-C4 to C16 are Celery 5.7.0 and what it installs on Python 3.12 that was not yet in the register (click, packaging, typing-extensions and redis-py already were), resolved with `uv pip compile` and read at each tag on 2026-11-16; the owner approved the rows the same day. GitHub classified Celery, amqp, vine, click-plugins, wcwidth and dateutil as NOASSERTION, so their texts were read in full. None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
+C17 and C18 are feedparser 6.0.14 and its one dependency, read at their tags on 2026-11-17 and approved by the owner the same day; GitHub classified both as NOASSERTION, so both texts were read in full. C4 to C16 are Celery 5.7.0 and what it installs on Python 3.12 that was not yet in the register (click, packaging, typing-extensions and redis-py already were), resolved with `uv pip compile` and read at each tag on 2026-11-16; the owner approved the rows the same day. GitHub classified Celery, amqp, vine, click-plugins, wcwidth and dateutil as NOASSERTION, so their texts were read in full. None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
 
 ## Exceptions (component evaluation records)
 

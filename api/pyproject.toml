@@ -26,6 +26,7 @@ dependencies = [
     "nh3>=0.3.7,<0.4",  # BL-68, register 3.6; bundled crates in R-01 B1 to B3
     "python-multipart>=0.0.33,<0.1",  # BL-68, register 3.6: logo upload form parsing
     "celery>=5.7,<6",  # scheduler and workers (M3, ADR-0006), register 3.6, R-01 C4 to C16
+    "feedparser>=6.0.14,<7",  # RSS and Atom (M3), register 3.6, R-01 C17 and C18
 ]
 
 [project.scripts]
