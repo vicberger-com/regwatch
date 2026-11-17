@@ -16,5 +16,6 @@ All eight ADRs were accepted at Gate G0 (#2) on 2026-11-02; ADR-0005 decision 3 
 | [ADR-0006](ADR-0006-celery-valkey-scheduling.md) | Celery and Valkey for scheduling, with per-host politeness enforced in SafeFetcher | accepted | REQ-04, REQ-05 | R-01, R-03, R-06, R-07 |
 | [ADR-0007](ADR-0007-local-auth-then-oidc.md) | Local accounts and server-side sessions first, OpenID Connect in Phase 5 | accepted | REQ-14, REQ-16 | R-01 |
 | [ADR-0008](ADR-0008-gotenberg-pdf.md) | Gotenberg for PDF from the same server-rendered HTML; browser print only at launch | accepted | REQ-10, REQ-15 | R-01, R-02, R-04 |
+| [ADR-0009](ADR-0009-own-html-extraction.md) | Own HTML extraction on html5lib, instead of trafilatura and readability-lxml | accepted 2026-11-17 (owner) | REQ-04, REQ-05, REQ-20 | R-01 |
 
 Proposed but not yet written: ADR for translation providers (BL-41), internet search provider (BL-46) and the server print path (BL-47).

@@ -187,8 +187,12 @@ Read the same way as the BL-68 addendum: from each project's own repository at t
 | C16 | tzlocal | regebro/tzlocal | 5.4.5 | ab833e7364aa89ff2d0560d94b74261a32a7af35 | LICENSE.txt | MIT | allowed |
 | C17 | feedparser | kurtmckee/feedparser | v6.0.14 | 14425f6851790184fbf7bbd8076de237d5f444f9 | LICENSE | BSD-2-Clause (code and tests; the docs/ directory under a 2-clause licence of its own, not in the wheel) | allowed |
 | C18 | feedparser-sgmllib | python-syndication/feedparser-sgmllib | v2.1.0 | 36924f1700d36901b31c4db30d91f0b55ee82ad2 | LICENSE | Python-2.0 (the PSF, BeOpen, CNRI and CWI licence stack Python itself carries) | allowed (BL-59) |
+| C19 | html5lib | html5lib/html5lib-python | 1.1 | f87487a4ada2d6cf223bdd182774a01ba3c84618 | LICENSE | MIT | allowed |
+| C20 | webencodings | gsnedders/python-webencodings | v0.5.1 | fa2cb5d75ab41e63ace691bc0825d3432ba7d694 | LICENSE | BSD-3-Clause | allowed |
 
 C17 and C18 are feedparser 6.0.14 and its one dependency, read at their tags on 2026-11-17 and approved by the owner the same day; GitHub classified both as NOASSERTION, so both texts were read in full. C4 to C16 are Celery 5.7.0 and what it installs on Python 3.12 that was not yet in the register (click, packaging, typing-extensions and redis-py already were), resolved with `uv pip compile` and read at each tag on 2026-11-16; the owner approved the rows the same day. GitHub classified Celery, amqp, vine, click-plugins, wcwidth and dateutil as NOASSERTION, so their texts were read in full. None of them pulls in a runtime dependency on Python 3.12: redis-py's `async-timeout` applies only below 3.11.3, and the rest are optional extras.
+
+C19 and C20 are html5lib 1.1 and its one dependency not yet in the register (six is C15), read at their tags on 2026-11-17 and approved by the owner the same day (ADR-0009). webencodings 0.6.1 on PyPI has no tag in the repository, so the project stays on 0.5.1. Checked and refused the same day: lxml 6.1.3's binary wheels bundle GNU libiconv (LGPL-2.1, per the wheel's `LICENSES.txt`), chardet 5.2.0 is LGPL, and regex declares Apache-2.0 AND CNRI-Python; beautifulsoup4's repository on Launchpad answered 403, so its LICENSE could not be read at a tag.
 
 ## Exceptions (component evaluation records)
 

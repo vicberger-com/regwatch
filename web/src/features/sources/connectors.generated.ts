@@ -5,14 +5,14 @@ export const CONNECTORS = {
     "additionalProperties": false,
     "properties": {
       "content_selectors": {
-        "description": "CSS selectors whose text forms the content; empty means trafilatura main-text extraction",
+        "description": "CSS selectors whose text forms the content; empty means the built-in main-text extraction (ADR-0009). Selectors are a subset checked on save (CP-15): type, *, #id, .class, [attr], [attr=v], [attr~=v], [attr^=v], [attr$=v], [attr*=v], descendant and > combinators, comma lists, :nth-child(n), :first-child, :last-child and :not(simple)",
         "items": {
           "type": "string"
         },
         "type": "array"
       },
       "date_format": {
-        "description": "strptime format; omitted means dateparser",
+        "description": "strptime format; omitted means ISO 8601 or one of a fixed list of common formats (CP-15)",
         "type": "string"
       },
       "date_selector": {

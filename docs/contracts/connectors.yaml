@@ -5,11 +5,11 @@ common_extraction_rules: &rules
   type: object
   additionalProperties: false
   properties:
-    content_selectors: { type: array, items: { type: string }, description: CSS selectors whose text forms the content; empty means trafilatura main-text extraction }
+    content_selectors: { type: array, items: { type: string }, description: "CSS selectors whose text forms the content; empty means the built-in main-text extraction (ADR-0009). Selectors are a subset checked on save (CP-15): type, *, #id, .class, [attr], [attr=v], [attr~=v], [attr^=v], [attr$=v], [attr*=v], descendant and > combinators, comma lists, :nth-child(n), :first-child, :last-child and :not(simple)" }
     exclude_selectors: { type: array, items: { type: string }, description: "removed before hashing and extraction (dates, counters, navigation)" }
     title_selector: { type: string }
     date_selector: { type: string }
-    date_format: { type: string, description: strptime format; omitted means dateparser }
+    date_format: { type: string, description: "strptime format; omitted means ISO 8601 or one of a fixed list of common formats (CP-15)" }
     include_url_patterns: { type: array, items: { type: string, format: regex } }
     exclude_url_patterns: { type: array, items: { type: string, format: regex } }
     strip_query_params: { type: boolean, default: true }

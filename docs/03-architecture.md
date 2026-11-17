@@ -36,7 +36,7 @@ Reading: the browser talks only to the API through the proxy. Workers do all out
 | Printing | Browser print dialog always; server-side IPP printing behind a feature flag, deferred from the first release (R-04, BL-13, BL-15) | n/a | pycups is GPL-2 and excluded; no Node IPP client passed the license gate. Python clients (ippx, aioipp; MIT) printed to a test server, but need a contract change (BL-15). |
 | Authentication | Local accounts with Argon2id hashing (argon2-cffi), server-side sessions, optional OpenID Connect via Authlib in Phase 5; Keycloak as the reference identity provider for testing | MIT, BSD-3, Apache-2.0 | Keeps Phase 1 small; SSO added without changing the permission model. |
 | Authorization | Role and permission tables in PostgreSQL enforced by a FastAPI dependency; Casbin considered if policies grow beyond role-to-permission | Apache-2.0 (pycasbin) | Explicit tables are auditable and simple for the admin UI in M1. |
-| Content extraction | trafilatura 1.8 or later, readability-lxml fallback, Scrapy for crawl rules, Playwright for JavaScript-rendered pages | Apache-2.0, Apache-2.0, BSD-3, Apache-2.0 | trafilatura versions before 1.8.0 were GPLv3 and must not be pinned. |
+| Content extraction | html5lib parsing with the project's own CSS-subset selectors and main-text heuristic (ADR-0009, CP-15), Scrapy for crawl rules, Playwright for JavaScript-rendered pages | MIT, BSD-3, Apache-2.0 | trafilatura and readability-lxml were dropped: what they install bundles LGPL code (libiconv in lxml's wheels, chardet) and CNRI-Python (regex). |
 | Feed parsing | feedparser | BSD-2 | De facto standard; handles malformed feeds. |
 | Change detection | Own implementation using the approach of changedetection.io (Apache-2.0): fetch, extract, normalize, hash, diff with difflib | Apache-2.0 | Borrow patterns and optionally vendored helpers with attribution; do not run the whole app, since its UI duplicates ours. |
 | Internet search | Provider interface with two implementations: self-hosted SearXNG instance (separate container, unmodified) and a commercial search API configured by key | AGPL-3.0 (service boundary only), n/a | SearXNG is used over HTTP and never modified or vendored; see license policy 3.5. |
@@ -91,8 +91,10 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | feedparser 6.0.14 | RSS and Atom parsing (the RSS connector) | BSD-2 | V `14425f6` (v6.0.14), R-01 C17 | dependency | M3 |
 | feedparser-sgmllib 2.1.0 | feedparser's tolerant HTML and SGML tokenizer | Python-2.0 | V `36924f1` (v2.1.0), R-01 C18 | dependency | M3 |
 | Scrapy | crawling framework | BSD-3 | V `8026dee` | dependency | M3 |
-| trafilatura 1.8+ | main-text extraction | Apache-2.0 (GPLv3 before 1.8.0) | V `e2f85c9` | dependency | M3 |
-| readability-lxml | fallback extraction | Apache-2.0 | V `7159b09` | dependency | M3 |
+| trafilatura 1.8+ | main-text extraction: not used (ADR-0009; lxml's wheels bundle LGPL-2.1 libiconv, and regex is CNRI-Python) | Apache-2.0 (GPLv3 before 1.8.0) | V `e2f85c9` | not used | M3 |
+| readability-lxml | fallback extraction: not used (ADR-0009; needs LGPL chardet) | Apache-2.0 | V `7159b09` | not used | M3 |
+| html5lib 1.1 | HTML parsing for extraction, as browsers parse (ADR-0009) | MIT | V `f87487a` (1.1), R-01 C19 | dependency | M3 |
+| webencodings 0.5.1 | html5lib's character-encoding labels | BSD-3 | V `fa2cb5d` (v0.5.1), R-01 C20 | dependency | M3 |
 | Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | V `bcb9deb` | dependency, tooling | M3, tests |
 | changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
 | SearXNG | metasearch | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
@@ -180,6 +182,7 @@ All eight are `proposed`; the owner accepts them at Gate G0 (#2). Index: `docs/d
 | [ADR-0006](decisions/ADR-0006-celery-valkey-scheduling.md) | Celery and Valkey for scheduling | Procrastinate; APScheduler in-process; Temporal | accepted (G0); amendment 1 accepted 2026-11-17 (run lock in PostgreSQL) |
 | [ADR-0007](decisions/ADR-0007-local-auth-then-oidc.md) | Local authentication first, OpenID Connect later | Keycloak from day one | accepted (G0) |
 | [ADR-0008](decisions/ADR-0008-gotenberg-pdf.md) | Gotenberg for PDF | WeasyPrint only; browser-side pdfmake | accepted (G0) |
+| [ADR-0009](decisions/ADR-0009-own-html-extraction.md) | Own HTML extraction on html5lib | trafilatura with lxml from source; trafilatura with an LGPL exception; `html.parser` | accepted 2026-11-17 |
 
 ## 3.8 Phase 0 open-source review protocol (REQ-19, REQ-20)
 

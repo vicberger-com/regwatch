@@ -27,6 +27,9 @@ dependencies = [
     "python-multipart>=0.0.33,<0.1",  # BL-68, register 3.6: logo upload form parsing
     "celery>=5.7,<6",  # scheduler and workers (M3, ADR-0006), register 3.6, R-01 C4 to C16
     "feedparser>=6.0.14,<7",  # RSS and Atom (M3), register 3.6, R-01 C17 and C18
+    "html5lib>=1.1,<2",  # web page parsing (M3, ADR-0009, CP-15), register 3.6, R-01 C19
+    # html5lib's one new dependency; 0.6.1 on PyPI has no tag in its repository (R-01 C20)
+    "webencodings>=0.5.1,<0.6",
 ]
 
 [project.scripts]

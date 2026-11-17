@@ -34,6 +34,15 @@ reviewed = "google/re2 tag 2025-11-05 (927f5d5) LICENSE, python/setup.py version
 
 [[exception]]
 ecosystem = "python"
+package = "webencodings"
+version = "0.5.1"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE is the 3-clause text. html5lib's dependency (ADR-0009)"
+reviewed = "gsnedders/python-webencodings tag v0.5.1 (fa2cb5d) LICENSE, read 2026-11-17; register row V, R-01 C20"
+
+[[exception]]
+ecosystem = "python"
 package = "amqp"
 version = "5.4.2"
 license = "BSD-3-Clause"
