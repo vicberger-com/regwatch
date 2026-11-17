@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -234,6 +235,12 @@ async def test_lost_runs_are_handed_over_again_three_times(
     await db.commit()
     lost_id = lost.id
     now = datetime.now(UTC)
+
+    async def busy() -> int:
+        return 5
+
+    # BL-90 (g): a run waiting behind a backlog is not lost, so nothing is handed over again.
+    assert await runs.tick(db, queue, now=now, backlog=busy) == 0
     for n in range(runs.MAX_HANDOVERS):
         assert await runs.tick(db, queue, now=now) == 1, n
         now += runs.HANDOVER_AFTER + timedelta(seconds=1)
@@ -279,3 +286,150 @@ async def test_every_tick_sweeps_abandoned_runs(
     later = datetime.now(UTC) + timedelta(seconds=5)
     await runs.tick(db, queue, now=later)  # sweeps the stuck run
     assert await runs.tick(db, queue, now=later + timedelta(hours=2)) == 1  # runs again
+
+
+def _site(robots: str) -> Any:
+    """A feed site: robots.txt as given, a two-entry feed, and pages."""
+    import httpx
+
+    feed = (b'<?xml version="1.0"?><rss version="2.0"><channel><title>N</title>'
+            b"<item><title>One</title><link>https://feeds.example/1</link></item>"
+            b"<item><title>Two</title><link>https://feeds.example/2</link></item>"
+            b"</channel></rss>")  # fmt: skip
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, stream=httpx.ByteStream(robots.encode()))
+        if request.url.path == "/rss":
+            return httpx.Response(200, headers={"content-type": "application/rss+xml"},
+                                  stream=httpx.ByteStream(feed))  # fmt: skip
+        return httpx.Response(200, headers={"content-type": "text/html"},
+                              stream=httpx.ByteStream(b"<p>page</p>"))  # fmt: skip
+
+    return httpx.MockTransport(handler)
+
+
+def _factory(transport: Any, stored: dict[str, bytes]) -> Any:
+    from regwatch.capture.connectors.base import ConnectorContext, JobSettings
+    from regwatch.capture.safe_fetch import CaptureFetcher, MemoryRateLimiter, SafeFetcher
+
+    async def public(host: str, port: int) -> list[str]:
+        return ["93.184.215.14"]
+
+    async def no_wait(seconds: float) -> None:
+        return None
+
+    async def store(key: str, body: bytes) -> None:
+        stored[key] = body
+
+    fetcher = SafeFetcher("regwatch-test", resolver=public, transport=transport)
+
+    async def make(job: JobSettings) -> ConnectorContext:
+        capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000,
+                                 sleep=no_wait)  # fmt: skip
+        return ConnectorContext(fetcher=capture, store=store, now=lambda: datetime.now(UTC))
+
+    return make
+
+
+@pytest.mark.parametrize(
+    ("robots", "status", "decision", "new", "health"),
+    [("User-agent: *\nAllow: /\n", "success", "allowed", 2, "healthy"),
+     ("User-agent: *\nDisallow: /\n", "skipped", "disallowed", 0, "unknown")],
+)  # fmt: skip
+async def test_an_rss_source_runs_end_to_end(
+    admin: httpx.AsyncClient,
+    queue: Queue,
+    db: AsyncSession,
+    robots: str,
+    status: str,
+    decision: str,
+    new: int,
+    health: str,
+) -> None:
+    """M3 acceptance 1 (a run of an RSS source records its counts) and 4 (robots.txt that
+    disallows the feed skips the run with the decision recorded)."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 202
+    stored: dict[str, bytes] = {}
+    assert await runs.execute(db, jid, _factory(_site(robots), stored)) == status
+    run = (await admin.get(_api("/capture-runs"), params={"job_id": str(jid)})).json()["items"][0]
+    assert (run["status"], run["robots_decision"], run["items_new"]) == (status, decision, new)
+    assert (run["bytes_fetched"] > 0) == (new > 0)
+    assert (await admin.get(_api(f"/sources/{made['id']}/health"))).json()["health"] == health
+    if new:
+        manifests = [k for k in stored if "/runs/" in k]
+        assert manifests == [f"raw/{made['id']}/runs/{run['id']}.json"]
+
+
+class FakeValkey:
+    """Enough of redis.asyncio for the task wiring: a queue length and a slot script."""
+
+    def __init__(self, backlog: int = 0) -> None:
+        self.backlog, self.closed = backlog, False
+
+    def register_script(self, source: str) -> Any:
+        async def script(keys: list[str], args: list[int]) -> int:
+            return 0
+
+        return script
+
+    async def llen(self, name: str) -> int:
+        assert name == "capture"
+        return self.backlog
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+async def test_the_worker_wiring(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """capture.tasks builds runs from the settings: the user agent names the contact address,
+    the body cap is the setting, and the tick and run close their Valkey client."""
+    from regwatch.capture.connectors.base import JobSettings
+    from regwatch.capture.connectors.config import ExtractionRules, RssConfig
+
+    put = await admin.put(_api("/admin/settings/general.contact_email"),
+                          json={"value": "ops@example.org"})  # fmt: skip
+    assert put.status_code == 200, put.text
+    monkeypatch.setattr(tasks, "_robots", {})
+    valkey = FakeValkey()
+    make = await tasks.context_factory(db, valkey)
+    job = JobSettings(
+        source_id="s",
+        kind="rss",
+        rules=ExtractionRules(),
+        config=RssConfig(feed_url="https://feeds.example/rss"),
+    )  # type: ignore[arg-type]
+    ctx = await make(job)
+    assert ctx.fetcher.fetcher.user_agent == "regwatch/0.1.0 (+ops@example.org)"
+    assert ctx.fetcher.fetcher.limits.max_bytes == 10 * 1024 * 1024
+    assert ctx.now().tzinfo is not None
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    clients: list[FakeValkey] = []
+
+    def fresh() -> FakeValkey:
+        clients.append(FakeValkey())
+        return clients[-1]
+
+    from regwatch.capture.safe_fetch import SafeFetcher
+
+    async def private(host: str, port: int) -> list[str]:
+        return ["10.0.0.5"]  # answered at once, and refused: no network in tests
+
+    monkeypatch.setattr(tasks, "_valkey", fresh)
+    monkeypatch.setattr(tasks, "enqueue_run", queue)
+
+    def hermetic(agent: str, limits: Any) -> SafeFetcher:
+        return SafeFetcher(agent, limits, resolver=private)
+
+    monkeypatch.setattr(tasks, "SafeFetcher", hermetic)
+    monkeypatch.setattr(tasks, "_robots", {})  # no robots cache built on another fetcher
+    assert await tasks._tick(db) >= 1
+    assert await tasks._run(db, uuid.UUID(made["job"]["id"])) == "failed"
+    last = (await admin.get(_api("/capture-runs"), params={"job_id": made["job"]["id"]})).json()
+    assert last["items"][0]["error_class"] == "private-address"
+    assert len(clients) == 2 and all(c.closed for c in clients)

@@ -26,14 +26,17 @@ are ours rather than the source's (``abandoned``, ``queue-unavailable``), change
 from __future__ import annotations
 
 import random
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.capture.execution import ContextFactory, Outcome, run_connector
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.schedule import CronError, next_run
 from regwatch.capture.schemas import CaptureRun as RunOut
@@ -54,11 +57,26 @@ MAX_ERROR = 500  # capture_run.error_message: at most 500 characters, never page
 NOT_THE_SOURCE = frozenset({"abandoned", "queue-unavailable"})
 
 
+_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
+
+
+def _origin(match: re.Match[str]) -> str:
+    try:
+        parts = urlsplit(match.group(0))
+        host = parts.hostname or "?"
+    except ValueError:
+        return "<url>"
+    return f"{parts.scheme}://{host}/…"
+
+
 def clean_error(message: str | None) -> str | None:
-    """One line of printable text, at most ``MAX_ERROR`` characters (finding 11)."""
+    """One line of printable text, at most ``MAX_ERROR`` characters (finding 11). URLs keep only
+    their scheme and host: no user name, password, path or query reaches the run record
+    (BL-90 (h))."""
     if not message:
         return None
-    text = "".join(c if c.isprintable() else " " for c in message)
+    text = _URL.sub(_origin, message)
+    text = "".join(c if c.isprintable() else " " for c in text)
     return " ".join(text.split())[:MAX_ERROR] or None
 
 
@@ -77,7 +95,8 @@ async def _source_of(db: AsyncSession, job_id: uuid.UUID) -> Source | None:
 
 
 async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: str | None,
-                 error_message: str | None, now: datetime) -> None:  # fmt: skip
+                 error_message: str | None, now: datetime,
+                 outcome: Outcome | None = None) -> None:  # fmt: skip
     """End the run and update the job's last run and the source's health, without committing.
     A run that has already ended is left alone (finding 7)."""
     if run.finished_at is not None:
@@ -86,6 +105,10 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
     run.finished_at = now
     run.error_class = error_class
     run.error_message = clean_error(error_message)
+    if outcome is not None:
+        run.items_new = outcome.items_new
+        run.bytes_fetched = outcome.bytes_fetched
+        run.robots_decision = outcome.robots_decision
     source = await _source_of(db, run.job_id)
     job = await db.scalar(select(CaptureJob).where(CaptureJob.id == run.job_id))
     if job is not None:
@@ -134,7 +157,12 @@ async def _lost(db: AsyncSession, now: datetime) -> list[CaptureRun]:
     return list(rows)
 
 
-async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None) -> int:
+async def _no_backlog() -> int:
+    return 0
+
+
+async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None,
+               backlog: Callable[[], Awaitable[int]] = _no_backlog) -> int:  # fmt: skip
     """``capture.schedule_tick``: start every due job of an enabled source and hand lost runs
     over again; returns how many runs were handed to workers.
 
@@ -162,7 +190,9 @@ async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None) 
             run = CaptureRun(job_id=job.id, started_at=now)
             db.add(run)
             started.append(run)
-    lost = await _lost(db, now)
+    # A run waiting behind a backlog is not lost: hand nothing over again while the capture
+    # queue still holds messages (BL-90 (g)).
+    lost = await _lost(db, now) if await backlog() == 0 else []
     for run in lost:
         run.started_at = now
     await db.commit()
@@ -233,9 +263,11 @@ async def claim(db: AsyncSession, job_id: uuid.UUID) -> CaptureRun | None:
     return run
 
 
-async def execute(db: AsyncSession, job_id: uuid.UUID) -> str | None:
-    """``capture.run_job``: run the job's claimed run; returns its status, or None when there
-    was nothing to run."""
+async def execute(db: AsyncSession, job_id: uuid.UUID,
+                  make_context: ContextFactory | None = None) -> str | None:  # fmt: skip
+    """``capture.run_job``: run the job's claimed run with its kind's connector; returns its
+    status, or None when there was nothing to run. ``make_context`` builds the fetcher and the
+    store (``capture.tasks`` gives the real ones)."""
     run = await claim(db, job_id)
     if run is None:
         await db.commit()
@@ -247,11 +279,14 @@ async def execute(db: AsyncSession, job_id: uuid.UUID) -> str | None:
         await finish(db, run, "skipped", error_class="disabled",
                      error_message="the source or its job was disabled before the run")  # fmt: skip
         return "skipped"
-    # Connector runs are wired with the first connector (RSS); until then every run ends here
-    # as a failure that says why, so no source looks healthy without having been fetched.
-    await finish(db, run, "failed", error_class="no-connector",
-                 error_message=f"no connector runs {source.kind} sources yet")  # fmt: skip
-    return "failed"
+    if make_context is None:
+        outcome = Outcome("failed", "no-connector", "no fetcher was configured for this run")
+    else:
+        outcome = await run_connector(run.id, job, source, make_context)
+    await _close(db, run, outcome.status, outcome.error_class, outcome.error_message,
+                 datetime.now(UTC), outcome)  # fmt: skip
+    await db.commit()
+    return outcome.status
 
 
 async def sweep(db: AsyncSession, now: datetime | None = None) -> int:
