@@ -275,7 +275,8 @@ async def test_the_rate_is_capped_and_robots_is_always_obeyed() -> None:
                            rules=ExtractionRules(), rate_per_minute=120,
                            robots_override="Owner said so")  # fmt: skip
     [c async for c in ApiFeedConnector().discover(settings, ctx)]
-    assert calls and all(c == {"rate_per_minute": 12, "robots_override": None} for c in calls)
+    assert calls and all(c["rate_per_minute"] == 12 and c["robots_override"] is None
+                         and c["allow_hop"] is legislation._strict for c in calls)  # fmt: skip
 
 
 async def test_answers_from_another_host_are_refused() -> None:
@@ -317,3 +318,56 @@ async def test_a_document_off_the_host_is_refused() -> None:
     with pytest.raises(ConnectorError) as exc:
         await ApiFeedConnector().fetch(off, job(), ctx)
     assert exc.value.reason == "bad-link" and stored == {}
+
+
+@pytest.mark.parametrize(
+    "location",
+    [f"{LEG}/uksi/2026/1/made/data.pdf",  # robots.txt would allow it here: it answers 404
+     "http://www.legislation.gov.uk/uksi/2026/1/made/data.xml",  # plain http
+     "https://www.legislation.gov.uk:8443/uksi/2026/1/made/data.xml",  # another port
+     "https://mirror.example/back"],  # another host, even if it redirects back
+)  # fmt: skip
+async def test_every_redirect_hop_must_stay_on_the_allowed_addresses(location: str) -> None:
+    """Re-verification R1: each hop, before it is contacted, not only the final URL."""
+    hosts: list[str] = []
+
+    class Redirecting(Site):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            hosts.append(f"{request.headers.get('host')}{request.url.path}")
+            if request.url.path == "/robots.txt":
+                return httpx.Response(404, stream=httpx.ByteStream(b""))
+            if request.url.path.endswith("/data.xml"):
+                return httpx.Response(302, headers={"Location": location})
+            return httpx.Response(200, stream=httpx.ByteStream(b"stored?"))
+
+    ctx, stored = context(Redirecting({}))
+    doc = Candidate(url=f"{LEG}/uksi/2026/1/made",
+                    hints={"provider": "legislation_gov_uk",
+                           "fetch": f"{LEG}/uksi/2026/1/made/data.xml"})  # fmt: skip
+    with pytest.raises(ConnectorError) as exc:
+        await ApiFeedConnector().fetch(doc, job(), ctx)
+    assert exc.value.reason == "off-host" and stored == {}
+    assert all("data.pdf" not in h and "mirror.example" not in h and "8443" not in h
+               for h in hosts)  # the refused hop was never contacted  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/uksi/2026/1/made/data.pdf/", "/uksi/2026/1/made/data.pdf;x", "/uksi/2026/1/made/data%2Epdf",
+     "/uksi/2026/1/data.docx/made"],
+)  # fmt: skip
+def test_disallowed_names_are_found_anywhere_in_the_decoded_path(path: str) -> None:
+    assert legislation._own(f"{LEG}{path}") is None and not legislation._strict(f"{LEG}{path}")
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["title=other&title=cyber&sort=published", "title=cyber&sort=title",
+     "title=cyber&sort=published&text=x", "title=cyber&sort=published&sort=title"],
+)  # fmt: skip
+async def test_a_next_page_may_only_add_the_page(query: str) -> None:
+    """Re-verification R2."""
+    site = Site({("cyber", "1"): feed([entry(1)], f"{LEG}/all/data.feed?{query}&page=2")})
+    with pytest.raises(ConnectorError) as exc:
+        await discover(site, title_terms=["cyber"])
+    assert exc.value.reason == "malformed-answer"

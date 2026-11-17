@@ -320,3 +320,23 @@ async def test_refused_hosts_are_never_contacted(monkeypatch: pytest.MonkeyPatch
         await capture.fetch("https://example.org/", refuse_hosts=frozenset({"other.example"}))
     assert exc.value.reason == "refused-host"
     assert "other.example" not in hosts and "other.example" not in limiter._free
+
+
+async def test_allow_hop_must_accept_every_hop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Legislation re-verification R1: a redirect the caller does not allow is never contacted."""
+    clock = Clock()
+    monkeypatch.setattr(rate_module.time, "monotonic", clock.monotonic)
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=httpx.ByteStream(b""))
+        return httpx.Response(302, headers={"Location": "https://example.org/forbidden"})
+
+    fetcher = SafeFetcher(UA, resolver=dns, transport=httpx.MockTransport(handler))
+    capture = CaptureFetcher(fetcher, MemoryRateLimiter(), sleep=clock.sleep)
+    with pytest.raises(FetchRefusedError) as exc:
+        await capture.fetch("https://example.org/start",
+                            allow_hop=lambda url: not url.endswith("/forbidden"))  # fmt: skip
+    assert exc.value.reason == "refused-host" and "/forbidden" not in seen

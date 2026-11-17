@@ -14,6 +14,8 @@ This is what connectors use. For each hop, the first request and every redirect 
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from regwatch.capture.safe_fetch.fetch import FetchResult, SafeFetcher
 from regwatch.capture.safe_fetch.policy import FetchRefusedError
 from regwatch.capture.safe_fetch.rate import RateLimiter, Sleep, interval, wait_turn
@@ -44,15 +46,18 @@ class CaptureFetcher:
     async def fetch(
         self, url: str, *, rate_per_minute: int | None = None, robots_override: str | None = None,
         refuse_hosts: frozenset[str] = frozenset(),
+        allow_hop: Callable[[str], bool] | None = None,
     ) -> FetchResult:  # fmt: skip
-        """``refuse_hosts`` are hosts no hop may reach, checked before robots.txt, the rate slot
-        and the request: a provider's block page is never contacted (API feed review 5)."""
+        """``refuse_hosts`` are hosts no hop may reach, and ``allow_hop``, when given, must accept
+        every hop's URL, redirects included. Both are checked before robots.txt, the rate slot and
+        the request, so a refused hop is never contacted (API feed review 5; legislation
+        re-verification R1)."""
         rate = self.rate_per_minute if rate_per_minute is None else rate_per_minute
         kwargs = {"sleep": self._sleep} if self._sleep is not None else {}
 
         async def before_hop(hop_url: str) -> None:
             target = await self.fetcher.check_url(hop_url)
-            if target.host in refuse_hosts:
+            if target.host in refuse_hosts or (allow_hop is not None and not allow_hop(hop_url)):
                 raise FetchRefusedError("refused-host", f"{target.host} is not contacted")
 
             async def robots_slot() -> None:

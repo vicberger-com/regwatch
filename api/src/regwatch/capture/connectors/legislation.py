@@ -21,7 +21,7 @@ import hashlib
 import re
 from collections.abc import AsyncIterator
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit
 
 import anyio
 
@@ -41,13 +41,15 @@ from regwatch.capture.connectors.rss import (
     identifier,
     plain_text,
 )
+from regwatch.capture.safe_fetch.policy import FetchRefusedError
 
 PROVIDER = "legislation_gov_uk"
 HOST = "www.legislation.gov.uk"
 BASE = f"https://{HOST}"
 SORTS = frozenset({"published", "title", "year", "type"})
 FORMATS = frozenset({"data.xml", "html"})
-DISALLOWED = ("/data.pdf", "/data.docx")  # robots.txt E-UK-1, enforced here as well
+DISALLOWED_NAMES = frozenset({"data.pdf", "data.docx"})  # robots.txt E-UK-1, enforced here too
+NEXT_KEYS = frozenset({"title", "sort", "page"})
 # robots.txt asks for Crawl-delay 5 (12 a minute); held here even if robots.txt cannot be read
 # or is overridden, which the fair use policy does not allow (E-UK-3; review finding 1).
 MAX_RATE_PER_MINUTE = 12
@@ -105,6 +107,24 @@ def user_agent_has_contact(ctx: ConnectorContext) -> bool:
     return bool(_CONTACT.search(agent))  # a whole "(+name@host.tld)", not any "@" (finding 5)
 
 
+def _disallowed(path: str) -> bool:
+    """``data.pdf`` or ``data.docx`` anywhere in the decoded path, with any parameters or a
+    trailing slash: ``/data.pdf/``, ``/data.pdf;x`` and ``/data%2Epdf`` too (re-verification R1)."""
+    segments = unquote(path).lower().split("/")
+    return any(segment.split(";", 1)[0] in DISALLOWED_NAMES for segment in segments)
+
+
+def _strict(url: str) -> bool:
+    """A hop or final URL: https on www.legislation.gov.uk, default port, not disallowed. No
+    rewriting here: a redirect to http is refused, not upgraded (re-verification R1)."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return (parts.scheme == "https" and parts.hostname == HOST and parts.port is None
+            and not _disallowed(parts.path))  # fmt: skip
+
+
 def _own(url: Any) -> str | None:
     """A link on www.legislation.gov.uk on the default port, checked as any link, always as
     https: the feed's own links may be http (its entry ids are), so an http link on the host is
@@ -116,7 +136,7 @@ def _own(url: Any) -> str | None:
     parts = urlsplit(link)
     if parts.hostname != HOST or parts.port is not None or parts.scheme not in ("http", "https"):
         return None
-    if parts.path.lower().endswith(DISALLOWED):  # checked after cleaning, fragment gone
+    if _disallowed(parts.path):  # checked after cleaning, fragment gone
         return None
     return "https://" + link.split("://", 1)[1] if parts.scheme == "http" else link
 
@@ -129,13 +149,24 @@ def _data_xml(entry: Any) -> str | None:
     return None
 
 
-def _next(feed: Any, path: str, asked: set[str], term: str) -> str | None:
+def _same_search(url: str, term: str, sort: str) -> bool:
+    """The next page keeps the search: one title, the same sort, and no other keys than page
+    (re-verification R2)."""
+    pairs = parse_qsl(urlsplit(url).query, keep_blank_values=True)
+    keys = [k for k, _ in pairs]
+    if set(keys) - NEXT_KEYS or keys.count("title") != 1 or keys.count("sort") > 1:
+        return False
+    values = dict(pairs)
+    return values.get("title") == term and values.get("sort", sort) == sort
+
+
+def _next(feed: Any, path: str, asked: set[str], term: str, sort: str) -> str | None:
     for link in feed.feed.get("links") or []:
         if isinstance(link, dict) and link.get("rel") == "next":
             following = _own(link.get("href"))
             if following is None or urlsplit(following).path != path:
                 raise ConnectorError("malformed-answer", "the next page is not the same feed")
-            if dict(parse_qsl(urlsplit(following).query)).get("title") != term:
+            if not _same_search(following, term, sort):
                 raise ConnectorError("malformed-answer", "the next page is another search")
             if following in asked:
                 raise ConnectorError("malformed-answer", "the next page repeats an earlier one")
@@ -186,7 +217,7 @@ async def discover(params: dict[str, Any], job: JobSettings,
                                 hints={"provider": PROVIDER, "fetch": target})  # fmt: skip
             if feed.entries and not usable:  # every entry dropped: never a silent success (2)
                 raise ConnectorError("malformed-answer", "no entry on the page had a usable link")
-            url = _next(feed, path, asked, term.strip())
+            url = _next(feed, path, asked, term.strip(), params.get("sort", "published"))
         if url is not None:
             ctx.notes.add("truncated")  # this term had pages past max_pages_per_term
 
@@ -195,11 +226,16 @@ async def _get(ctx: ConnectorContext, url: str, job: JobSettings) -> Any:
     """A request to the provider: at most 12 a minute and robots.txt always obeyed, whatever the
     job says (finding 1), and the answer must come from www.legislation.gov.uk after any
     redirect, so another host's body is never stored as legislation (finding 3)."""
-    got = await ctx.fetcher.fetch(url, rate_per_minute=min(job.rate_per_minute,
-                                                           MAX_RATE_PER_MINUTE),
-                                  robots_override=None)  # fmt: skip
-    if _own(got.url) is None and urlsplit(got.url).hostname != HOST:
-        raise ConnectorError("off-host", "the answer came from another host")
+    try:
+        got = await ctx.fetcher.fetch(url, rate_per_minute=min(job.rate_per_minute,
+                                                               MAX_RATE_PER_MINUTE),
+                                      robots_override=None, allow_hop=_strict)  # fmt: skip
+    except FetchRefusedError as exc:
+        if exc.reason == "refused-host":  # a hop off the host, to http, or to a disallowed path
+            raise ConnectorError("off-host", "a redirect left the allowed addresses") from None
+        raise
+    if not _strict(got.url):  # pragma: no cover - every hop, the last included, was checked
+        raise ConnectorError("off-host", "the answer came from another address")
     return got
 
 
