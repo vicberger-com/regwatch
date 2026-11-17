@@ -524,3 +524,63 @@ def test_tls_failures_are_found_along_the_cause_chain() -> None:
     looped = httpx.ConnectError("refused")
     looped.__context__ = looped  # a cycle ends the walk
     assert not _is_tls(looped)
+
+
+async def test_allowlisted_request_headers_are_sent_on_every_hop() -> None:
+    """Accept and Accept-Language for Cellar (EUR-Lex); conditional headers for BL-91 (a)."""
+    seen: list[httpx.Headers] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers)
+        if request.url.path == "/first":
+            return httpx.Response(302, headers={"Location": "/second"})
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    got = await fetcher(handler).fetch("https://example.org/first", headers={
+        "Accept": "application/xhtml+xml", "Accept-Language": "eng"})  # fmt: skip
+    assert got.status == 200 and len(seen) == 2
+    assert all(h["accept"] == "application/xhtml+xml" and h["accept-language"] == "eng"
+               and h["host"] == "example.org" and h["user-agent"] == UA for h in seen)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{"Host": "evil.example"}, {"Cookie": "a=b"}, {"Authorization": "Bearer x"},
+     {"User-Agent": "spoof"}, {"Accept": "a\r\nInjected: 1"}, {"Accept": "x" * 300},
+     {"Accept": "é"}],
+)  # fmt: skip
+async def test_other_headers_and_bad_values_are_refused(headers: dict[str, str]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("nothing may be sent")
+
+    with pytest.raises(ValueError):
+        await fetcher(handler).fetch("https://example.org/", headers=headers)
+
+
+async def test_http_redirects_are_upgraded_only_on_the_named_hosts() -> None:
+    """R-06 E-EU-9 and E-EU-13: Cellar's redirect points at plain http; https works."""
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(f"{request.url.scheme}://{request.headers['host']}{request.url.path}")
+        if request.url.path == "/resource":
+            return httpx.Response(303, headers={"Location": "http://example.org/doc"})
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    await fetcher(handler).fetch("https://example.org/resource",
+                                 upgrade_hosts=frozenset({"example.org"}))  # fmt: skip
+    assert paths[-1] == "https://example.org/doc"
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [("http://example.org/a?b=1", "https://example.org/a?b=1"),
+     ("http://example.org:80/a", "https://example.org/a"),
+     ("http://example.org:8080/a", "http://example.org:8080/a"),  # another port: unchanged
+     ("http://other.example/a", "http://other.example/a"),  # another host: unchanged
+     ("https://example.org/a", "https://example.org/a")],
+)  # fmt: skip
+def test_upgraded(url: str, expected: str) -> None:
+    from regwatch.capture.safe_fetch.fetch import upgraded
+
+    assert upgraded(url, frozenset({"example.org"})) == expected

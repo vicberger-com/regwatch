@@ -340,3 +340,24 @@ async def test_allow_hop_must_accept_every_hop(monkeypatch: pytest.MonkeyPatch) 
         await capture.fetch("https://example.org/start",
                             allow_hop=lambda url: not url.endswith("/forbidden"))  # fmt: skip
     assert exc.value.reason == "refused-host" and "/forbidden" not in seen
+
+
+async def test_headers_and_upgrades_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = Clock()
+    monkeypatch.setattr(rate_module.time, "monotonic", clock.monotonic)
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=httpx.ByteStream(b""))
+        seen.append(request.headers.get("accept-language", ""))
+        if request.url.path == "/r":
+            return httpx.Response(303, headers={"Location": "http://example.org/d"})
+        seen.append(request.url.scheme)
+        return httpx.Response(200, stream=httpx.ByteStream(b"ok"))
+
+    fetcher = SafeFetcher(UA, resolver=dns, transport=httpx.MockTransport(handler))
+    capture = CaptureFetcher(fetcher, MemoryRateLimiter(), sleep=clock.sleep)
+    await capture.fetch("https://example.org/r", headers={"Accept-Language": "eng"},
+                        upgrade_hosts=frozenset({"example.org"}))  # fmt: skip
+    assert seen == ["eng", "eng", "https"]

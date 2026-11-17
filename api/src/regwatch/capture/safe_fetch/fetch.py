@@ -25,9 +25,9 @@ import asyncio
 import copy
 import ssl
 import zlib
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
@@ -41,6 +41,38 @@ from regwatch.capture.safe_fetch.policy import (
 )
 
 REDIRECTS = {301, 302, 303, 307, 308}
+# Request headers a caller may add (EUR-Lex: Cellar answers by Accept and Accept-Language;
+# conditional requests, BL-91 (a)). Host, cookies and authorization can never be set.
+REQUEST_HEADERS = frozenset({"accept", "accept-language", "if-none-match", "if-modified-since"})
+MAX_HEADER_VALUE = 256
+
+
+def checked_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
+    """Allowlisted request headers with short printable values, or ``ValueError``."""
+    out: dict[str, str] = {}
+    for name, value in (headers or {}).items():
+        if name.lower() not in REQUEST_HEADERS:
+            raise ValueError(f"SafeFetcher does not send a {name!r} header")
+        if (not isinstance(value, str) or len(value) > MAX_HEADER_VALUE
+                or any(not " " <= c <= "~" for c in value)):  # fmt: skip
+            raise ValueError(f"the {name} header value is not short printable text")
+        out[name] = value
+    return out
+
+
+def upgraded(url: str, hosts: frozenset[str]) -> str:
+    """``url`` as https when it is http on one of ``hosts`` (default port only): Cellar's content
+    redirects point at plain http, which R-06 says to rewrite before fetching (E-EU-9, E-EU-13)."""
+    parts = urlsplit(url)
+    if (
+        parts.scheme != "http"
+        or (parts.hostname or "") not in hosts
+        or parts.port not in (None, 80)
+    ):
+        return url
+    return urlunsplit(("https", parts.hostname, parts.path, parts.query, parts.fragment))
+
+
 HopCheck = Callable[[str], Awaitable[None]]
 
 
@@ -183,7 +215,7 @@ class SafeFetcher:
         self._transport = transport
 
     def _request(self, client: httpx.AsyncClient, target: Target, ip: IPAddress,
-                 method: str) -> httpx.Request:  # fmt: skip
+                 method: str, extra: Mapping[str, str] | None = None) -> httpx.Request:  # fmt: skip
         literal = f"[{ip}]" if ip.version == 6 else str(ip)
         url = f"{target.scheme}://{literal}:{target.port}{target.path}"
         host = target.origin.split("://", 1)[1]
@@ -192,6 +224,7 @@ class SafeFetcher:
             method,
             url,
             headers={
+                **(extra or {}),  # allowlisted names only (checked_headers); never these below
                 "Host": host,
                 "User-Agent": self.user_agent,
                 "Accept-Encoding": "gzip, deflate",
@@ -257,8 +290,9 @@ class SafeFetcher:
             out += decoder.finish()
         return bytes(out)
 
-    async def _hop(self, client: httpx.AsyncClient, url: str,
-                   method: str) -> tuple[FetchResult | None, str | None, int]:  # fmt: skip
+    async def _hop(self, client: httpx.AsyncClient, url: str, method: str,
+                   extra: Mapping[str, str] | None = None,
+                   ) -> tuple[FetchResult | None, str | None, int]:  # fmt: skip
         """One request: the result, or the redirect location and status."""
         target = parse_target(url)
         try:
@@ -266,7 +300,7 @@ class SafeFetcher:
             async with asyncio.timeout(self.limits.total_s):  # DNS included (finding 3)
                 ip = (await self._resolve(target))[0]
                 phase = "the server at"
-                request = self._request(client, target, ip, method)
+                request = self._request(client, target, ip, method, extra)
                 response = await client.send(request, stream=True)
                 try:
                     location = response.headers.get("location")
@@ -302,13 +336,17 @@ class SafeFetcher:
             raise FetchRefusedError("connect", f"{target.host}: {exc}") from None
 
     async def fetch(
-        self, url: str, method: str = "GET", before_hop: HopCheck | None = None
-    ) -> FetchResult:
+        self, url: str, method: str = "GET", before_hop: HopCheck | None = None,
+        headers: Mapping[str, str] | None = None, upgrade_hosts: frozenset[str] = frozenset(),
+    ) -> FetchResult:  # fmt: skip
         """Fetch ``url`` with every hop checked; ``FetchRefusedError`` says why it was refused.
 
         ``before_hop`` is awaited with each hop's URL before it is requested, including
         redirect targets, so robots.txt and per-host rate limits apply to every host reached.
+        ``headers`` adds allowlisted request headers to every hop; a redirect to http on one of
+        ``upgrade_hosts`` is rewritten to https before it is checked and requested.
         """
+        extra = checked_headers(headers)
         limits = self.limits
         timeout = httpx.Timeout(connect=limits.connect_s, read=limits.read_s,
                                 write=limits.read_s, pool=limits.connect_s)  # fmt: skip
@@ -328,7 +366,7 @@ class SafeFetcher:
             while True:
                 if before_hop is not None:
                     await before_hop(current)
-                result, location, status = await self._hop(client, current, method)
+                result, location, status = await self._hop(client, current, method, extra)
                 if result is not None:
                     return FetchResult(result.url, result.status, result.headers, result.body,
                                        redirects)  # fmt: skip
@@ -336,7 +374,7 @@ class SafeFetcher:
                     raise FetchRefusedError(
                         "redirects", f"more than {limits.max_redirects} redirects"
                     )
-                current = urljoin(current, location or "")
+                current = upgraded(urljoin(current, location or ""), upgrade_hosts)
                 redirects.append(current)
                 if status == 303:
                     method = "GET"

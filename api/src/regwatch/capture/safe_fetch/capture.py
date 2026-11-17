@@ -14,7 +14,7 @@ This is what connectors use. For each hop, the first request and every redirect 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from regwatch.capture.safe_fetch.fetch import FetchResult, SafeFetcher
 from regwatch.capture.safe_fetch.policy import FetchRefusedError
@@ -47,6 +47,7 @@ class CaptureFetcher:
         self, url: str, *, rate_per_minute: int | None = None, robots_override: str | None = None,
         refuse_hosts: frozenset[str] = frozenset(),
         allow_hop: Callable[[str], bool] | None = None,
+        headers: Mapping[str, str] | None = None, upgrade_hosts: frozenset[str] = frozenset(),
     ) -> FetchResult:  # fmt: skip
         """``refuse_hosts`` are hosts no hop may reach, and ``allow_hop``, when given, must accept
         every hop's URL, redirects included. Both are checked before robots.txt, the rate slot and
@@ -71,4 +72,5 @@ class CaptureFetcher:
             spacing = interval(rate, delay)
             await wait_turn(self.limiter, target.host, spacing, self.max_wait_s, **kwargs)
 
-        return await self.fetcher.fetch(url, before_hop=before_hop)
+        return await self.fetcher.fetch(url, before_hop=before_hop, headers=headers,
+                                        upgrade_hosts=upgrade_hosts)  # fmt: skip
