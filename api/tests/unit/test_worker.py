@@ -90,3 +90,20 @@ def test_broker_calls_are_bounded_and_remote_control_is_off(valid_env: dict[str,
     assert conf.worker_enable_remote_control is False
     assert conf.task_reject_on_worker_lost is False  # no endless redelivery
     assert conf.beat_scheduler == "celery.beat:Scheduler"  # in memory, no pickle file
+
+
+def test_tasks_have_time_and_memory_limits(valid_env: dict[str, str]) -> None:
+    """RSS review finding 3: the last stop for a task that runs away."""
+    import resource
+
+    conf = worker.make_app(Settings()).conf
+    assert conf.task_soft_time_limit < conf.task_time_limit == worker.TIME_LIMIT_S
+    assert conf.worker_max_memory_per_child == worker.MAX_MEMORY_PER_CHILD_KB
+    before = resource.getrlimit(resource.RLIMIT_AS)
+    try:
+        worker.limit_memory()
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+        assert soft == min(worker.ADDRESS_SPACE_BYTES, hard if hard >= 0 else soft)
+        assert soft <= worker.ADDRESS_SPACE_BYTES
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, before)

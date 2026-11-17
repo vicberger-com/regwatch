@@ -115,36 +115,103 @@ async def test_limits_apply() -> None:
     assert len(await discover(Site(feed), max_entries=5)) == 5
 
 
-async def test_external_entities_are_not_loaded() -> None:
-    """XXE: an entity naming a local file or a URL is never read or fetched."""
-    feed = b"""<?xml version="1.0"?>
-<!DOCTYPE rss [<!ENTITY file SYSTEM "file:///etc/passwd">
-               <!ENTITY web SYSTEM "http://10.0.0.5/secret">]>
-<rss version="2.0"><channel><item><title>&file;&web;x</title>
-<link>https://example.org/x</link></item></channel></rss>"""
-    site = Site(feed)
-    got = await discover(site)
-    assert all("root:" not in (c.title or "") for c in got)
-    assert site.paths == ["/robots.txt", "/feeds/news.xml"]  # nothing else was requested
+@pytest.fixture
+def no_files_or_sockets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Parsing may not open a file or a socket: either would bypass SafeFetcher (finding 9)."""
+    import builtins
+    import socket
+
+    real_open = builtins.open
+
+    def guarded_open(file: Any, *args: Any, **kwargs: Any) -> Any:
+        if isinstance(file, (str, bytes)) and not str(file).endswith((".py", ".pyc")):
+            raise AssertionError(f"the parser opened {file!r}")
+        return real_open(file, *args, **kwargs)
+
+    def no_connect(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the parser opened a socket")
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(socket.socket, "connect", no_connect)
 
 
-async def test_entity_expansion_bombs_end_quickly() -> None:
+@pytest.mark.parametrize(
+    "doctype",
+    [b'<!DOCTYPE rss [<!ENTITY file SYSTEM "file:///etc/passwd">]>',
+     b'<!DOCTYPE rss [<!ENTITY web SYSTEM "http://10.0.0.5/secret">]>',
+     b'<!DOCTYPE rss [<!ENTITY a "x">]>', b'<!DOCTYPE rss [<!ELEMENT rss ANY>]>',
+     b'<!DOCTYPE rss [<!ENTITY % p SYSTEM "http://10.0.0.5/x.dtd"> %p;]>'],
+)  # fmt: skip
+async def test_dtds_and_entities_are_refused(doctype: bytes, no_files_or_sockets: None) -> None:
+    """XXE and entity bombs (findings 2 and 9): any DTD of the feed's own is refused before
+    feedparser sees it, so nothing is read, fetched or expanded."""
+    body = b"<title>x</title><link>https://example.org/x</link>"
+    feed = (b'<?xml version="1.0"?>' + doctype + b'<rss version="2.0"><channel><item>'
+            + body + b"</item></channel></rss>")  # fmt: skip
+    with pytest.raises(ConnectorError) as exc:
+        await discover(Site(feed))
+    assert exc.value.reason == "unsafe-feed"
+
+
+async def test_entity_bombs_are_refused_at_once() -> None:
     lol = b'<!ENTITY a0 "lol">' + b"".join(
         b'<!ENTITY a%d "%s">' % (n, (b"&a%d;" % (n - 1)) * 10) for n in range(1, 10))  # fmt: skip
     feed = (b'<?xml version="1.0"?><!DOCTYPE rss [' + lol + b']><rss version="2.0"><channel>'
-            b"<item><title>&a9;</title><link>https://example.org/x</link></item>"
-            b"</channel></rss>")  # fmt: skip
+            + b"<item><title>&a9;</title><link>https://example.org/x</link></item>" * 2000
+            + b"</channel></rss>")  # fmt: skip
     started = time.monotonic()
-    try:
-        got = await discover(Site(feed))
-    except ConnectorError:
-        got = []
-    assert time.monotonic() - started < 5
-    assert all(len(c.title or "") <= 1000 for c in got)
+    with pytest.raises(ConnectorError):
+        await discover(Site(feed))
+    assert time.monotonic() - started < 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"<rss>" + b"<a>" * 100 + b"</a>" * 100 + b"</rss>",  # deeper than MAX_DEPTH
+     b"<rss><channel>" + b"<i/>" * 200_001 + b"</channel></rss>"],  # more than MAX_ELEMENTS
+)  # fmt: skip
+async def test_deep_or_huge_trees_are_refused(body: bytes) -> None:
+    with pytest.raises(ConnectorError) as exc:
+        await discover(Site(body))
+    assert exc.value.reason == "unsafe-feed"
+
+
+async def test_tag_soup_is_refused_quickly() -> None:
+    """Finding 3: 9 MB of tag soup took 77 s in feedparser's loose parser; refused at once."""
+    soup = b"<rss><channel>" + b"<item><title>x<b>y</i></item>" * 300_000
+    started = time.monotonic()
+    with pytest.raises(ConnectorError) as exc:
+        await discover(Site(soup))
+    assert exc.value.reason == "malformed-feed"
+    assert time.monotonic() - started < 3
+
+
+def test_feedparser_reads_a_stream_never_a_path(no_files_or_sockets: None) -> None:
+    """Finding 1: feedparser opens strings and bytes as paths, so it only gets a stream."""
+    with pytest.raises(TypeError):
+        _parse("file:///etc/passwd", FEED_URL, "")  # type: ignore[arg-type]
+    for path in (b"/dev/zero", b"/etc/passwd"):  # bodies that name local files
+        with pytest.raises(ConnectorError):
+            _parse(path, FEED_URL, "")
+    assert _parse(RSS, FEED_URL, "application/rss+xml").entries
+
+
+def test_parser_errors_never_escape_with_feed_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Finding 6: a content type that makes feedparser raise becomes a clean error."""
+    from regwatch.capture.connectors import rss
+
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise UnicodeError("secret page text")
+
+    monkeypatch.setattr(rss.feedparser, "parse", boom)
+    with pytest.raises(ConnectorError) as exc:
+        _parse(RSS, FEED_URL, "application/rss+xml; charset=punycode")
+    assert "secret" not in exc.value.detail
 
 
 @pytest.mark.parametrize("body", [b"not a feed at all", b"<html><body>hi</body></html>",
-                                  b"<?xml version='1.0'?><rss><channel><item>"])  # fmt: skip
+                                  b"<?xml version='1.0'?><rss><channel><item>",
+                                  b"<rss version='2.0'>&nbsp;</rss>"])  # fmt: skip
 async def test_malformed_feeds_are_refused(body: bytes) -> None:
     with pytest.raises(ConnectorError) as exc:
         await discover(Site(body))
@@ -176,18 +243,17 @@ async def test_fetch_stores_the_page_or_the_entry_text() -> None:
     assert RssConnector().health(job()).status == "unknown"
 
 
-def test_feedparser_never_gets_a_string() -> None:
-    """A string would be fetched as a URL or opened as a file by feedparser."""
-    with pytest.raises(TypeError):
-        _parse("file:///etc/passwd", FEED_URL, "")  # type: ignore[arg-type]
-
-
 @pytest.mark.parametrize(
     ("link", "expected"),
     [("https://example.org/a", "https://example.org/a"), ("/b", "https://example.org/b"),
      ("javascript:alert(1)", None), ("  ", None), ("https://[bad", None),
      ("https://example.org/" + "a" * 3000, None), ("https://example.org/a b", None),
-     ("mailto:x@example.org", None), ("ftp://example.org/x", None)],
+     ("mailto:x@example.org", None), ("ftp://example.org/x", None),
+     ("https://user:pw@example.org/x", None), ("https://evil.example\\@example.org/", None),
+     ("http://10.0.0.5/admin", None), ("http://[::1]/", None), ("http://2130706433/", None),
+     ("http://0x7f.1/", None), ("http://017700000001/", None), ("http://1.2.3.4.example/", "http://1.2.3.4.example/"),
+     ("https://BÜCHER.example/a#frag", "https://xn--bcher-kva.example/a"),
+     ("https://example.org:443/a?q=1", "https://example.org/a?q=1")],
 )  # fmt: skip
 def test_entry_links(link: str, expected: str | None) -> None:
     assert entry_link({"link": link}, FEED_URL) == expected
@@ -195,8 +261,11 @@ def test_entry_links(link: str, expected: str | None) -> None:
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [(None, None), ("", None), ("<b>a</b>\u202e\x00 b", "a b"), ("&amp;lt;", "&lt;"),
-     ("<script>x</script>", None), (5, None)],
+    [(None, None), ("", None), ("<b>a</b>\u202e\x00 b", "a b"), ("&amp;lt;", "<"),
+     ("<script>x</script>", None), (5, None),
+     ("&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;", None),
+     ("&amp;lt;img src=x onerror=alert(1)&amp;gt;ok", "ok"),
+     ("&amp;amp;amp;amp;amp;amp;lt;b&amp;amp;amp;amp;amp;amp;gt;", None)],
 )  # fmt: skip
 def test_plain_text(value: Any, expected: str | None) -> None:
     assert plain_text(value, 100) == expected
@@ -217,3 +286,65 @@ async def test_a_job_for_another_kind_is_refused() -> None:
                         rules=ExtractionRules())  # fmt: skip
     with pytest.raises(TypeError):
         [c async for c in RssConnector().discover(other, ctx)]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("en-GB", "en-GB"), ('x" onmouseover="alert(1)', None), ("e" * 40, None), (None, None)],
+)  # fmt: skip
+def test_language_tags(value: Any, expected: str | None) -> None:
+    from regwatch.capture.connectors.rss import language_tag
+
+    assert language_tag(value) == expected
+
+
+def test_long_ids_keep_their_identity() -> None:
+    from regwatch.capture.connectors.rss import identifier
+
+    a, b = "x" * 600 + "a", "x" * 600 + "b"
+    assert identifier(a) != identifier(b) and identifier(a).startswith("sha256:")  # type: ignore[union-attr]
+    assert (
+        identifier("  id\x00 1 ") == "id 1" and identifier(None) is None and identifier("") is None
+    )
+
+
+async def test_a_negative_limit_gives_no_entries() -> None:
+    assert await discover(Site(RSS), max_entries=-1) == []
+
+
+async def test_error_pages_are_not_stored() -> None:
+    class Broken(Site):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/a":
+                return httpx.Response(404, stream=httpx.ByteStream(b"gone"))
+            return super().__call__(request)
+
+    ctx, stored = context(Broken(RSS))
+    with pytest.raises(ConnectorError) as exc:
+        await RssConnector().fetch(Candidate(url="https://example.org/a"), job(), ctx)
+    assert exc.value.reason == "http-status" and stored == {}
+
+
+async def test_an_external_dtd_is_named_but_never_fetched(no_files_or_sockets: None) -> None:
+    feed = (b'<?xml version="1.0"?><!DOCTYPE rss SYSTEM "http://10.0.0.5/rss.dtd">'
+            b'<rss version="2.0"><channel><item><title>x</title>'
+            b"<link>https://example.org/x</link></item></channel></rss>")  # fmt: skip
+    site = Site(feed)
+    assert [c.url for c in await discover(site)] == ["https://example.org/x"]
+    assert site.paths == ["/robots.txt", "/feeds/news.xml"]
+
+
+async def test_a_broken_feed_without_usable_links_is_refused() -> None:
+    """feedparser flags a feed served as text/plain (bozo); with no usable link it is refused."""
+    feed = b'<rss version="2.0"><channel><item><title>x</title></item></channel></rss>'
+
+    class Plain(Site):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/feeds/news.xml":
+                return httpx.Response(200, headers={"content-type": "text/plain"},
+                                      stream=httpx.ByteStream(self.feed))  # fmt: skip
+            return super().__call__(request)
+
+    with pytest.raises(ConnectorError) as exc:
+        await discover(Plain(feed))
+    assert exc.value.reason == "malformed-feed"

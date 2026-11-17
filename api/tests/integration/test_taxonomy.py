@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -491,6 +492,24 @@ async def test_concurrent_merge_and_delete_keep_every_tag(
     assert tags == "3"
 
 
+def _lock_waiters(postgres: Postgres, database: str) -> int:
+    sql = ("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+           "AND wait_event_type = 'Lock';")  # fmt: skip
+    return int(postgres.psql(database, sql).strip())
+
+
+def _lock_holders(postgres: Postgres, database: str) -> int:
+    sql = ("SELECT count(*) FROM pg_locks l JOIN pg_class c ON c.oid = l.relation "
+           "WHERE c.relname = 'facet' AND l.mode = 'RowShareLock' AND l.granted;")  # fmt: skip
+    return int(postgres.psql(database, sql).strip())
+
+
+async def _until(condition: Any) -> None:
+    async with asyncio.timeout(10):  # the database state should appear within moments
+        while not await asyncio.to_thread(condition):  # noqa: ASYNC110 - polls another process
+            await asyncio.sleep(0.05)
+
+
 async def _holding_the_facet_lock(url: str, facet_key: str, then_sql: str,
                                   release: asyncio.Event) -> None:  # fmt: skip
     """Hold the facet's row lock in a second connection until ``release``, then run
@@ -524,16 +543,17 @@ async def test_a_target_removed_while_the_merge_waits_is_a_clean_answer(
     release = asyncio.Event()
     holder = asyncio.create_task(_holding_the_facet_lock(
         db_url, "topic", change.format(dst=uuid.UUID(dst["id"])), release))  # fmt: skip
-    await asyncio.sleep(0.3)  # the holder has the lock
+    database = db_url.rsplit("/", 1)[1]
+    await _until(lambda: _lock_holders(postgres, database) >= 1)  # the holder has the lock
     merge = asyncio.create_task(admin.post(_api(f"/taxonomy/terms/{src['id']}/merge"),
                                            json={"into_term_id": dst["id"]}))  # fmt: skip
-    await asyncio.sleep(0.5)  # the merge has read both terms and waits for the facet lock
+    # The merge has read both terms and now waits on a lock: seen in PostgreSQL, not guessed.
+    await _until(lambda: _lock_waiters(postgres, database) >= 1)
     assert not merge.done()
     release.set()
     await holder
     got = await merge
     assert got.status_code == status, got.text
-    database = db_url.rsplit("/", 1)[1]
     still = postgres.psql(
         database, f"SELECT count(*) FROM item_term WHERE term_id = '{uuid.UUID(src['id'])}';"
     )

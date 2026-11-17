@@ -19,9 +19,17 @@ from __future__ import annotations
 from functools import cache
 
 from celery import Celery
+from celery.signals import worker_process_init
 
 from regwatch.core.settings import Settings, get_settings
 
+# The last stop for a task that runs away (RSS review finding 3): a capture run of 200 pages at
+# 30 a minute takes under 7 minutes, so an hour is generous. A task past its soft limit gets
+# an exception it can clean up after; past the hard limit its process is replaced.
+SOFT_TIME_LIMIT_S = 3300
+TIME_LIMIT_S = 3600
+MAX_MEMORY_PER_CHILD_KB = 1024 * 1024  # recycle a worker process after a task that grew past 1 GiB
+ADDRESS_SPACE_BYTES = 4 * 1024**3  # and never let one grow past 4 GiB during a task
 BROKER_TIMEOUT_S = 5.0
 PUBLISH_RETRY = {"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1}
 BEAT_SCHEDULER = "celery.beat:Scheduler"  # in memory; the default one unpickles a shelve file
@@ -55,6 +63,9 @@ def make_app(settings: Settings | None = None) -> Celery:
             "socket_connect_timeout": BROKER_TIMEOUT_S,
         },
         worker_enable_remote_control=False,
+        task_soft_time_limit=SOFT_TIME_LIMIT_S,
+        task_time_limit=TIME_LIMIT_S,
+        worker_max_memory_per_child=MAX_MEMORY_PER_CHILD_KB,
         beat_scheduler=BEAT_SCHEDULER,
         worker_prefetch_multiplier=1,
         broker_connection_retry_on_startup=True,
@@ -67,6 +78,19 @@ def make_app(settings: Settings | None = None) -> Celery:
     )
     app.conf.include = ["regwatch.capture.tasks"]
     return app
+
+
+def limit_memory(**_: object) -> None:
+    """``worker_process_init``: cap the worker process's address space, so a task that runs
+    away fails with MemoryError instead of taking the host down."""
+    import resource
+
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    cap = ADDRESS_SPACE_BYTES if hard == resource.RLIM_INFINITY else min(hard, ADDRESS_SPACE_BYTES)
+    resource.setrlimit(resource.RLIMIT_AS, (cap, hard))
+
+
+worker_process_init.connect(limit_memory, weak=False)
 
 
 @cache
