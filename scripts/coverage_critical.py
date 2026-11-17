@@ -18,6 +18,8 @@ CRITICAL = {
     # The M2 module is taxonomy/validator.py; the first pattern never matched it (PR 25 review).
     "attribute validator": ["*/regwatch/*attribute*valid*.py", "*/regwatch/taxonomy/validator.py"],
     "output destination validation": ["*/regwatch/outputs/*destination*.py"],
+    # Not named in 7.1, held to the same floor: it parses captured, hostile HTML (ADR-0009).
+    "HTML extraction": ["*/regwatch/capture/extract/*.py"],
 }
 
 
