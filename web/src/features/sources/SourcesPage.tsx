@@ -14,6 +14,7 @@ import {
   type CaptureRun,
   type Source,
 } from "./api";
+import { SourceEditor } from "./SourceEditor";
 
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
 
@@ -24,12 +25,13 @@ function when(value: string | null | undefined): string {
 /** `/admin/sources` (screens.md): table with health, last and next run; editor; run history. */
 export function SourcesPage({
   canManage,
+  canOverride,
 }: {
-  // canOverride is used by the source editor (next slice)
   canManage: boolean;
   canOverride: boolean;
 }) {
   const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState<Source | "new" | null>(null);
   const [open, setOpen] = useState<Source | null>(null);
   const list = useQuery(sourcesQuery(page));
 
@@ -47,6 +49,29 @@ export function SourcesPage({
       <h1 id="src-heading" className="text-2xl font-semibold">
         Sources
       </h1>
+      {canManage && (
+        <div>
+          <button
+            type="button"
+            className={button}
+            onClick={() => {
+              setEditing("new");
+            }}
+          >
+            Create source
+          </button>
+        </div>
+      )}
+      {editing && (
+        <SourceEditor
+          key={editing === "new" ? "new" : editing.id}
+          current={editing === "new" ? null : editing}
+          canOverride={canOverride}
+          onDone={() => {
+            setEditing(null);
+          }}
+        />
+      )}
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">Sources, {list.data.total} in all</caption>
         <thead>
@@ -82,6 +107,18 @@ export function SourcesPage({
                 >
                   Runs
                 </button>
+                {canManage && (
+                  <button
+                    type="button"
+                    className={button}
+                    aria-label={`Edit ${s.name}`}
+                    onClick={() => {
+                      setEditing(s);
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
               </td>
             </tr>
           ))}

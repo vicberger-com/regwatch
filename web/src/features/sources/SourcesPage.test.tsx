@@ -2,11 +2,15 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ADMIN, fakeApi, type Routes } from "@/test/api";
+import { ADMIN, fakeApi, problem, type Routes } from "@/test/api";
 import { renderAt } from "@/test/render";
 
 const READER = { ...ADMIN, permissions: ["sources.read"] };
 const EDITOR = { ...ADMIN, permissions: ["sources.read", "sources.manage"] };
+const OWNER = {
+  ...ADMIN,
+  permissions: ["sources.read", "sources.manage", "sources.override_robots"],
+};
 const JOB = {
   id: "j1",
   source_id: "s1",
@@ -93,6 +97,109 @@ describe("sources screen", () => {
     expect(within(runs).getByText("unsafe-feed")).toBeInTheDocument();
     expect(within(runs).getByText(/refused for safety/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
+  });
+
+  it("creates an RSS source from the generated form, without robots fields for editors", async () => {
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      ...BASE,
+      "POST /sources": [201, SOURCE],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Create source" }),
+    );
+    const form = screen.getByRole("form", { name: "Create source" });
+    await userEvent.type(within(form).getByLabelText("Name"), "New feed");
+    await userEvent.type(
+      within(form).getByLabelText(/Feed url/),
+      "https://feeds.example/new",
+    );
+    expect(within(form).queryByText(/Override robots.txt/)).toBeNull();
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.key === "POST /sources")).toBe(true);
+    });
+    const body = calls.find((c) => c.key === "POST /sources")?.body as Record<
+      string,
+      unknown
+    >;
+    expect(body).toMatchObject({
+      name: "New feed",
+      kind: "rss",
+      config: {
+        feed_url: "https://feeds.example/new",
+        fetch_full_page: true,
+        etag_conditional: true,
+        max_entries: 100,
+      },
+      job: { interval_seconds: 3600, cron: null, rate_limit_per_minute: 30 },
+    });
+    expect(body).not.toHaveProperty("robots_policy");
+  });
+
+  it("lets override holders override robots.txt with a reason", async () => {
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, OWNER],
+      ...BASE,
+      "PATCH /sources/s1": [200, SOURCE],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit EU feed" }),
+    );
+    const form = screen.getByRole("form", { name: "Edit source EU feed" });
+    expect(within(form).getByLabelText("Kind")).toBeDisabled();
+    await userEvent.click(within(form).getByLabelText(/Override robots.txt/));
+    await userEvent.type(
+      within(form).getByLabelText(/Reason/),
+      "Owner agreed in writing",
+    );
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.key === "PATCH /sources/s1")).toBe(true);
+    });
+    const body = calls.find((c) => c.key === "PATCH /sources/s1")
+      ?.body as Record<string, unknown>;
+    expect(body).toMatchObject({
+      robots_policy: "override",
+      override_reason: "Owner agreed in writing",
+      job: { interval_seconds: 1800 },
+    });
+    expect(body).not.toHaveProperty("kind");
+  });
+
+  it("shows the field the API refused", async () => {
+    fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      ...BASE,
+      "POST /sources": [
+        422,
+        {
+          ...problem(422),
+          errors: [
+            {
+              field: "config.feed_url",
+              message: "the host must resolve to public addresses only",
+            },
+          ],
+        },
+      ],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Create source" }),
+    );
+    const form = screen.getByRole("form", { name: "Create source" });
+    await userEvent.type(within(form).getByLabelText("Name"), "Bad");
+    await userEvent.type(
+      within(form).getByLabelText(/Feed url/),
+      "http://10.0.0.5/x",
+    );
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "config.feed_url: the host must resolve to public addresses only",
+    );
   });
 
   it("queues a run and disables a source", async () => {
