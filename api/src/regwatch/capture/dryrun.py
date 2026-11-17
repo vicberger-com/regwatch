@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 import structlog
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +33,9 @@ from regwatch.identity.services import Principal
 MAX_CANDIDATES = 5
 WAIT_S = 30.0
 POLL_S = 0.5
+# Outlives the publish (up to 15 s) plus the API's wait, so a worker that starts late in the
+# wait still answers (re-verification R3); the API deletes it as soon as it stops waiting.
+PENDING_TTL_S = 50
 RESULT_TTL_S = 120
 DISCOVERY_DEADLINE_S = 25.0  # inside WAIT_S, so the worker answers before the API gives up
 RATE_PER_MINUTE = 6
@@ -136,7 +140,9 @@ async def request(db: AsyncSession, source_id: uuid.UUID, principal: Principal, 
         raise ProblemError(404, "not-found", "No such source.")
     try:
         return await _ask(db, source_id, principal, ip, publish, valkey, sleep)
-    except (ConnectionError, TimeoutError, OSError) as exc:  # Valkey unreachable or slow
+    # redis-py raises its own errors, which are not the built-in ConnectionError or
+    # TimeoutError (CP-13/14 re-verification R2), so both families are caught.
+    except (RedisError, ConnectionError, TimeoutError, OSError) as exc:
         raise ProblemError(503, "queue-unavailable",
                            "The test could not be run now; try again.") from exc  # fmt: skip
 
@@ -156,7 +162,7 @@ async def _ask(db: AsyncSession, source_id: uuid.UUID, principal: Principal, ip:
           after={"request_id": str(request_id)})  # fmt: skip
     await db.commit()
     pending = PENDING_KEY.format(request_id=request_id)
-    await valkey.set(pending, "1", ex=int(WAIT_S))
+    await valkey.set(pending, "1", ex=PENDING_TTL_S)
     try:
         await publish(source_id, request_id)
     except Exception:  # noqa: BLE001 - any broker failure means the same here

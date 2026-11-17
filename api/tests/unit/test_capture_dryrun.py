@@ -233,9 +233,15 @@ async def test_the_worker_answers_in_valkey(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 async def test_valkey_failures_answer_503() -> None:
-    class Down(FakeValkey):
+    import redis.exceptions
+
+    class Down(FakeValkey):  # redis-py's own error types (re-verification R2)
+        def __init__(self, error: Exception) -> None:
+            super().__init__()
+            self.error = error
+
         async def set(self, name: str, value: str, ex: int, nx: bool = False) -> None:
-            raise ConnectionError("valkey down")
+            raise self.error
 
     class DB:
         async def scalar(self, query: Any) -> Any:
@@ -244,6 +250,12 @@ async def test_valkey_failures_answer_503() -> None:
     async def publish(source_id: uuid.UUID, request_id: uuid.UUID) -> None:
         return None
 
-    with pytest.raises(ProblemError) as exc:
-        await dryrun.request(DB(), uuid.UUID(int=1), Who(), None, publish, Down())  # type: ignore[arg-type]
-    assert exc.value.status == 503
+    for error in (
+        redis.exceptions.ConnectionError("refused"),
+        redis.exceptions.TimeoutError("slow"),
+        redis.exceptions.ResponseError("NOPERM"),
+        ConnectionError("os level"),
+    ):
+        with pytest.raises(ProblemError) as exc:
+            await dryrun.request(DB(), uuid.UUID(int=1), Who(), None, publish, Down(error))  # type: ignore[arg-type]
+        assert exc.value.status == 503, type(error)

@@ -523,16 +523,25 @@ async def test_the_cursor_is_saved_and_cleared_by_new_settings(
     assert (await admin.patch(_api(f"/sources/{made['id']}"), json=new_feed)).status_code == 200
     assert (await _job(db, str(jid))).cursor is None  # a new query starts from its own window
 
-    # A run that started from the old cursor, finishing after the reset, writes nothing back.
-    async def stale(*args: Any) -> Any:
-        return execution.Outcome("success", cursor={"publication_date": "2026-11-12"},
-                                 cursor_from={"publication_date": "2026-11-10"})  # fmt: skip
+    # Re-verification R1: settings saved DURING a run (from a cursor, and from none). The run
+    # must not write the old query's position back over the reset.
+    for start in ({"publication_date": "2026-11-10"}, None):
+        await db.execute(update(CaptureJob).where(CaptureJob.id == jid).values(cursor=start))
+        db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+        await db.commit()
+        feed = f"https://feeds.example/{'a' if start else 'b'}"
 
-    monkeypatch.setattr(runs, "run_connector", stale)
-    db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
-    await db.commit()
-    assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
-    assert (await _job(db, str(jid))).cursor is None
+        async def edited_during(*args: Any, _start: Any = start, _feed: str = feed) -> Any:
+            patch = {"config": {"feed_url": _feed}}
+            assert (
+                await admin.patch(_api(f"/sources/{made['id']}"), json=patch)
+            ).status_code == 200
+            return execution.Outcome("success", cursor={"publication_date": "2026-11-12"},
+                                     cursor_from=_start)  # fmt: skip
+
+        monkeypatch.setattr(runs, "run_connector", edited_during)
+        assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
+        assert (await _job(db, str(jid))).cursor is None, start
 
 
 async def test_the_test_button_runs_on_a_worker(

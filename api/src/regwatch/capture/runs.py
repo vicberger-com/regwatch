@@ -30,11 +30,13 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import bindparam, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.execution import ContextFactory, Outcome, run_connector
@@ -96,6 +98,25 @@ async def _source_of(db: AsyncSession, job_id: uuid.UUID) -> Source | None:
     return source
 
 
+async def _advance_cursor(db: AsyncSession, run: CaptureRun, cursor: dict[str, Any],
+                          started_from: dict[str, Any] | None) -> None:  # fmt: skip
+    """Move the job's cursor (CP-14), unless its source's settings changed during the run: the
+    database's own values are read, never the rows loaded when the run began, and the cursor is
+    replaced only if it is still the one the run started from (CP-13/14 re-verification R1)."""
+    changed = await db.scalar(
+        select(Source.updated_at).join(CaptureJob, CaptureJob.source_id == Source.id)
+        .where(CaptureJob.id == run.job_id))  # fmt: skip
+    if changed is not None and changed > run.created_at:
+        return  # saved since the run began: the old query's position must not come back
+    # SQL NULL for "no cursor": a JSONB-typed None would be sent as JSON null and never match.
+    unchanged = (CaptureJob.cursor.is_(None) if started_from is None else
+                 CaptureJob.cursor == bindparam("started", started_from, type_=JSONB))  # fmt: skip
+    await db.execute(
+        update(CaptureJob)
+        .where(CaptureJob.id == run.job_id, unchanged)
+        .values(cursor=cursor))  # fmt: skip
+
+
 async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: str | None,
                  error_message: str | None, now: datetime,
                  outcome: Outcome | None = None) -> None:  # fmt: skip
@@ -118,10 +139,8 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
         job.last_run_at = now
         # Only over the cursor the run started from: settings saved meanwhile reset it, and
         # the old query's position must not come back (CP-13/14 review, low finding).
-        started_from = outcome.cursor_from if outcome is not None else None
-        if (cursor is not None and status in ("success", "partial")
-                and job.cursor == started_from):  # fmt: skip
-            job.cursor = cursor  # CP-14: where this job got to
+        if cursor is not None and status in ("success", "partial"):
+            await _advance_cursor(db, run, cursor, outcome.cursor_from if outcome else None)
     if source is None or status == "skipped" or error_class in NOT_THE_SOURCE:
         return
     if status == "failed":

@@ -164,7 +164,14 @@ async def _dry_run(db: AsyncSession, source_id: uuid.UUID, request_id: uuid.UUID
 
     valkey = _valkey()
     try:
-        factory = await context_factory(db, valkey)
+        try:
+            factory = await context_factory(db, valkey)
+        except Exception as exc:  # noqa: BLE001 - let run_on_worker answer it (re-verification R5)
+            failure = exc
+
+            async def factory(job: JobSettings) -> ConnectorContext:
+                raise failure
+
         await dryrun.run_on_worker(db, source_id, request_id, factory, valkey)
     finally:
         await valkey.aclose()
