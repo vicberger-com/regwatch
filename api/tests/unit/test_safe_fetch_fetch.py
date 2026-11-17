@@ -144,6 +144,14 @@ async def test_timeouts_and_connection_errors_are_refusals() -> None:
         await fetcher(broken).fetch("https://example.org/")
     assert exc.value.reason == "protocol"
 
+    def dropped(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.",
+                                        request=request)  # fmt: skip
+
+    with pytest.raises(FetchRefusedError) as exc:  # dropped before answering: transient (R5)
+        await fetcher(dropped).fetch("https://example.org/")
+    assert exc.value.reason == "connect"
+
     async def stalls(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(5)
         return httpx.Response(200)  # pragma: no cover - the deadline ends it first
@@ -496,3 +504,23 @@ async def test_a_certificate_for_another_name_is_refused(tmp_path: Path) -> None
     finally:
         srv.close()
         await srv.wait_closed()
+
+
+def test_tls_failures_are_found_along_the_cause_chain() -> None:
+    """Re-verification R5: httpx raises from httpcore's error, not from the ssl.SSLError."""
+    from regwatch.capture.safe_fetch.fetch import _is_tls
+
+    def chained(inner: BaseException, text: str = "connect failed") -> BaseException:
+        middle = OSError("httpcore says no")
+        middle.__cause__ = inner
+        outer = httpx.ConnectError(text)
+        outer.__context__ = middle
+        return outer
+
+    assert _is_tls(chained(ssl.SSLError(1, "unexpected eof")))
+    assert _is_tls(chained(OSError("x"), "[SSL: WRONG_VERSION_NUMBER] wrong version number"))
+    assert _is_tls(chained(OSError("sslv3 alert handshake failure")))
+    assert not _is_tls(chained(ConnectionRefusedError(111, "Connection refused")))
+    looped = httpx.ConnectError("refused")
+    looped.__context__ = looped  # a cycle ends the walk
+    assert not _is_tls(looped)

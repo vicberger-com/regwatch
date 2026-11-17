@@ -150,6 +150,24 @@ class FetchResult:
         return self.headers.get("content-type", "").split(";", 1)[0].strip().lower()
 
 
+_TLS_WORDS = ("CERTIFICATE", "SSL", "TLS", "HANDSHAKE", "WRONG_VERSION")
+
+
+def _is_tls(exc: BaseException) -> bool:
+    """httpx raises from httpcore's error, not from the ``ssl.SSLError``, so look along the whole
+    chain of causes, and at the message (run review R5)."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLError):
+            return True
+        if any(word in str(current).upper() for word in _TLS_WORDS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 class SafeFetcher:
     def __init__(
         self,
@@ -272,10 +290,14 @@ class SafeFetcher:
             ) from None
         except httpx.ConnectError as exc:
             # A certificate or TLS failure is not worth retrying like a refused connection.
-            tls = isinstance(exc.__context__, ssl.SSLError) or "CERTIFICATE" in str(exc).upper()
-            raise FetchRefusedError("tls" if tls else "connect", f"{target.host}: {exc}") from None
+            reason = "tls" if _is_tls(exc) else "connect"
+            raise FetchRefusedError(reason, f"{target.host}: {exc}") from None
         except (httpx.RemoteProtocolError, httpx.LocalProtocolError) as exc:
-            raise FetchRefusedError("protocol", f"{target.host}: {exc}") from None
+            # A connection dropped before an answer is usually transient; malformed HTTP is not.
+            # Only "no answer at all" counts: a body cut short of its declared length is not.
+            dropped = "without sending a response" in str(exc).lower()
+            reason = "connect" if dropped else "protocol"
+            raise FetchRefusedError(reason, f"{target.host}: {exc}") from None
         except httpx.HTTPError as exc:
             raise FetchRefusedError("connect", f"{target.host}: {exc}") from None
 

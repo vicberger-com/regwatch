@@ -124,6 +124,7 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
         (rss(job={"cron": "* * * * " + "1," * 200 + "1"}), "job.cron"),
         (rss(job={"interval_seconds": 2**31}), "job.interval_seconds"),
         (rss(job={"max_items_per_run": 2000, "rate_limit_per_minute": 1}), "job.max_items_per_run"),
+        (rss(job={"max_items_per_run": 44, "rate_limit_per_minute": 1}), "job.max_items_per_run"),
         (rss(job={"cron": "\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "*/\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "\u0661 * * * *"}), "job.cron"),

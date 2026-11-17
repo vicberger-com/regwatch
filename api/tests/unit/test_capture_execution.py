@@ -278,3 +278,24 @@ def test_the_body_cap_setting_is_bounded(value: Any, expected: int) -> None:
     from regwatch.capture.tasks import body_cap
 
     assert body_cap(value) == expected
+
+
+async def test_only_the_run_deadline_counts_as_the_deadline(h: Harness) -> None:
+    """Re-verification R1: a store's own timeout (ETIMEDOUT is a TimeoutError) is not the
+    deadline; it propagates, and the run ends as internal-error in runs.execute."""
+
+    class TimesOut(Fake):
+        async def fetch(self, candidate: Candidate, job: JobSettings,
+                        ctx: ConnectorContext) -> RawDocument:  # fmt: skip
+            raise TimeoutError("ETIMEDOUT")
+
+    with pytest.raises(TimeoutError):
+        await h.run(TimesOut(["https://e.org/a"]))
+
+
+async def test_every_page_disallowed_is_disallowed(h: Harness) -> None:
+    """Re-verification R2."""
+    no = FetchRefusedError("robots", "disallowed")
+    h.fetcher.fail = {"https://e.org/a": [no], "https://e.org/b": [no]}
+    got = await h.run(Fake(["https://e.org/a", "https://e.org/b"]))
+    assert (got.status, got.robots_decision) == ("skipped", "disallowed")

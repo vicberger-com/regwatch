@@ -165,7 +165,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     refused: dict[str, int] = {}  # robots.txt or a busy host refused these pages: not failures
     cut_short = False
     try:
-        async with asyncio.timeout(RUN_DEADLINE_S):  # finding 1: end inside the worker's limit
+        async with asyncio.timeout(RUN_DEADLINE_S) as deadline:  # end inside the worker's limit
             async for candidate in connector.discover(settings, ctx):
                 if len(entries) + failures + sum(refused.values()) >= settings.max_items:
                     break
@@ -182,6 +182,8 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                 except ConnectorError:
                     failures += 1
     except TimeoutError:
+        if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
+            raise
         cut_short = True
     except FetchRefusedError as exc:  # the feed or page the job starts from
         if exc.reason == "robots":
@@ -197,9 +199,16 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries), failures, refused, cut_short)
     return Outcome(status, error_class, message,
-                   robots_decision="partly-disallowed" if refused.get("robots") else allowed,
+                   robots_decision=_decision(allowed, refused, len(entries) + failures),
                    items_new=len(entries), bytes_fetched=counter.fetched,
                    documents=[doc for _, doc in entries])  # fmt: skip
+
+
+def _decision(allowed: str, refused: dict[str, int], others: int) -> str:
+    """Every page disallowed is ``disallowed``; some is ``partly-disallowed`` (R2)."""
+    if not refused.get("robots"):
+        return allowed
+    return "partly-disallowed" if others or refused.get("rate-limited") else "disallowed"
 
 
 def _verdict(fetched: int, failures: int, refused: dict[str, int],

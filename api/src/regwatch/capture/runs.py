@@ -33,6 +33,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfoNotFoundError
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +46,7 @@ from regwatch.core.services import audit
 from regwatch.identity.services import Principal
 
 Enqueue = Callable[[uuid.UUID, float], Awaitable[None]]
+_log = structlog.get_logger("regwatch.capture.runs")
 
 UNHEALTHY_AFTER = 5
 TICK_BATCH = 200  # jobs claimed per tick; the rest wait a minute
@@ -285,6 +287,7 @@ async def execute(db: AsyncSession, job_id: uuid.UUID,
         try:
             outcome = await run_connector(run.id, job, source, make_context)
         except Exception as exc:  # noqa: BLE001 - the run must end with an outcome (finding 2)
+            _log.exception("capture_run_internal_error", run_id=str(run.id), job_id=str(job_id))
             # A store, broker or memory failure is ours, not the source's; the message names
             # only the kind of failure, never its text.
             outcome = Outcome("failed", "internal-error", f"the run failed: {type(exc).__name__}")

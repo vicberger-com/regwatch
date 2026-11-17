@@ -237,7 +237,7 @@ def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
         raise invalid("job.max_items_per_run", "at least 1")
     items = values.get("max_items_per_run", job.max_items_per_run if job else 200) or 200
     rate = values.get("rate_limit_per_minute", job.rate_limit_per_minute if job else 30) or 30
-    if items * 60 / rate > RUN_DEADLINE_S:
+    if (items + 2) * 60 / rate > RUN_DEADLINE_S:  # the pages, plus robots.txt and the feed (R4)
         # A run that cannot finish in time stops partway every time (run review finding 1).
         raise invalid("job.max_items_per_run", f"at {rate} a minute, {items} items take longer"
                       f" than a run may last ({RUN_DEADLINE_S // 60} minutes); lower the items"
