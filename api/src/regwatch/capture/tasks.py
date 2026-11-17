@@ -143,6 +143,37 @@ async def _tick(db: AsyncSession) -> int:
         await valkey.aclose()
 
 
+def _send_dry_run(source_id: uuid.UUID, request_id: uuid.UUID) -> None:
+    from regwatch.core.worker import celery_app
+
+    celery_app().send_task("capture.dry_run", args=[str(source_id), str(request_id)],
+                           queue="capture")  # fmt: skip
+
+
+async def publish_dry_run(source_id: uuid.UUID, request_id: uuid.UUID) -> None:
+    """Publish ``capture.dry_run`` off the event loop, within ``PUBLISH_DEADLINE_S`` (CP-13)."""
+    with anyio.fail_after(PUBLISH_DEADLINE_S):
+        await anyio.to_thread.run_sync(_send_dry_run, source_id, request_id,
+                                       limiter=_PUBLISHERS, abandon_on_cancel=True)  # fmt: skip
+
+
+async def _dry_run(db: AsyncSession, source_id: uuid.UUID, request_id: uuid.UUID) -> None:
+    from regwatch.capture import dryrun
+
+    valkey = _valkey()
+    try:
+        factory = await context_factory(db, valkey)
+        await dryrun.run_on_worker(db, source_id, request_id, factory, valkey)
+    finally:
+        await valkey.aclose()
+
+
+@shared_task(name="capture.dry_run")
+def dry_run(source_id: str, request_id: str) -> None:
+    asyncio.run(_with_session(
+        lambda db: _dry_run(db, uuid.UUID(source_id), uuid.UUID(request_id))))  # fmt: skip
+
+
 @shared_task(name="capture.schedule_tick")
 def schedule_tick() -> int:
     return asyncio.run(_with_session(_tick))

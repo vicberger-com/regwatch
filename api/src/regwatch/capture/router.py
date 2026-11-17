@@ -1,17 +1,15 @@
 """Source, capture job and run routes; mounted under /api/v1.
 
-Sources, capture jobs, run-now, source health and run history are implemented (M3); the
-dry run answers 501 until the first connector lands.
+Every route is implemented (M3); the dry run runs on a worker (CP-13).
 """
 
 from __future__ import annotations
 
-from typing import NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
-from regwatch.capture import runs, services, tasks
+from regwatch.capture import dryrun, runs, services, tasks
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
@@ -23,7 +21,7 @@ from regwatch.capture.schemas import (
     SourceWrite,
 )
 from regwatch.core.db import DbSession
-from regwatch.core.routing import Paging, not_implemented, spec
+from regwatch.core.routing import Paging, spec
 from regwatch.core.schemas import Page
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
@@ -79,10 +77,19 @@ async def delete_source(
 
 
 @router.post(
-    "/sources/{id}/test", **spec(SourceTestResult, desc="Dry run; first candidates", perm=MANAGE)
+    "/sources/{id}/test",
+    **spec(SourceTestResult, desc="Dry run; first candidates", perm=MANAGE, stub=False),
 )
-async def test_source(id: UUID) -> NoReturn:
-    not_implemented()
+async def test_source(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> SourceTestResult:
+    # Run on a worker (architecture 3.1: the API never fetches); CP-13.
+    valkey = tasks._valkey()
+    try:
+        return await dryrun.request(db, id, principal, client_ip(request),
+                                    tasks.publish_dry_run, valkey)  # fmt: skip
+    finally:
+        await valkey.aclose()
 
 
 @router.get("/sources/{id}/health", **spec(SourceHealth, desc="Health", perm=READ, stub=False))

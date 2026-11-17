@@ -522,3 +522,41 @@ async def test_the_cursor_is_saved_and_cleared_by_new_settings(
     new_feed = {"config": {"feed_url": "https://feeds.example/other"}}
     assert (await admin.patch(_api(f"/sources/{made['id']}"), json=new_feed)).status_code == 200
     assert (await _job(db, str(jid))).cursor is None  # a new query starts from its own window
+
+
+async def test_the_test_button_runs_on_a_worker(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CP-13: POST /sources/{id}/test publishes capture.dry_run, and answers with what the worker
+    wrote; the API itself fetches nothing, and the request is audited."""
+    from regwatch.capture import dryrun
+    from tests.unit.test_capture_dryrun import FakeValkey
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    valkey = FakeValkey()
+    valkey.aclose = lambda: _none()  # type: ignore[method-assign]
+    stored: dict[str, bytes] = {}
+
+    make = _factory(_site("User-agent: *\nAllow: /\n"), stored)
+
+    async def worker(source_id: uuid.UUID, request_id: uuid.UUID) -> None:  # runs inline here
+        await dryrun.run_on_worker(db, source_id, request_id, make, valkey)
+
+    monkeypatch.setattr(tasks, "_valkey", lambda: valkey)
+    monkeypatch.setattr(tasks, "publish_dry_run", worker)
+    got = await admin.post(_api(f"/sources/{made['id']}/test"))
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert [c["url"] for c in body["candidates"]] == ["https://feeds.example/1",
+                                                      "https://feeds.example/2"]  # fmt: skip
+    assert body["robots_decision"] == "allowed" and stored == {}  # nothing stored
+    rows = (await admin.get(_api("/admin/audit"), params={"action": "source.test"})).json()
+    assert rows["total"] == 1
+    missing = "00000000-0000-7000-8000-000000000000"
+    assert (await admin.post(_api(f"/sources/{missing}/test"))).status_code == 404
+    viewer = await _as_new_user(admin, "dt@example.org", ["viewer"])
+    assert (await viewer.post(_api(f"/sources/{made['id']}/test"))).status_code == 403
+
+
+async def _none() -> None:
+    return None

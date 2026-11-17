@@ -89,6 +89,7 @@ celery_tasks:                   # dotted names are the contract; queues in paren
   capture.run_job:              { queue: capture, module: M3, args: [job_id] }
   capture.fetch_candidate:      { queue: capture, module: M3, args: [run_id, candidate] }
   capture.health_check:         { queue: capture, module: M3, period: hourly (beat) }
+  capture.dry_run:              { queue: capture, module: M3, args: [source_id, request_id] }  # CP-13
   process.extract:              { queue: process, module: M4, args: [raw_document_ref] }
   process.dedupe:               { queue: process, module: M4 }
   process.version:              { queue: process, module: M4 }

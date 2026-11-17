@@ -11,8 +11,10 @@ import {
   sourcesQuery,
   useDisableSource,
   useRunNow,
+  useTestSource,
   type CaptureRun,
   type Source,
+  type SourceTestResult,
 } from "./api";
 import { SourceEditor } from "./SourceEditor";
 
@@ -181,11 +183,13 @@ function SourceRuns({
   const runs = useQuery({ ...runsQuery(jobId), enabled: Boolean(jobId) });
   const runNow = useRunNow();
   const disable = useDisableSource();
+  const test = useTestSource();
 
   function act(action: "run" | "disable") {
     // One error at a time, from the action just taken (review finding 11).
     runNow.reset();
     disable.reset();
+    test.reset();
     if (action === "run") runNow.mutate(jobId);
     else if (
       window.confirm(
@@ -232,6 +236,20 @@ function SourceRuns({
             Run now
           </button>
         )}
+        {canManage && (
+          <button
+            type="button"
+            className={button}
+            disabled={test.isPending}
+            onClick={() => {
+              runNow.reset();
+              disable.reset();
+              test.mutate(source.id);
+            }}
+          >
+            {test.isPending ? "Testing…" : "Test"}
+          </button>
+        )}
         {canManage && source.enabled && (
           <button
             type="button"
@@ -250,6 +268,12 @@ function SourceRuns({
       </div>
       {/* Present before it is filled, so screen readers announce the change. */}
       <p role="status">{runNow.isSuccess ? "Run queued." : ""}</p>
+      {test.isError && (
+        <p role="alert" className="text-critical">
+          {problemText(test.error, "The test failed.")}
+        </p>
+      )}
+      {test.data && <TestResult result={test.data} />}
       {(runNow.isError || disable.isError) && (
         <p role="alert" className="text-critical">
           {problemText(runNow.error ?? disable.error, "The action failed.")}
@@ -274,6 +298,31 @@ function reason(
   return Object.hasOwn(REASONS, errorClass)
     ? (REASONS[errorClass] ?? "")
     : (message ?? "");
+}
+
+function TestResult({ result }: { result: SourceTestResult }) {
+  return (
+    <section aria-labelledby="test-heading" className="flex flex-col gap-1">
+      <h3 id="test-heading" className="font-semibold">
+        Test: first candidates (robots.txt {result.robots_decision ?? "unknown"}
+        )
+      </h3>
+      {(result.warnings ?? []).map((w) => (
+        <p key={w} className="text-warning">
+          {w}
+        </p>
+      ))}
+      <ul className="list-disc pl-5">
+        {(result.candidates ?? []).map((c) => (
+          // Text only: a candidate's title and address come from the source and are untrusted.
+          <li key={c.url}>
+            {c.title ?? "(no title)"}{" "}
+            <code className="text-text-muted">{c.url}</code>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function RunTable({ runs, total }: { runs: CaptureRun[]; total: number }) {

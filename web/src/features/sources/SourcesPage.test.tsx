@@ -363,4 +363,49 @@ describe("sources screen", () => {
       screen.queryByRole("heading", { name: /health and runs/ }),
     ).toBeNull();
   });
+
+  it("tests a source and shows its first candidates as text", async () => {
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      ...BASE,
+      "POST /sources/s1/test": [
+        200,
+        {
+          candidates: [
+            {
+              url: "https://feeds.example/1",
+              title: '<img src=x onerror="alert(1)">One',
+            },
+          ],
+          robots_decision: "allowed",
+          warnings: ["the fetch was refused (timeout)"],
+        },
+      ],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Runs and health of EU feed" }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Test" }));
+    const result = await screen.findByRole("heading", {
+      name: /Test: first candidates/,
+    });
+    expect(result).toHaveTextContent("robots.txt allowed");
+    expect(screen.getByText(/onerror/)).toBeInTheDocument(); // shown as text
+    expect(document.querySelector("img")).toBeNull(); // never as markup
+    expect(
+      screen.getByText("the fetch was refused (timeout)"),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.key === "POST /sources/s1/test")).toBe(true);
+  });
+
+  it("offers Test to managers only", async () => {
+    fakeApi({ "GET /auth/me": [200, READER], ...BASE });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Runs and health of EU feed" }),
+    );
+    await screen.findByRole("button", { name: "Close" });
+    expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
+  });
 });

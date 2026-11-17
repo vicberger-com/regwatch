@@ -14,6 +14,12 @@ export type SourceWrite = Schemas["SourceWrite"];
 export type CaptureJobWrite = Schemas["CaptureJobWrite"];
 export type CaptureRun = Schemas["CaptureRun"];
 export type SourceHealth = Schemas["SourceHealth"];
+/** The answer of `POST /sources/{id}/test`, which the contract defines inline (CP-13). */
+export interface SourceTestResult {
+  candidates?: Schemas["Candidate"][];
+  robots_decision?: string;
+  warnings?: string[];
+}
 
 export const PAGE_SIZE = 50;
 
@@ -128,6 +134,20 @@ export function useDisableSource() {
       params: { path: { id } },
     });
     if (!result.response.ok) throw failure(result);
+  });
+}
+
+/** The dry run (CP-13): the source's first candidates, fetched by a worker, nothing stored. */
+export function useTestSource() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await api.POST("/sources/{id}/test", {
+        params: { path: { id } },
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
   });
 }
 
