@@ -88,9 +88,13 @@ async def test_run_now_refuses_disabled_sources_and_a_down_broker(
     health = (await admin.get(_api(f"/sources/{made['id']}/health"))).json()
     assert health["health"] == "unknown" and health["consecutive_failures"] == 0  # ours, not its
     queue.down = False
+    retry = await admin.post(_api(f"/capture-jobs/{jid}/run-now"))  # "try again" works (16)
+    assert retry.status_code == 202 and retry.json()["id"] != str(run.id)
+    assert len(queue.sent) == 1
+    await runs.execute(db, uuid.UUID(jid))  # that run ends (no connector yet)
     spaced = await admin.post(_api(f"/capture-jobs/{jid}/run-now"))  # within 60 s: no new run
-    assert spaced.status_code == 202 and spaced.json()["id"] == str(run.id)
-    assert queue.sent == []
+    assert spaced.status_code == 202 and spaced.json()["id"] == retry.json()["id"]
+    assert len(queue.sent) == 1
     paused = await admin.patch(_api(f"/capture-jobs/{jid}"), json={"enabled": False})
     assert paused.status_code == 200
     assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 409
@@ -260,3 +264,18 @@ async def test_concurrent_ticks_start_a_job_once(
         for engine in engines:
             await engine.dispose()
     assert [str(j) for j, _ in queue.sent] == [made["job"]["id"]]
+
+
+async def test_every_tick_sweeps_abandoned_runs(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+) -> None:
+    """Scheduler re-verification 14: a Beat restarted more often than hourly never fires the
+    hourly check, so the tick ends abandoned runs too and the job can run again."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    long_ago = datetime.now(UTC) - timedelta(hours=3)
+    db.add(CaptureRun(job_id=jid, created_at=long_ago, started_at=long_ago))
+    await db.commit()
+    later = datetime.now(UTC) + timedelta(seconds=5)
+    await runs.tick(db, queue, now=later)  # sweeps the stuck run
+    assert await runs.tick(db, queue, now=later + timedelta(hours=2)) == 1  # runs again

@@ -178,6 +178,10 @@ async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None) 
     for run in [*started, *lost]:
         jitter = random.uniform(0, JITTER_S)  # noqa: S311 - spacing, not secrecy
         handed += await _handed_over(db, run, enqueue, jitter)
+    # Beat's in-memory scheduler first fires the hourly health check an hour after it starts,
+    # so a Beat restarted more often would never end a stuck run; every tick sweeps too
+    # (scheduler re-verification 14). The sweep is cheap: it skips locked rows and finds few.
+    await sweep(db, now)
     return handed
 
 
@@ -197,7 +201,9 @@ async def queue_now(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     recent = await db.scalar(
         select(CaptureRun).where(CaptureRun.job_id == job.id)
         .where((CaptureRun.finished_at.is_(None))
-               | (CaptureRun.created_at > datetime.now(UTC) - RUN_NOW_SPACING))
+               | ((CaptureRun.created_at > datetime.now(UTC) - RUN_NOW_SPACING)
+                  # a run the broker refused never ran: "try again" must queue a new one (16)
+                  & (CaptureRun.error_class.is_distinct_from("queue-unavailable"))))
         .order_by(CaptureRun.created_at.desc()).limit(1))  # fmt: skip
     if recent is not None:
         out = RunOut.model_validate(recent, from_attributes=True)
