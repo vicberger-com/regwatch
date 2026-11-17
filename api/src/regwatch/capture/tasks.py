@@ -144,10 +144,12 @@ async def _tick(db: AsyncSession) -> int:
 
 
 def _send_dry_run(source_id: uuid.UUID, request_id: uuid.UUID) -> None:
+    from regwatch.capture.dryrun import WAIT_S
     from regwatch.core.worker import celery_app
 
+    # Expires when the API stops waiting: a queued test nobody waits for is dropped (finding 3).
     celery_app().send_task("capture.dry_run", args=[str(source_id), str(request_id)],
-                           queue="capture")  # fmt: skip
+                           queue="capture", expires=WAIT_S)  # fmt: skip
 
 
 async def publish_dry_run(source_id: uuid.UUID, request_id: uuid.UUID) -> None:

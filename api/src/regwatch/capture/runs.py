@@ -116,7 +116,11 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
     job = await db.scalar(select(CaptureJob).where(CaptureJob.id == run.job_id))
     if job is not None:
         job.last_run_at = now
-        if cursor is not None and status in ("success", "partial"):
+        # Only over the cursor the run started from: settings saved meanwhile reset it, and
+        # the old query's position must not come back (CP-13/14 review, low finding).
+        started_from = outcome.cursor_from if outcome is not None else None
+        if (cursor is not None and status in ("success", "partial")
+                and job.cursor == started_from):  # fmt: skip
             job.cursor = cursor  # CP-14: where this job got to
     if source is None or status == "skipped" or error_class in NOT_THE_SOURCE:
         return

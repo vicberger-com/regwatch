@@ -31,8 +31,13 @@ class FakeValkey:
         value = self.data.get(name)
         return value.encode() if isinstance(value, str) else value
 
-    async def set(self, name: str, value: str, ex: int) -> None:
+    async def set(self, name: str, value: str, ex: int, nx: bool = False) -> None:
+        if nx and name in self.data:
+            return
         self.data[name], self.ttl[name] = value, ex
+
+    async def exists(self, *names: str) -> int:
+        return sum(1 for n in names if n in self.data)
 
     async def delete(self, name: str) -> None:
         self.data.pop(name, None)
@@ -206,11 +211,39 @@ async def test_the_worker_answers_in_valkey(monkeypatch: pytest.MonkeyPatch) -> 
         def expunge(self, row: Any) -> None:
             return None
 
+    abandoned = uuid.uuid4()  # the API stopped waiting: the worker fetches nothing (finding 3)
+    await dryrun.run_on_worker(DB([]), source.id, abandoned, make, valkey)  # type: ignore[arg-type]
+    assert dryrun.KEY.format(request_id=abandoned) not in valkey.data
+
     rid = uuid.uuid4()
+    await valkey.set(dryrun.PENDING_KEY.format(request_id=rid), "1", ex=30)
     await dryrun.run_on_worker(DB([source, job]), source.id, rid, make, valkey)  # type: ignore[arg-type]
     answer = json.loads(valkey.data[dryrun.KEY.format(request_id=rid)])
     assert answer["candidates"][0]["url"] == "https://e.org/a"
     assert valkey.ttl[dryrun.KEY.format(request_id=rid)] == dryrun.RESULT_TTL_S
     gone = uuid.uuid4()
+    await valkey.set(dryrun.PENDING_KEY.format(request_id=gone), "1", ex=30)
     await dryrun.run_on_worker(DB([None, None]), source.id, gone, make, valkey)  # type: ignore[arg-type]
     assert "no longer exists" in valkey.data[dryrun.KEY.format(request_id=gone)]
+
+    broken = uuid.uuid4()  # any error on the worker still answers (review, low finding)
+    await valkey.set(dryrun.PENDING_KEY.format(request_id=broken), "1", ex=30)
+    await dryrun.run_on_worker(DB([]), source.id, broken, make, valkey)  # type: ignore[arg-type]
+    assert "failed on the worker (IndexError)" in valkey.data[dryrun.KEY.format(request_id=broken)]
+
+
+async def test_valkey_failures_answer_503() -> None:
+    class Down(FakeValkey):
+        async def set(self, name: str, value: str, ex: int, nx: bool = False) -> None:
+            raise ConnectionError("valkey down")
+
+    class DB:
+        async def scalar(self, query: Any) -> Any:
+            return uuid.UUID(int=1)
+
+    async def publish(source_id: uuid.UUID, request_id: uuid.UUID) -> None:
+        return None
+
+    with pytest.raises(ProblemError) as exc:
+        await dryrun.request(DB(), uuid.UUID(int=1), Who(), None, publish, Down())  # type: ignore[arg-type]
+    assert exc.value.status == 503

@@ -305,9 +305,24 @@ async def test_a_run_that_took_less_than_was_offered_is_partial(h: Harness) -> N
     """API feed review 2: the item limit, or a connector that stopped early, is partial."""
     got = await h.run(Fake([f"https://e.org/{n}" for n in range(5)]), max_items=3)
     assert (got.status, got.error_class, got.items_new) == ("partial", "truncated", 3)
-    # CP-14: the cursor moved to the newest date stored, so the next run continues from it.
-    assert "continues from the newest one stored" in (got.error_message or "")
-    assert got.cursor == {"publication_date": NOW.date().isoformat()}
+    # CP-13/14 review finding 1: this connector does not resume from a cursor (as RSS), so it
+    # gets none and the message asks the admin to act.
+    assert got.cursor is None and "raise the items per run" in (got.error_message or "")
+
+    class Resumes(Fake):
+        async def discover(self, job: JobSettings,
+                           ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
+            ctx.notes.add("resumes")
+            async for c in super().discover(job, ctx):
+                yield c
+
+    moving = await h.run(Resumes([f"https://e.org/{n}" for n in range(5)]), max_items=3)
+    assert "continues from the newest one stored" in (moving.error_message or "")
+    assert moving.cursor == {"publication_date": NOW.date().isoformat()}
+    h.fetcher.fail = {"https://e.org/1": [FetchRefusedError("too-large", "big")]}
+    failed = await h.run(Resumes([f"https://e.org/{n}" for n in range(5)]), max_items=3)
+    assert failed.cursor is None  # not past a document that failed (review, low finding)
+    h.fetcher.fail = {}
 
     class Undated(Fake):
         async def discover(self, job: JobSettings,
@@ -376,6 +391,9 @@ def test_the_cursor_only_moves_forward() -> None:
     """CP-14."""
     later = Candidate(url="https://e.org/a", published_at=datetime(2026, 11, 10, tzinfo=UTC))
     doc = RawDocument(url="u", fetched_at=NOW, status=200, body_ref="k", mime="text/html")
-    assert execution._cursor(None, [(later, doc)]) == {"publication_date": "2026-11-10"}
-    assert execution._cursor({"publication_date": "2026-11-12"}, [(later, doc)]) is None
-    assert execution._cursor(None, []) is None
+    assert execution._cursor(None, [(later, doc)], NOW) == {"publication_date": "2026-11-10"}
+    assert execution._cursor({"publication_date": "2026-11-12"}, [(later, doc)], NOW) is None
+    assert execution._cursor(None, [], NOW) is None
+    future = Candidate(url="https://e.org/f", published_at=datetime(2099, 1, 1, tzinfo=UTC))
+    held = execution._cursor(None, [(future, doc)], NOW)  # held at tomorrow (review, low)
+    assert held == {"publication_date": "2026-11-18"}

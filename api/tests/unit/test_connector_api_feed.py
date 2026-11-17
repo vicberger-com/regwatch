@@ -118,10 +118,10 @@ async def test_paging_is_capped_and_reported_as_truncated() -> None:
     notes: set[str] = set()
     got = await discover(site, notes)
     assert len(site.requests) == 1 + MAX_PAGES and len(got) == MAX_PAGES
-    assert notes == {"truncated"}
+    assert notes == {"truncated", "resumes"}
     done: set[str] = set()
     await discover(FR([page([doc(1)])]), done)
-    assert done == set()  # the last page offered no next page: not truncated
+    assert done == {"resumes"}  # the last page offered no next page: not truncated
 
 
 @pytest.mark.parametrize(
@@ -408,3 +408,14 @@ async def test_two_truncated_runs_in_a_row_move_forward(monkeypatch: pytest.Monk
             job.cursor = out.cursor
     assert all(q["order"] == "oldest" for q in site.queries)  # the params' "newest" is replaced
     assert {u.rsplit("/", 1)[1] for u in seen} == {str(n) for n in range(1, 10)}  # all reached
+
+
+def test_a_fixed_start_date_moves_up_to_the_cursor() -> None:
+    """CP-13/14 review finding 2: oldest-first from a fixed date would repeat forever."""
+    fixed = {"conditions[publication_date][gte]": "2026-10-01"}
+    moved = dict(parse_qsl(query(fixed, None, NOW, {"publication_date": "2026-11-10"})))
+    assert moved["conditions[publication_date][gte]"] == "2026-11-10"
+    earlier = dict(parse_qsl(query(fixed, None, NOW, {"publication_date": "2026-09-01"})))
+    assert earlier["conditions[publication_date][gte]"] == "2026-10-01"  # the later of the two
+    odd = {"conditions[publication_date][gte]": "soon"}
+    assert dict(parse_qsl(query(odd, None, NOW, {"publication_date": "2026-11-10"}))) == odd

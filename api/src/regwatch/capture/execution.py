@@ -23,7 +23,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from tenacity import (
@@ -85,6 +85,7 @@ class Outcome:
     items_new: int = 0
     bytes_fetched: int = 0
     cursor: dict[str, Any] | None = None  # the job's new cursor (CP-14), or None to keep it
+    cursor_from: dict[str, Any] | None = None  # the cursor the run started from
     documents: list[RawDocument] = field(default_factory=list)
 
 
@@ -214,7 +215,10 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries), failures, refused, cut_short)
-    cursor = _cursor(settings.cursor, entries)
+    # Only a connector that resumes from the cursor gets one, and not past failed documents
+    # (CP-13/14 review finding 1, low findings): otherwise "continues" would not be true.
+    resumes = "resumes" in ctx.notes and failures == 0
+    cursor = _cursor(settings.cursor, entries, base.now()) if resumes else None
     if stopped is not None:  # some documents, then discovery failed: partial, with its reason
         status, (error_class, message) = "partial", stopped
     elif status == "success" and (truncated or "truncated" in ctx.notes):
@@ -232,14 +236,18 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     return Outcome(status, error_class, message,
                    robots_decision=_decision(allowed, refused, len(entries) + failures),
                    items_new=len(entries), bytes_fetched=counter.fetched,
-                   documents=[doc for _, doc in entries], cursor=cursor)  # fmt: skip
+                   documents=[doc for _, doc in entries], cursor=cursor,
+                   cursor_from=settings.cursor)  # fmt: skip
 
 
-def _cursor(current: dict[str, Any] | None,
-            entries: list[tuple[Candidate, RawDocument]]) -> dict[str, Any] | None:  # fmt: skip
+def _cursor(current: dict[str, Any] | None, entries: list[tuple[Candidate, RawDocument]],
+            now: datetime) -> dict[str, Any] | None:  # fmt: skip
     """The newest publication date among the documents stored, or None when it would not
-    move the job's cursor forward (CP-14)."""
-    dates = [c.published_at.date().isoformat() for c, _ in entries if c.published_at]
+    move the job's cursor forward (CP-14). A date past tomorrow is held at tomorrow, so one
+    record dated 2099 cannot park the cursor beyond every real document."""
+    ceiling = (now + timedelta(days=1)).date().isoformat()
+    dates = [min(c.published_at.date().isoformat(), ceiling) for c, _ in entries
+             if c.published_at]  # fmt: skip
     if not dates:
         return None
     newest = max(dates)

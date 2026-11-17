@@ -145,11 +145,25 @@ def query(params: dict[str, Any], last_success: datetime | None, now: datetime,
                 since = (_cursor_time(cursor) or last_success or now - FIRST_RUN_LOOKBACK
                          ) - timedelta(days=int(placeholder.group(1)))  # fmt: skip
                 item = since.astimezone(FR_EASTERN).date().isoformat()
+            elif key == LOWER_BOUND and _cursor_time(cursor) is not None:
+                # A fixed start date moves up to the cursor too, so oldest-first reading always
+                # moves forward (CP-13/14 review finding 2).
+                item = _later(item, _cursor_time(cursor))
             pairs.append((key, item))
     text = urlencode(pairs)
     if len(text) > MAX_QUERY:
         raise ConnectorError("bad-config", f"the query is longer than {MAX_QUERY} characters")
     return text
+
+
+def _later(fixed: str, cursor: datetime | None) -> str:
+    """The later of a fixed ISO date and the cursor's date; a fixed value that is not a date is
+    left for the API (save-time checks refuse it)."""
+    try:
+        day = date.fromisoformat(fixed)
+    except ValueError:
+        return fixed
+    return max(day, cursor.date()).isoformat() if cursor else fixed
 
 
 def _cursor_time(cursor: dict[str, Any] | None) -> datetime | None:
@@ -253,6 +267,7 @@ class ApiFeedConnector:
         # Oldest first, from the cursor less the overlap: a run cut short by its limits stops at
         # a date the next run starts from (CP-14). Any `order` in the params is replaced.
         params = {**config.params, "order": "oldest"}
+        ctx.notes.add("resumes")  # this connector continues from the job's cursor
         url = f"{FEDERAL_REGISTER}?{query(params, job.last_success_at, ctx.now(), job.cursor)}"
         origin = urlsplit(FEDERAL_REGISTER)
         seen: set[str] = set()

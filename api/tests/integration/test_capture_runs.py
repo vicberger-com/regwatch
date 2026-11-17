@@ -523,6 +523,17 @@ async def test_the_cursor_is_saved_and_cleared_by_new_settings(
     assert (await admin.patch(_api(f"/sources/{made['id']}"), json=new_feed)).status_code == 200
     assert (await _job(db, str(jid))).cursor is None  # a new query starts from its own window
 
+    # A run that started from the old cursor, finishing after the reset, writes nothing back.
+    async def stale(*args: Any) -> Any:
+        return execution.Outcome("success", cursor={"publication_date": "2026-11-12"},
+                                 cursor_from={"publication_date": "2026-11-10"})  # fmt: skip
+
+    monkeypatch.setattr(runs, "run_connector", stale)
+    db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+    await db.commit()
+    assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
+    assert (await _job(db, str(jid))).cursor is None
+
 
 async def test_the_test_button_runs_on_a_worker(
     admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
