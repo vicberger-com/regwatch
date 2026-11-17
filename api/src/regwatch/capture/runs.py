@@ -111,10 +111,13 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
         run.items_new = outcome.items_new
         run.bytes_fetched = outcome.bytes_fetched
         run.robots_decision = outcome.robots_decision
+    cursor = outcome.cursor if outcome is not None else None
     source = await _source_of(db, run.job_id)
     job = await db.scalar(select(CaptureJob).where(CaptureJob.id == run.job_id))
     if job is not None:
         job.last_run_at = now
+        if cursor is not None and status in ("success", "partial"):
+            job.cursor = cursor  # CP-14: where this job got to
     if source is None or status == "skipped" or error_class in NOT_THE_SOURCE:
         return
     if status == "failed":

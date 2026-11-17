@@ -156,6 +156,9 @@ CREATE INDEX ix_capture_run_job ON capture_run(job_id, started_at DESC);
 ALTER TABLE capture_job ADD CONSTRAINT uq_capture_job_source UNIQUE (source_id);
 CREATE UNIQUE INDEX uq_capture_run_unfinished ON capture_run(job_id) WHERE finished_at IS NULL;
 CREATE INDEX ix_capture_run_open ON capture_run(created_at) WHERE finished_at IS NULL;
+-- CP-14: where an incremental job got to (api_feed: the newest publication date stored), so a
+-- truncated run continues; written by the worker only, and cleared when the source's settings change.
+ALTER TABLE capture_job ADD COLUMN cursor jsonb;
 
 CREATE TABLE item ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),

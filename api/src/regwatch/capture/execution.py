@@ -84,6 +84,7 @@ class Outcome:
     robots_decision: str | None = None
     items_new: int = 0
     bytes_fetched: int = 0
+    cursor: dict[str, Any] | None = None  # the job's new cursor (CP-14), or None to keep it
     documents: list[RawDocument] = field(default_factory=list)
 
 
@@ -100,7 +101,7 @@ def job_settings(job: CaptureJob, source: Source,
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
                        render_js=job.render_js, robots_override=override,
-                       last_success_at=last_success_at)  # fmt: skip
+                       last_success_at=last_success_at, cursor=job.cursor)  # fmt: skip
 
 
 def _transient(exc: BaseException) -> bool:
@@ -213,20 +214,39 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries), failures, refused, cut_short)
+    cursor = _cursor(settings.cursor, entries)
     if stopped is not None:  # some documents, then discovery failed: partial, with its reason
         status, (error_class, message) = "partial", stopped
     elif status == "success" and (truncated or "truncated" in ctx.notes):
         status, error_class = "partial", "truncated"
-        # Not "the next run continues": without a cursor the next run asks for the same window
-        # (API feed re-verification R1, BL-94, CP-14), so the admin must act.
+        # The next run continues only where a cursor moved forward (CP-14); otherwise it would
+        # ask for the same window again (API feed re-verification R1), so the admin must act.
+        moved = cursor is not None
         message = (
-            "more documents were offered than one run takes; raise the items per run "
+            "more documents were offered than one run takes; the next run continues from the "
+            "newest one stored"
+            if moved
+            else "more documents were offered than one run takes; raise the items per run "
             "or narrow the query"
         )
     return Outcome(status, error_class, message,
                    robots_decision=_decision(allowed, refused, len(entries) + failures),
                    items_new=len(entries), bytes_fetched=counter.fetched,
-                   documents=[doc for _, doc in entries])  # fmt: skip
+                   documents=[doc for _, doc in entries], cursor=cursor)  # fmt: skip
+
+
+def _cursor(current: dict[str, Any] | None,
+            entries: list[tuple[Candidate, RawDocument]]) -> dict[str, Any] | None:  # fmt: skip
+    """The newest publication date among the documents stored, or None when it would not
+    move the job's cursor forward (CP-14)."""
+    dates = [c.published_at.date().isoformat() for c, _ in entries if c.published_at]
+    if not dates:
+        return None
+    newest = max(dates)
+    before = (current or {}).get("publication_date")
+    if isinstance(before, str) and before >= newest:
+        return None
+    return {"publication_date": newest}
 
 
 def _decision(allowed: str, refused: dict[str, int], others: int) -> str:

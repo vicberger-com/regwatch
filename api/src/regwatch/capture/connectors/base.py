@@ -72,6 +72,7 @@ class JobSettings:
     render_js: bool = False
     robots_override: str | None = None  # the admin's recorded reason, or None to obey
     last_success_at: datetime | None = None  # when the last successful run started
+    cursor: dict[str, Any] | None = None  # where the job got to (CP-14), or None
 
 
 @dataclass

@@ -495,3 +495,30 @@ async def test_execute_passes_the_last_successful_run(
     monkeypatch.setattr(runs, "run_connector", recording)
     assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
     assert seen and abs((seen[0] - good).total_seconds()) < 1
+
+
+async def test_the_cursor_is_saved_and_cleared_by_new_settings(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CP-14: a run's cursor is kept on the job; changing the source's settings clears it."""
+    from regwatch.capture import execution
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+    await db.commit()
+
+    async def moved(*args: Any) -> Any:
+        return execution.Outcome("partial", "truncated", "x",
+                                 cursor={"publication_date": "2026-11-10"})  # fmt: skip
+
+    monkeypatch.setattr(runs, "run_connector", moved)
+    assert await runs.execute(db, jid, _factory(_site(""), {})) == "partial"
+    assert (await _job(db, str(jid))).cursor == {"publication_date": "2026-11-10"}
+
+    rename = await admin.patch(_api(f"/sources/{made['id']}"), json={"name": "Renamed"})
+    assert rename.status_code == 200
+    assert (await _job(db, str(jid))).cursor == {"publication_date": "2026-11-10"}  # kept
+    new_feed = {"config": {"feed_url": "https://feeds.example/other"}}
+    assert (await admin.patch(_api(f"/sources/{made['id']}"), json=new_feed)).status_code == 200
+    assert (await _job(db, str(jid))).cursor is None  # a new query starts from its own window

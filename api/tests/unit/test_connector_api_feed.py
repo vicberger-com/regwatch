@@ -345,3 +345,66 @@ def test_the_lower_bound_must_be_real(params: dict[str, Any]) -> None:
 
     with pytest.raises(ConnectorError):
         check_params(ApiFeedConfig(provider="federal_register", params=params))  # type: ignore[arg-type]
+
+
+def test_the_cursor_sets_the_window_and_order_is_oldest() -> None:
+    """CP-14: the window starts from the cursor, less the overlap."""
+    since = {"conditions[publication_date][gte]": "{last_success_date - 3 days}"}
+    q = dict(parse_qsl(query(since, datetime(2026, 1, 1, tzinfo=UTC), NOW,
+                             {"publication_date": "2026-11-12"})))  # fmt: skip
+    assert q["conditions[publication_date][gte]"] == "2026-11-09"
+    bad = dict(parse_qsl(query(since, None, NOW, {"publication_date": "nope"})))
+    assert bad["conditions[publication_date][gte]"] == "2026-10-15"  # a bad cursor is ignored
+
+
+class Dated(FR):
+    """A fake Federal Register that filters by gte and honours order=oldest, one page."""
+
+    def __init__(self, docs: list[dict[str, Any]]) -> None:
+        super().__init__([])
+        self.docs, self.queries = docs, []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return super().__call__(request)
+        q = dict(parse_qsl(request.url.query.decode()))
+        self.queries.append(q)
+        since = q.get("conditions[publication_date][gte]", "0000")
+        shown = [d for d in self.docs if d["publication_date"] >= since]
+        shown.sort(key=lambda d: d["publication_date"], reverse=q.get("order") != "oldest")
+        body = json.dumps(page(shown)).encode()
+        return httpx.Response(200, headers={"content-type": "application/json"},
+                              stream=httpx.ByteStream(body))  # fmt: skip
+
+
+async def test_two_truncated_runs_in_a_row_move_forward(monkeypatch: pytest.MonkeyPatch) -> None:
+    """API feed re-verification R1 and CP-14: the second run continues where the first stopped,
+    so every document is reached, oldest first, even with a run limit of 3."""
+    import uuid
+
+    from regwatch.capture import execution
+    from regwatch.capture.models import CaptureJob, Source
+
+    # Inside the first run's window (30 days before NOW): 20 to 28 October.
+    docs = [doc(n, publication_date=f"2026-10-{19 + n:02d}") for n in range(1, 10)]
+    site = Dated(docs)
+    monkeypatch.setattr(execution, "RETRY_WAIT_S", 0.0)
+    source = Source(id=uuid.UUID(int=1), kind="api_feed", robots_policy="respect", config={
+        "provider": "federal_register",
+        "params": {"conditions[publication_date][gte]": "{last_success_date - 0 days}",
+                   "order": "newest"}})  # fmt: skip
+    job = CaptureJob(max_items_per_run=3, rate_limit_per_minute=6000, render_js=False,
+                     extraction_rules={}, cursor=None)  # fmt: skip
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        ctx, _ = context(site)
+        return ctx
+
+    seen: list[str] = []
+    for _ in range(4):
+        out = await execution.run_connector(uuid.uuid4(), job, source, make, None)
+        seen += [d.url for d in out.documents]
+        if out.cursor:
+            job.cursor = out.cursor
+    assert all(q["order"] == "oldest" for q in site.queries)  # the params' "newest" is replaced
+    assert {u.rsplit("/", 1)[1] for u in seen} == {str(n) for n in range(1, 10)}  # all reached

@@ -305,9 +305,19 @@ async def test_a_run_that_took_less_than_was_offered_is_partial(h: Harness) -> N
     """API feed review 2: the item limit, or a connector that stopped early, is partial."""
     got = await h.run(Fake([f"https://e.org/{n}" for n in range(5)]), max_items=3)
     assert (got.status, got.error_class, got.items_new) == ("partial", "truncated", 3)
-    # Re-verification R1: no cursor yet, so the message asks the admin to act (BL-94, CP-14).
-    assert "next run continues" not in (got.error_message or "")
-    assert "raise the items per run" in (got.error_message or "")
+    # CP-14: the cursor moved to the newest date stored, so the next run continues from it.
+    assert "continues from the newest one stored" in (got.error_message or "")
+    assert got.cursor == {"publication_date": NOW.date().isoformat()}
+
+    class Undated(Fake):
+        async def discover(self, job: JobSettings,
+                           ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
+            for url in self.urls:
+                yield Candidate(url=url)
+
+    stuck = await h.run(Undated([f"https://e.org/{n}" for n in range(5)]), max_items=3)
+    # Re-verification R1: no dates, no cursor: the admin must act.
+    assert stuck.cursor is None and "raise the items per run" in (stuck.error_message or "")
 
     class Stops(Fake):
         async def discover(self, job: JobSettings,
@@ -360,3 +370,12 @@ async def test_the_connector_gets_the_last_successful_run(h: Harness) -> None:
     job.last_run_at = datetime(2026, 11, 16, tzinfo=UTC)  # a failed run, more recent
     await execution.run_connector(RUN, job, source, h.factory(), NOW)
     assert seen == [NOW]
+
+
+def test_the_cursor_only_moves_forward() -> None:
+    """CP-14."""
+    later = Candidate(url="https://e.org/a", published_at=datetime(2026, 11, 10, tzinfo=UTC))
+    doc = RawDocument(url="u", fetched_at=NOW, status=200, body_ref="k", mime="text/html")
+    assert execution._cursor(None, [(later, doc)]) == {"publication_date": "2026-11-10"}
+    assert execution._cursor({"publication_date": "2026-11-12"}, [(later, doc)]) is None
+    assert execution._cursor(None, []) is None

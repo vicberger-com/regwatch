@@ -402,6 +402,8 @@ async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrit
         setattr(source, key, value)
     for key, value in job_values.items():
         setattr(job, key, value)
+    if job is not None and "config" in values and values["config"] != before["config"]:
+        job.cursor = None  # new settings, a new query: it starts from its own window (CP-14)
     if job is not None:
         reschedule(job, job_values)
     await db.flush()

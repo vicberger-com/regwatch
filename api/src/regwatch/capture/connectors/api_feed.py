@@ -120,7 +120,8 @@ def _scalar(key: str, item: Any) -> str:
     raise ConnectorError("bad-config", f"query parameter {key[:50]!r} is not a short value")
 
 
-def query(params: dict[str, Any], last_success: datetime | None, now: datetime) -> str:
+def query(params: dict[str, Any], last_success: datetime | None, now: datetime,
+          cursor: dict[str, Any] | None = None) -> str:  # fmt: skip
     """The query string for the job's ``params``: short texts, numbers and booleans, or lists of
     them, with the last-success placeholder filled in (R-06 section 4)."""
     if len(params) > MAX_PARAMS:
@@ -141,14 +142,24 @@ def query(params: dict[str, Any], last_success: datetime | None, now: datetime) 
                 if placeholder is None:
                     raise ConnectorError("bad-config", "write the placeholder as "
                                          "{last_success_date - N days}")  # fmt: skip
-                since = (last_success or now - FIRST_RUN_LOOKBACK) - timedelta(
-                    days=int(placeholder.group(1)))  # fmt: skip
+                since = (_cursor_time(cursor) or last_success or now - FIRST_RUN_LOOKBACK
+                         ) - timedelta(days=int(placeholder.group(1)))  # fmt: skip
                 item = since.astimezone(FR_EASTERN).date().isoformat()
             pairs.append((key, item))
     text = urlencode(pairs)
     if len(text) > MAX_QUERY:
         raise ConnectorError("bad-config", f"the query is longer than {MAX_QUERY} characters")
     return text
+
+
+def _cursor_time(cursor: dict[str, Any] | None) -> datetime | None:
+    """The cursor's date (CP-14) as the start of that day, US Eastern, or None."""
+    value = (cursor or {}).get("publication_date")
+    try:
+        day = date.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    return datetime.combine(day, datetime.min.time(), FR_EASTERN) if day else None
 
 
 def check_params(config: ApiFeedConfig) -> None:
@@ -239,7 +250,10 @@ class ApiFeedConnector:
 
     async def _federal_register(self, config: ApiFeedConfig, job: JobSettings,
                                 ctx: ConnectorContext) -> AsyncIterator[Candidate]:  # fmt: skip
-        url = f"{FEDERAL_REGISTER}?{query(config.params, job.last_success_at, ctx.now())}"
+        # Oldest first, from the cursor less the overlap: a run cut short by its limits stops at
+        # a date the next run starts from (CP-14). Any `order` in the params is replaced.
+        params = {**config.params, "order": "oldest"}
+        url = f"{FEDERAL_REGISTER}?{query(params, job.last_success_at, ctx.now(), job.cursor)}"
         origin = urlsplit(FEDERAL_REGISTER)
         seen: set[str] = set()
         asked: set[str] = set()
