@@ -143,3 +143,15 @@
 - **What is missing:** a further line of probing, into whether the expat pre-pass is a complete guard for what feedparser's strict and loose parsers do afterwards, was started in this session and not completed.
 - **Why that blocks:** the pre-pass is the only control between hostile feeds and the loose parser's unlimited entity expansion, so I cannot sign off its completeness without finishing that check.
 - **Recommendation:** a further independent pass on that one question before merge. Everything else in this record is closed or tracked in BL-91. · M3 RSS connector independent review · 2026-11-17
+
+### Owner decision (2026-11-17)
+The separate check of whether the expat pre-pass fully guards feedparser's later parsing could not be completed: the reviewing session was stopped by the platform's safeguards before it produced findings. The owner accepted the residual risk and signed the slice off on this basis:
+- every finding from the review and both re-verifications is closed and tested;
+- each worker process is capped at 4 GiB of address space and each task at one hour (`regwatch.core.worker`), which bounds the damage if a bypass exists;
+- the connector is not yet wired to runs, so no live feed is parsed until the next slice.
+
+**Follow-ups, both before Gate G2 (BL-91 (e) and (f)):**
+- take feedparser's tolerant HTML parsing out of the path for feed content, so the plain-text step is the only cleaning;
+- repeat the pre-pass check against the smaller surface.
+
+**Sign-off:** signed off by owner decision, with the residual recorded in BL-91. · 2026-11-17
