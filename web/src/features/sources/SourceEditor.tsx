@@ -354,8 +354,9 @@ export function SourceEditor({
             <legend>robots.txt</legend>
             <p className="text-sm text-text-muted">
               robots.txt is overridden for this source (
-              {current.override_reason}). Changing its addresses, or turning it
-              back on, needs the override permission.
+              {current.override_reason}). Its connector settings, and turning it
+              back on, need the override permission; you can still rename it,
+              change its schedule, or return it to respecting robots.txt.
             </p>
             <label className="flex items-center gap-2">
               <input

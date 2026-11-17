@@ -186,9 +186,11 @@ export function ConnectorFields({
         if (prop.type === "object") {
           return (
             <div key={name} className="flex flex-col gap-1">
-              <span>{caption}</span>
+              <span id={`${id}-label`}>{caption}</span>
               <pre
                 id={id}
+                role="group"
+                aria-labelledby={`${id}-label`}
                 className="whitespace-pre-wrap text-sm"
                 aria-describedby={hint}
               >

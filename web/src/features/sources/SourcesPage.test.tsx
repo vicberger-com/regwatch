@@ -244,6 +244,9 @@ describe("sources screen", () => {
     expect(within(form).queryByLabelText(/Override robots.txt/)).toBeNull();
     // Finding 15: its connector settings are locked for editors without the permission.
     expect(within(form).getByLabelText(/Feed url/)).toBeDisabled();
+    expect(
+      within(form).getByText(/you can still rename it/),
+    ).toBeInTheDocument(); // 15
     const nameField = within(form).getByLabelText("Name");
     await userEvent.clear(nameField);
     await userEvent.type(nameField, "Renamed");
@@ -298,7 +301,9 @@ describe("sources screen", () => {
       await screen.findByRole("button", { name: "Edit EU feed" }),
     );
     const form = screen.getByRole("form", { name: "Edit source EU feed" });
-    expect(within(form).getByText(/"q": "regulation"/)).toBeInTheDocument();
+    expect(
+      within(form).getByRole("group", { name: /Params/ }),
+    ).toHaveTextContent(/"q": "regulation"/); // labelled by its caption (finding 16)
     await userEvent.clear(within(form).getByLabelText(/Endpoint url/));
     await userEvent.type(within(form).getByLabelText(/Item path/), "$.items");
     await userEvent.click(within(form).getByRole("button", { name: "Save" }));
