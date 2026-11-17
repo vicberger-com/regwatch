@@ -143,8 +143,10 @@ async def test_links_must_be_https_on_legislation_gov_uk() -> None:
         entry(3, link="http://www.legislation.gov.uk/uksi/2026/3/made"),
         entry(4, xml="http://10.0.0.5/data.xml"), entry(5)])})  # fmt: skip
     got = await discover(site, title_terms=["cyber"])
-    assert [c.external_id.rsplit("/", 1)[1] for c in got if c.external_id] == ["4", "5"]
-    assert got[0].hints["fetch"] == f"{LEG}/uksi/2026/4/made"  # its data.xml was refused
+    # Review finding 2: an http link on the host is kept, as https; other hosts are dropped.
+    assert [c.external_id.rsplit("/", 1)[1] for c in got if c.external_id] == ["3", "4", "5"]
+    assert got[0].url == f"{LEG}/uksi/2026/3/made"
+    assert got[1].hints["fetch"] == f"{LEG}/uksi/2026/4/made"  # its data.xml was refused
 
 
 async def test_an_anonymous_user_agent_is_refused() -> None:
@@ -174,6 +176,7 @@ async def test_fetch_stores_data_xml_or_the_page() -> None:
                            "fetch": f"{LEG}/uksi/2026/1/made/data.xml"})  # fmt: skip
     raw = await ApiFeedConnector().fetch(xml, job(), ctx)
     assert raw.mime == "application/xml" and stored[raw.body_ref] == b"<Legislation/>"
+    assert raw.text is None and raw.metadata["summary"] == "S"  # the body is the act (finding 9)
     assert raw.metadata["fetched"].endswith("/data.xml")
     bad = {"provider": "legislation_gov_uk", "fetch": "http://10.0.0.5/x"}
     sneaky = Candidate(url=f"{LEG}/uksi/2026/2/made", hints=bad)
@@ -186,7 +189,8 @@ async def test_fetch_stores_data_xml_or_the_page() -> None:
     [{"title_terms": []}, {"title_terms": ["x" * 101]}, {"title_terms": "cyber"},
      {"title_terms": ["a"] * 21}, {"type": "../etc"}, {"feed": "update"}, {"sort": "random"},
      {"max_pages_per_term": 0}, {"max_pages_per_term": 9}, {"max_pages_per_term": True},
-     {"fetch_format": "data.pdf"}, {"unknown": 1}],
+     {"fetch_format": "data.pdf"}, {"unknown": 1}, {"type": "uksi\n"},
+     {"title_terms": ["cyber", " Cyber "]}],
 )  # fmt: skip
 def test_settings_are_checked_when_saved(params: dict[str, Any]) -> None:
     with pytest.raises(ConnectorError) as exc:
@@ -202,8 +206,13 @@ def test_the_contact_check_finds_the_user_agent_through_wrappers() -> None:
     class Wrapper:
         inner = Inner()
 
+    class Loose:
+        user_agent = "regwatch/0.1 @"  # an "@" alone is no contact address (finding 5)
+
     ctx = ConnectorContext(fetcher=Wrapper(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
     assert legislation.user_agent_has_contact(ctx)
+    loose = ConnectorContext(fetcher=Loose(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    assert not legislation.user_agent_has_contact(loose)
     bare = ConnectorContext(fetcher=object(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
     assert not legislation.user_agent_has_contact(bare)
 
@@ -232,3 +241,79 @@ async def test_error_statuses_are_refused() -> None:
     with pytest.raises(ConnectorError) as exc:
         await ApiFeedConnector().fetch(page, job(), ctx)
     assert exc.value.reason == "http-status" and stored == {}
+
+
+@pytest.mark.parametrize(
+    "xml",
+    [f"{LEG}/uksi/2026/1/made/data.pdf", f"{LEG}/uksi/2026/1/made/data.pdf#/data.xml",
+     f"{LEG}/uksi/2026/1/made/DATA.DOCX"],
+)  # fmt: skip
+async def test_disallowed_documents_are_never_fetch_targets(xml: str) -> None:
+    """Review finding 1: robots.txt's exclusions hold in the adapter itself."""
+    site = Site({("cyber", "1"): feed([entry(1, xml=xml)])})
+    got = await discover(site, title_terms=["cyber"])
+    assert got[0].hints["fetch"] == f"{LEG}/uksi/2026/1/made"
+    assert legislation._own(xml) is None
+
+
+async def test_the_rate_is_capped_and_robots_is_always_obeyed() -> None:
+    """Review finding 1: 12 a minute (Crawl-delay 5) and no robots.txt override."""
+    calls: list[dict[str, Any]] = []
+
+    class Recording:
+        user_agent = "regwatch-test (+ops@example.org)"
+
+        async def fetch(self, url: str, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            from regwatch.capture.safe_fetch import FetchResult
+
+            return FetchResult(url, 200, {"content-type": "application/atom+xml"}, feed([]))
+
+    ctx = ConnectorContext(fetcher=Recording(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    settings = JobSettings(source_id="s", kind="api_feed",
+                           config=ApiFeedConfig(provider="legislation_gov_uk", params=PARAMS),  # type: ignore[arg-type]
+                           rules=ExtractionRules(), rate_per_minute=120,
+                           robots_override="Owner said so")  # fmt: skip
+    [c async for c in ApiFeedConnector().discover(settings, ctx)]
+    assert calls and all(c == {"rate_per_minute": 12, "robots_override": None} for c in calls)
+
+
+async def test_answers_from_another_host_are_refused() -> None:
+    """Review finding 3: a redirect off www.legislation.gov.uk is never stored."""
+
+    class Redirects(Site):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/robots.txt":
+                return httpx.Response(404, stream=httpx.ByteStream(b""))
+            if request.headers.get("host") == "www.legislation.gov.uk":
+                return httpx.Response(302, headers={"Location": "https://mirror.example/feed"})
+            return httpx.Response(200, headers={"content-type": "application/atom+xml"},
+                                  stream=httpx.ByteStream(feed([entry(1)])))  # fmt: skip
+
+    with pytest.raises(ConnectorError) as exc:
+        await discover(Redirects({}), title_terms=["cyber"])
+    assert exc.value.reason == "off-host"
+
+
+async def test_a_next_page_must_be_the_same_search() -> None:
+    """Review finding 4: dropping or changing the title would read the unfiltered feed."""
+    site = Site({("cyber", "1"): feed([entry(1)], f"{LEG}/all/data.feed?sort=published&page=2")})
+    with pytest.raises(ConnectorError) as exc:
+        await discover(site, title_terms=["cyber"])
+    assert exc.value.reason == "malformed-answer"
+
+
+async def test_a_page_with_no_usable_entry_is_an_error() -> None:
+    """Review finding 2: never a silent success that captured nothing."""
+    site = Site({("cyber", "1"): feed([entry(1, link="https://evil.example/x")])})
+    with pytest.raises(ConnectorError) as exc:
+        await discover(site, title_terms=["cyber"])
+    assert exc.value.reason == "malformed-answer"
+
+
+async def test_a_document_off_the_host_is_refused() -> None:
+    ctx, stored = context(Site({}))
+    off = Candidate(url="https://evil.example/x", hints={"provider": "legislation_gov_uk"})
+    with pytest.raises(ConnectorError) as exc:
+        await ApiFeedConnector().fetch(off, job(), ctx)
+    assert exc.value.reason == "bad-link" and stored == {}

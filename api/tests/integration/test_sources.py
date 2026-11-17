@@ -131,6 +131,10 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
         ({"name": "UK", "kind": "api_feed",
           "config": {"provider": "legislation_gov_uk", "params": {"title_terms": []}}},
          "config.params"),  # legislation.gov.uk needs at least one title term
+        ({"name": "UK", "kind": "api_feed", "robots_policy": "override",
+          "override_reason": "We asked nicely",
+          "config": {"provider": "legislation_gov_uk", "params": {"title_terms": ["cyber"]}}},
+         "robots_policy"),  # its fair use policy requires robots.txt (legislation review 1)
         (rss(job={"cron": "\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "*/\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "\u0661 * * * *"}), "job.cron"),

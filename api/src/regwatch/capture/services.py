@@ -63,6 +63,7 @@ async def _save_resolver(host: str, port: int) -> list[str]:
 
 
 OVERRIDE = "sources.override_robots"
+NO_OVERRIDE = frozenset({"legislation_gov_uk"})
 MAX_REASON = 1000
 MAX_URL = 2048
 MAX_INTERVAL = 366 * 86400  # a job runs at least once a year
@@ -183,6 +184,12 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     turning a disabled overridden source back on (review finding 1). Each needs the permission.
     """
     policy = values.get("robots_policy", source.robots_policy if source else "respect")
+    config = values.get("config", source.config if source else {}) or {}
+    kind = values.get("kind", source.kind if source else None)
+    if policy == "override" and kind == "api_feed" and config.get("provider") in NO_OVERRIDE:
+        # Its fair use policy says robots.txt must be followed (R-06 E-UK-3; legislation
+        # review finding 1); the adapter also always obeys it.
+        raise invalid("robots_policy", "this provider's terms require robots.txt to be obeyed")
     if policy != "override":
         values["override_reason"] = None
         return False
