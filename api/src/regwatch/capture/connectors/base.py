@@ -19,6 +19,16 @@ from pydantic import BaseModel
 from regwatch.capture.safe_fetch import CaptureFetcher
 
 
+class ConnectorError(Exception):
+    """A source answered with something its connector cannot use; ``reason`` is a stable code
+    for ``capture_run.error_class`` and ``detail`` a short message that never quotes content."""
+
+    def __init__(self, reason: str, detail: str) -> None:
+        super().__init__(detail)
+        self.reason = reason
+        self.detail = detail
+
+
 @dataclass(frozen=True)
 class Candidate:
     url: str
