@@ -64,6 +64,9 @@ openapi: ## Export the live OpenAPI document, diff it with the contract, regener
 	cd web && pnpm install --frozen-lockfile --silent && \
 		pnpm exec openapi-typescript ../openapi/regwatch.v1.yaml -o src/lib/api/schema.d.ts
 
+connectors: ## Regenerate the admin UI's connector forms from docs/contracts/connectors.yaml
+	cd api && uv run python -I ../scripts/gen_connector_forms.py
+
 licenses: ## License inventory and allow-list check
 	scripts/license-scan.sh
 

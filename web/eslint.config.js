@@ -4,7 +4,15 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "node_modules", "src/lib/api/schema.d.ts"] },
+  {
+    ignores: [
+      "dist",
+      "coverage",
+      "node_modules",
+      "src/lib/api/schema.d.ts",
+      "src/features/sources/connectors.generated.ts",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {

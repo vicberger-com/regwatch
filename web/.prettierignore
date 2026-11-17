@@ -2,3 +2,4 @@ dist
 coverage
 pnpm-lock.yaml
 src/lib/api/schema.d.ts
+src/features/sources/connectors.generated.ts
