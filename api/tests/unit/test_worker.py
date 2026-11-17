@@ -16,7 +16,7 @@ def test_the_app_is_json_only_late_acked_and_beats_the_contract_tasks(
     conf = app.conf
     assert conf.task_serializer == "json" and conf.accept_content == ["json"]  # no pickle
     assert conf.task_ignore_result is True and conf.result_backend is None
-    assert conf.task_acks_late and conf.task_reject_on_worker_lost
+    assert conf.task_acks_late
     assert conf.worker_prefetch_multiplier == 1
     assert set(conf.beat_schedule) == {"capture.schedule_tick", "capture.health_check"}
     assert conf.beat_schedule["capture.schedule_tick"]["schedule"] == 60.0
@@ -64,3 +64,29 @@ async def test_enqueue_run_sends_the_contract_task(
     assert sent == [("capture.run_job", {"args": [str(job)], "queue": "capture",
                                          "countdown": 12.5})]  # fmt: skip
     worker.celery_app.cache_clear()
+
+
+async def test_a_hanging_broker_is_cut_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scheduler review 2: a broker that accepts and never answers cannot hold the caller."""
+    import time
+    import uuid
+
+    from regwatch.capture import tasks
+
+    monkeypatch.setattr(tasks, "_send", lambda job, countdown: time.sleep(2))
+    monkeypatch.setattr(tasks, "PUBLISH_DEADLINE_S", 0.2)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        await tasks.enqueue_run(uuid.uuid4(), 0.0)
+    assert time.monotonic() - started < 1.0
+
+
+def test_broker_calls_are_bounded_and_remote_control_is_off(valid_env: dict[str, str]) -> None:
+    """Scheduler review 1, 2, 6 and 10."""
+    conf = worker.make_app(Settings()).conf
+    assert conf.broker_transport_options["socket_timeout"] == worker.BROKER_TIMEOUT_S
+    assert conf.broker_transport_options["socket_connect_timeout"] == worker.BROKER_TIMEOUT_S
+    assert conf.task_publish_retry_policy["max_retries"] == 2
+    assert conf.worker_enable_remote_control is False
+    assert conf.task_reject_on_worker_lost is False  # no endless redelivery
+    assert conf.beat_scheduler == "celery.beat:Scheduler"  # in memory, no pickle file

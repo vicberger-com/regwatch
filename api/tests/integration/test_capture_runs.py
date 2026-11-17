@@ -85,8 +85,18 @@ async def test_run_now_refuses_disabled_sources_and_a_down_broker(
     assert down.status_code == 503
     run = await db.scalar(select(CaptureRun).where(CaptureRun.job_id == uuid.UUID(jid)))
     assert run is not None and run.status == "failed" and run.error_class == "queue-unavailable"
-    queue.down = False  # the failed hand-over holds nothing: the next run-now works
-    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 202
+    health = (await admin.get(_api(f"/sources/{made['id']}/health"))).json()
+    assert health["health"] == "unknown" and health["consecutive_failures"] == 0  # ours, not its
+    queue.down = False
+    spaced = await admin.post(_api(f"/capture-jobs/{jid}/run-now"))  # within 60 s: no new run
+    assert spaced.status_code == 202 and spaced.json()["id"] == str(run.id)
+    assert queue.sent == []
+    paused = await admin.patch(_api(f"/capture-jobs/{jid}"), json={"enabled": False})
+    assert paused.status_code == 200
+    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 409
+    assert (
+        await admin.patch(_api(f"/capture-jobs/{jid}"), json={"enabled": True})
+    ).status_code == 200
     assert (await admin.delete(_api(f"/sources/{made['id']}"))).status_code == 204
     assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 409
 
@@ -125,7 +135,8 @@ async def test_runs_fail_without_a_connector_and_move_health(
     sid, jid = made["id"], uuid.UUID(made["job"]["id"])
     assert await runs.execute(db, jid) is None  # nothing claimed: a duplicate message
     for n in range(1, 6):
-        assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 202
+        db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+        await db.commit()
         assert await runs.execute(db, jid) == "failed"
         health = (await admin.get(_api(f"/sources/{sid}/health"))).json()
         assert health["consecutive_failures"] == n
@@ -151,18 +162,101 @@ async def test_runs_fail_without_a_connector_and_move_health(
 
 
 async def test_abandoned_runs_are_ended(
-    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, db_url: str
 ) -> None:
     made = (await admin.post(_api("/sources"), json=rss())).json()
     jid = uuid.UUID(made["job"]["id"])
-    old = CaptureRun(job_id=jid, started_at=datetime.now(UTC) - timedelta(hours=3))
+    long_ago = datetime.now(UTC) - timedelta(hours=3)
+    old = CaptureRun(job_id=jid, created_at=long_ago, started_at=long_ago)
+    held = CaptureRun(job_id=jid, created_at=long_ago, started_at=long_ago)
     fresh = CaptureRun(job_id=jid, started_at=datetime.now(UTC))
-    db.add_all([old, fresh])
+    db.add_all([old, held, fresh])
     await db.commit()
-    old_id, fresh_id = old.id, fresh.id
-    assert await runs.sweep(db) == 1
+    old_id, held_id, fresh_id = old.id, held.id, fresh.id
+    async with session_factory(create_engine(db_url, poolclass_null=True))() as worker:
+        # A worker holds one stale run (its run is slow, not lost): the sweep leaves it alone.
+        await worker.scalar(select(CaptureRun).where(CaptureRun.id == held_id)
+                            .with_for_update())  # fmt: skip
+        assert await runs.sweep(db) == 1
+        await worker.rollback()
     db.expire_all()
     ended = await db.scalar(select(CaptureRun).where(CaptureRun.id == old_id))
     assert ended is not None and ended.status == "failed" and ended.error_class == "abandoned"
     still = await db.scalar(select(CaptureRun).where(CaptureRun.id == fresh_id))
     assert still is not None and still.finished_at is None
+    kept = await db.scalar(select(CaptureRun).where(CaptureRun.id == held_id))
+    assert kept is not None and kept.finished_at is None
+    health = (await admin.get(_api(f"/sources/{made['id']}/health"))).json()
+    assert health["consecutive_failures"] == 0  # abandoned is ours, not the source's
+
+    # finish never overwrites a run that has already ended (review finding 7).
+    assert ended is not None
+    await runs.finish(db, ended, "success")
+    db.expire_all()
+    again = await db.scalar(select(CaptureRun).where(CaptureRun.id == old_id))
+    assert again is not None and again.status == "failed"
+
+
+async def test_a_broken_schedule_fails_alone(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+) -> None:
+    """Review finding 3: a job whose schedule cannot be computed (a zone this image lacks)
+    fails its own run and waits for an edit; every other due job still starts."""
+    good = (await admin.post(_api("/sources"), json=rss())).json()
+    bad = (await admin.post(_api("/sources"), json=rss(name="Bad"))).json()
+    await db.execute(update(CaptureJob).where(CaptureJob.id == uuid.UUID(bad["job"]["id"]))
+                     .values(cron="0 * * * *", interval_seconds=None,
+                             timezone="Nowhere/Atlantis"))  # fmt: skip
+    await db.commit()
+    later = datetime.now(UTC) + timedelta(seconds=5)
+    assert await runs.tick(db, queue, now=later) == 1
+    assert [str(j) for j, _ in queue.sent] == [good["job"]["id"]]
+    broken = (await admin.get(_api("/capture-runs"), params={"job_id": bad["job"]["id"]})).json()
+    assert broken["items"][0]["error_class"] == "bad-schedule"
+    assert (await _job(db, bad["job"]["id"])).next_run_at is None
+
+
+async def test_lost_runs_are_handed_over_again_three_times(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+) -> None:
+    """Review finding 4: a message lost from Valkey (a restart) is handed over again by the
+    tick, as ADR-0006 says, at most three times, never while a worker holds the run."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    await db.execute(update(CaptureJob).where(CaptureJob.id == jid).values(next_run_at=None))
+    created = datetime.now(UTC) - timedelta(minutes=11)
+    lost = CaptureRun(job_id=jid, created_at=created, started_at=created)
+    db.add(lost)
+    await db.commit()
+    lost_id = lost.id
+    now = datetime.now(UTC)
+    for n in range(runs.MAX_HANDOVERS):
+        assert await runs.tick(db, queue, now=now) == 1, n
+        now += runs.HANDOVER_AFTER + timedelta(seconds=1)
+    assert len(queue.sent) == runs.MAX_HANDOVERS
+    assert await runs.tick(db, queue, now=now) == 0  # out of hand-overs: the sweep ends it
+    db.expire_all()
+    run = await db.scalar(select(CaptureRun).where(CaptureRun.id == lost_id))
+    assert run is not None and run.finished_at is None
+
+
+async def test_concurrent_ticks_start_a_job_once(
+    admin: httpx.AsyncClient, queue: Queue, db_url: str
+) -> None:
+    """Review finding 12: two ticks at once, on separate connections."""
+    import asyncio
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    later = datetime.now(UTC) + timedelta(seconds=5)
+    engines = [create_engine(db_url, poolclass_null=True) for _ in range(4)]
+    try:
+
+        async def one(n: int) -> int:
+            async with session_factory(engines[n])() as session:
+                return await runs.tick(session, queue, now=later)
+
+        assert sum(await asyncio.gather(*(one(n) for n in range(4)))) == 1
+    finally:
+        for engine in engines:
+            await engine.dispose()
+    assert [str(j) for j, _ in queue.sent] == [made["job"]["id"]]

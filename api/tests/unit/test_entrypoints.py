@@ -19,7 +19,7 @@ def test_admin_requires_a_command(
 def test_worker_and_beat_start_celery(
     valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The worker serves the capture queue; Beat keeps its own state in /tmp (M3, ADR-0006)."""
+    """The worker serves the capture queue; Beat keeps no schedule file (scheduler review 1)."""
     from regwatch.core import worker
 
     worker.celery_app.cache_clear()
@@ -30,8 +30,8 @@ def test_worker_and_beat_start_celery(
     entrypoints.worker()
     entrypoints.beat()
     assert calls[0][0] == "worker" and calls[0][1][:3] == ["worker", "--queues", "capture"]
-    assert calls[1] == ("start", ["beat", "--loglevel", "INFO", "--schedule",
-                                  entrypoints.BEAT_SCHEDULE_FILE])  # fmt: skip
+    assert calls[1] == ("start", ["beat", "--loglevel", "INFO", "--scheduler",
+                                  worker.BEAT_SCHEDULER])  # fmt: skip
     worker.celery_app.cache_clear()
 
 

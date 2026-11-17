@@ -70,3 +70,27 @@ def test_next_run_for_each_kind_of_schedule() -> None:
     assert next_run(None, 1800, "UTC", now) == now + timedelta(seconds=1800)
     assert next_run("0 * * * *", None, "UTC", now) == at("2026-11-16T11:00:00")
     assert next_run(None, None, "UTC", now) is None
+
+
+def test_the_repeated_hour_never_goes_back_in_time() -> None:
+    """Scheduler review 5: computed at 01:16 EST, inside the repeated hour of 2026-11-01 in New
+    York, a */15 job never returns a time before ``after`` (01:30 EDT was an hour earlier).
+    A repeated wall time happens once, at its first occurrence, so the 01:30 and 01:45 that
+    already happened in EDT are not run again: the next run is 02:00 EST."""
+    new_york = ZoneInfo("America/New_York")
+    cron = parse_cron("*/15 * * * *")
+    after = datetime(2026, 11, 1, 1, 16, tzinfo=new_york, fold=1)  # 06:16 UTC
+    got = next_cron(cron, after, new_york)
+    assert got == at("2026-11-01T07:00:00")
+    times, now = [], after
+    for _ in range(8):  # two hours of runs: every one later than the last
+        nxt = next_cron(cron, now, new_york)
+        assert nxt is not None and nxt > now
+        times.append(nxt)
+        now = nxt
+    assert len(set(times)) == 8
+
+
+def test_naive_times_are_refused() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        next_cron(parse_cron("* * * * *"), datetime(2026, 1, 1), UTC_ZONE)

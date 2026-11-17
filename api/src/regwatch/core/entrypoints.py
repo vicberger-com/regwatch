@@ -14,7 +14,6 @@ import structlog
 from regwatch.core.logging_setup import configure_logging
 
 _log = structlog.get_logger("regwatch.entrypoints")
-BEAT_SCHEDULE_FILE = "/tmp/regwatch-beat-schedule"  # noqa: S108 - Beat's own last-run times
 
 
 def worker() -> None:
@@ -29,10 +28,10 @@ def worker() -> None:
 
 def beat() -> None:
     """Celery beat (``regwatch-beat``); exactly one runs (ADR-0006)."""
-    from regwatch.core.worker import celery_app
+    from regwatch.core.worker import BEAT_SCHEDULER, celery_app
 
     configure_logging()
-    celery_app().start(["beat", "--loglevel", "INFO", "--schedule", BEAT_SCHEDULE_FILE])
+    celery_app().start(["beat", "--loglevel", "INFO", "--scheduler", BEAT_SCHEDULER])
 
 
 def seed() -> None:

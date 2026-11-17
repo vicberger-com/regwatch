@@ -96,6 +96,8 @@ def _exists(local: datetime, zone: ZoneInfo) -> bool:
 
 def next_cron(cron: Cron, after: datetime, zone: ZoneInfo) -> datetime | None:
     """The first time strictly after ``after`` that ``cron`` names, in UTC; None if never."""
+    if after.tzinfo is None:
+        raise ValueError("after must be timezone-aware")  # review info 13: never local time
     start = after.astimezone(zone)
     floor = start.replace(second=0, microsecond=0, tzinfo=None) + timedelta(minutes=1)
     day = floor.date()
@@ -107,7 +109,9 @@ def next_cron(cron: Cron, after: datetime, zone: ZoneInfo) -> datetime | None:
                     if wall < floor:
                         continue
                     local = wall.replace(tzinfo=zone, fold=0)
-                    if _exists(local, zone):
+                    # Strictly later in real time, too: during a repeated hour the first
+                    # occurrence of a wall time can lie before ``after`` (scheduler review 5).
+                    if _exists(local, zone) and local.astimezone(UTC) > after:
                         return local.astimezone(UTC)
         day += timedelta(days=1)
     return None

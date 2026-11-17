@@ -87,3 +87,13 @@ The owner accepted the recommended default for every open question above:
 - Q1: keep the 1 request per 2 s default; set 10 per minute only in the Cellar and Federal Register starter sources.
 - Q2 accepted: a broker with no persistence.
 - Q3 (BL-51): the contract moves to Valkey 9, the line R-01 verified.
+
+## Amendment 1 (2026-11-17, proposed; needs the owner's approval)
+
+Decision 2 puts the per-source run lock in Valkey. The M3 scheduler keeps it in PostgreSQL instead:
+- **The lock:** a job has at most one unfinished `capture_run`, checked under the job's row lock. The check runs in the transaction that creates the run.
+- **Why:** Valkey keeps nothing across a restart, so a lock there could be released while a run still goes on. A PostgreSQL lock cannot.
+- **Lost messages:** handled as decision 2 says. The tick hands an unfinished run that no worker holds to a worker again after 10 minutes, at most three times. The hourly `capture.health_check` ends it after 2 hours.
+- **Enforcement:** CP-11 proposes schema constraints, so the database itself enforces one job per source and one unfinished run per job.
+
+The scheduler security review accepted this deviation on those conditions (`docs/evidence/phase-2/M3-scheduler-review.md`, finding 8).

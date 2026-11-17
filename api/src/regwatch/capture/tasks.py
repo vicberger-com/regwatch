@@ -28,6 +28,12 @@ async def _with_session[T](work: Callable[[AsyncSession], Awaitable[T]]) -> T:
         await engine.dispose()
 
 
+# Publishes get threads of their own, so a broker that hangs cannot take the threads password
+# hashing and file reads share (scheduler review finding 2).
+_PUBLISHERS = anyio.CapacityLimiter(4)
+PUBLISH_DEADLINE_S = 15.0  # longer than the broker timeouts and retries together
+
+
 def _send(job_id: uuid.UUID, countdown: float) -> None:
     from regwatch.core.worker import celery_app
 
@@ -36,8 +42,10 @@ def _send(job_id: uuid.UUID, countdown: float) -> None:
 
 
 async def enqueue_run(job_id: uuid.UUID, countdown: float) -> None:
-    """Publish ``capture.run_job``; the publish blocks briefly, so it runs off the loop."""
-    await anyio.to_thread.run_sync(_send, job_id, countdown)
+    """Publish ``capture.run_job`` off the event loop, within ``PUBLISH_DEADLINE_S``."""
+    with anyio.fail_after(PUBLISH_DEADLINE_S):
+        await anyio.to_thread.run_sync(_send, job_id, countdown, limiter=_PUBLISHERS,
+                                       abandon_on_cancel=True)  # fmt: skip
 
 
 @shared_task(name="capture.schedule_tick")
