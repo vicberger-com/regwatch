@@ -52,7 +52,7 @@ def test_upgrade_downgrade_upgrade_on_empty_database(postgres: Postgres, empty_d
     downgrade(url)
     assert postgres.schema_dump(empty_db) == before
     upgrade(url)
-    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0001"
+    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0002"
 
 
 def test_schema_matches_contract(postgres: Postgres, empty_db: str) -> None:
@@ -125,3 +125,30 @@ def test_capture_models_match_the_tables(postgres: Postgres, empty_db: str) -> N
             assert column.name in db, f"{table.name}.{column.name} is not in the database"
             assert (db[column.name] == "YES") == column.nullable, f"{table.name}.{column.name}"
     assert "source" in Base.metadata.tables
+
+
+def test_cp11_one_unfinished_run_per_job_and_one_job_per_source(
+    postgres: Postgres, empty_db: str
+) -> None:
+    """CP-11: the database refuses a second unfinished run of a job, and a second job for a
+    source; finished runs are not limited."""
+    upgrade(postgres.url(empty_db))
+    setup = (
+        "INSERT INTO source (id, name, kind) VALUES ('01930000-0000-7000-8000-000000000001',"
+        " 's', 'manual');"
+        "INSERT INTO capture_job (id, source_id, interval_seconds) VALUES"
+        " ('01930000-0000-7000-8000-000000000002', '01930000-0000-7000-8000-000000000001',"
+        " 3600);"
+        "INSERT INTO capture_run (job_id, finished_at) VALUES"
+        " ('01930000-0000-7000-8000-000000000002', now()),"
+        " ('01930000-0000-7000-8000-000000000002', now());"
+        "INSERT INTO capture_run (job_id) VALUES ('01930000-0000-7000-8000-000000000002');"
+    )
+    postgres.psql(empty_db, setup)
+    for sql in (
+        "INSERT INTO capture_run (job_id) VALUES ('01930000-0000-7000-8000-000000000002');",
+        "INSERT INTO capture_job (source_id, interval_seconds) VALUES"
+        " ('01930000-0000-7000-8000-000000000001', 3600);",
+    ):
+        with pytest.raises(RuntimeError, match="duplicate key"):
+            postgres.psql(empty_db, sql)

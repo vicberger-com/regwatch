@@ -169,12 +169,16 @@ async def test_runs_fail_without_a_connector_and_move_health(
 async def test_abandoned_runs_are_ended(
     admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, db_url: str
 ) -> None:
+    # One unfinished run per job (CP-11), so each run has a source of its own.
     made = (await admin.post(_api("/sources"), json=rss())).json()
-    jid = uuid.UUID(made["job"]["id"])
+    jobs = [uuid.UUID(made["job"]["id"])]
+    for name in ("Held", "Fresh"):
+        other = (await admin.post(_api("/sources"), json=rss(name=name))).json()
+        jobs.append(uuid.UUID(other["job"]["id"]))
     long_ago = datetime.now(UTC) - timedelta(hours=3)
-    old = CaptureRun(job_id=jid, created_at=long_ago, started_at=long_ago)
-    held = CaptureRun(job_id=jid, created_at=long_ago, started_at=long_ago)
-    fresh = CaptureRun(job_id=jid, started_at=datetime.now(UTC))
+    old = CaptureRun(job_id=jobs[0], created_at=long_ago, started_at=long_ago)
+    held = CaptureRun(job_id=jobs[1], created_at=long_ago, started_at=long_ago)
+    fresh = CaptureRun(job_id=jobs[2], started_at=datetime.now(UTC))
     db.add_all([old, held, fresh])
     await db.commit()
     old_id, held_id, fresh_id = old.id, held.id, fresh.id

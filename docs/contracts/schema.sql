@@ -151,6 +151,11 @@ CREATE TABLE capture_run (
   triggered_by uuid REFERENCES "user"(id)          -- NULL = scheduler
 );
 CREATE INDEX ix_capture_run_job ON capture_run(job_id, started_at DESC);
+-- CP-11 (ADR-0006 amendment 1): one job per source, at most one unfinished run per job, and an
+-- index for the scheduler's sweep and hand-over of unfinished runs.
+ALTER TABLE capture_job ADD CONSTRAINT uq_capture_job_source UNIQUE (source_id);
+CREATE UNIQUE INDEX uq_capture_run_unfinished ON capture_run(job_id) WHERE finished_at IS NULL;
+CREATE INDEX ix_capture_run_open ON capture_run(created_at) WHERE finished_at IS NULL;
 
 CREATE TABLE item ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
