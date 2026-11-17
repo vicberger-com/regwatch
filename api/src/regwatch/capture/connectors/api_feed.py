@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 import anyio
 from pydantic import BaseModel
 
-from regwatch.capture.connectors import legislation
+from regwatch.capture.connectors import eurlex, legislation
 from regwatch.capture.connectors.base import (
     Candidate,
     ConnectorContext,
@@ -186,6 +186,8 @@ def check_params(config: ApiFeedConfig) -> None:
         _check_lower_bound(config.params.get(LOWER_BOUND))
     elif config.provider == "legislation_gov_uk":
         legislation.check(config.params)
+    elif config.provider == "eur_lex":
+        eurlex.check(config.params)
 
 
 def _check_lower_bound(value: Any) -> None:
@@ -263,6 +265,10 @@ class ApiFeedConnector:
             async for candidate in legislation.discover(config.params, job, ctx):
                 yield candidate
             return
+        if config.provider == "eur_lex":
+            async for candidate in eurlex.discover(config.params, job, ctx):
+                yield candidate
+            return
         if config.provider != "federal_register":
             raise ConnectorError("not-implemented",
                                  f"the {config.provider} adapter is not built yet")  # fmt: skip
@@ -331,6 +337,8 @@ class ApiFeedConnector:
         the document, as full text is blocked (R-06, E-FR-14)."""
         if candidate.hints.get("provider") == "legislation_gov_uk":
             return await legislation.fetch(candidate, job, ctx)
+        if candidate.hints.get("provider") == "eur_lex":
+            return await eurlex.fetch(candidate, job, ctx)
         record = candidate.hints.get("record") or {}
         body = json.dumps(record, sort_keys=True).encode("utf-8")
         key = f"raw/{job.source_id}/{hashlib.sha256(body).hexdigest()}.json"

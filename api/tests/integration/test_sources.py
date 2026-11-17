@@ -135,6 +135,11 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
           "override_reason": "We asked nicely",
           "config": {"provider": "legislation_gov_uk", "params": {"title_terms": ["cyber"]}}},
          "robots_policy"),  # its fair use policy requires robots.txt (legislation review 1)
+        ({"name": "EU", "kind": "api_feed",
+          "config": {"provider": "eur_lex", "params": {
+              "eurovoc_concepts": ["http://eurovoc.europa.eu/1"],
+              "sparql_endpoint": "https://evil.example/sparql"}}},
+         "config.params"),  # the SPARQL endpoint is fixed
         (rss(job={"cron": "\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "*/\u00b2 * * * *"}), "job.cron"),
         (rss(job={"cron": "\u0661 * * * *"}), "job.cron"),
