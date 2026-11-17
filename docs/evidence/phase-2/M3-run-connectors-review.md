@@ -115,3 +115,24 @@ Findings 5 to 11 and 14 are low and can be fixed in the same follow-up or tracke
 | R5 | low | **TLS failures other than certificates are still retried, and dropped connections no longer are** (see 9). **Fix:** walk the exception chain (`__cause__` and `__context__`, two levels) for `ssl.SSLError`, or match `"[SSL:"`. Keep `RemoteProtocolError` messages about a closed connection (`"Server disconnected"`, `"peer closed connection"`) as `connect`. Add `tls_class.py`'s two cases as tests. | | |
 
 **Sign-off at re-verification 1:** signed off for merge. The high finding 1 and medium findings 2, 3 and 4 are closed and verified, and so are lows 5 to 10 and 14. New findings R1, R2, R3 and R5 are low, and R4 is information only; they can be fixed in a follow-up or tracked in BL-90, and none blocks the merge. R1 should be fixed before a networked object store (BL-79) lands, since it is what makes storage faults count against sources. Findings 11 and 12 are tracked as BL-90 (i) and (j). Finding 13 is information only. · M3 run-connectors independent review · 2026-11-17
+
+## Re-verification 2
+**Scope:** commit `258b89e` on `sec/M3-run-connectors-followups` (`execution.py`, `runs.py`, `safe_fetch/fetch.py`, `services.py`, and their tests). · **Reviewer session label:** M3 run-connectors independent review · **Date:** 2026-11-17
+
+**Method:**
+- Read the diff.
+- Under `netguard.py`:
+  - `test_capture_execution.py` and `test_safe_fetch_fetch.py`: 75 passed;
+  - `-m integration` on `test_capture_runs.py` and `test_sources.py`: 62 passed, with no non-loopback attempt, and the throwaway PostgreSQL was removed.
+- Re-ran `outcomes.py`, `deadline_attr.py` and `tls_class.py` from `/tmp/m3runs-review/`. `tls_class.py` again used a `127.0.0.1` listener for the script's lifetime only.
+- The dev stack was not touched. No external network was used. No repository file other than this record was changed.
+
+| # | Re-verified | Status |
+| --- | --- | --- |
+| R1 | The deadline block is entered `as deadline`, and a `TimeoutError` counts as `run-deadline` only when `deadline.expired()` (`execution.py:184-186`). `deadline_attr.py`: the store's `OSError(ETIMEDOUT)` now propagates out of `run_connector`, so `execute` ends the run as `internal-error`, which is outside health. Unit test added. | closed |
+| R2 | `_decision` gives `disallowed` when robots.txt refused every page and nothing else happened. It gives `partly-disallowed` when anything was fetched, failed or rate-limited. `outcomes.py` "pages disallowed": `skipped`/`robots`/`disallowed`. Unit test added. | closed |
+| R3 | `_log.exception("capture_run_internal_error", run_id=..., job_id=...)` in the handler (`runs.py:290`). The run record still names only the type. No test asserts the log line (info). | closed |
+| R4 | `check_job` uses `(items + 2) * 60 / rate`. 44 items at 1 a minute is refused (integration test); 43 items fit, since 45 slots take 45 minutes. | closed |
+| R5 | `_is_tls` walks `__cause__`/`__context__` with cycle protection, looking for an `ssl.SSLError` or TLS words. `tls_class.py` against a real TLS client: `WRONG_VERSION_NUMBER` and a handshake-failure alert now both give `tls`, so they are not retried. A `RemoteProtocolError` "without sending a response" is `connect` again and retried; a body cut short stays `protocol`. **Note (info):** the unit test builds the exception chain by hand. The loopback check above confirms that real httpx chains match. Matching the words `SSL`/`TLS` in a `ConnectError` message can at most mark a connect failure as `tls`, which means only that it is not retried; the message is local, never sent by the server. | closed |
+
+**Sign-off at re-verification 2:** signed off. R1 to R5 are closed. Still open but tracked: 11 and 12 (BL-90 (i) and (j)). Information only: 13, and the untested log line in R3. · M3 run-connectors independent review · 2026-11-17
