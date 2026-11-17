@@ -88,15 +88,19 @@ def text_of(el: ET.Element, skip: set[int]) -> str:
     return normalize("".join(out))
 
 
-def _skipped(page: Page, rules: ExtractionRules) -> set[int]:
-    return {id(el) for s in rules.exclude_selectors for el in compile_selector(s).select(page.root)}
+Walk = list[tuple[ET.Element, ET.Element | None, int, int]]
+
+
+def _skipped(page: Page, rules: ExtractionRules, walk: Walk) -> set[int]:
+    return {id(el) for s in rules.exclude_selectors
+            for el in compile_selector(s).select(page.root, walk)}  # fmt: skip
 
 
 def _length(value: str | None) -> int:
     return len(" ".join(value.split())) if value else 0
 
 
-def _main(page: Page, skip: set[int], minimum: int) -> tuple[str, str]:
+def _main(page: Page, skip: set[int], minimum: int, walk: Walk) -> tuple[str, str]:
     """(text, method) by the heuristic in the module docstring. Text and link-text lengths are
     summed bottom-up in one pass, so nesting does not make scoring quadratic."""
     for tag in ("main", "article"):
@@ -105,7 +109,6 @@ def _main(page: Page, skip: set[int], minimum: int) -> tuple[str, str]:
             text = text_of(found[0], skip)
             if len(text) >= minimum:
                 return text, "main" if tag == "main" else "article"
-    walk = elements(page.root)
     total: dict[int, int] = {}
     links: dict[int, int] = {}
     for el, _parent, *_rest in reversed(walk):  # children before their parents
@@ -152,28 +155,29 @@ def parse_date(value: str | None, fmt: str | None = None) -> datetime | None:
     return None
 
 
-def _first(page: Page, selector: str | None, skip: set[int]) -> ET.Element | None:
+def _first(page: Page, selector: str | None, skip: set[int], walk: Walk) -> ET.Element | None:
     if not selector:
         return None
-    found = [el for el in compile_selector(selector).select(page.root) if id(el) not in skip]
+    found = [el for el in compile_selector(selector).select(page.root, walk) if id(el) not in skip]
     return found[0] if found else None
 
 
 def extract(page: Page, rules: ExtractionRules) -> Extracted:
     """The page's text, hash, title and date by the job's rules (checked when saved)."""
-    skip = _skipped(page, rules)
+    walk = elements(page.root)  # once per page, for every selector (review finding 3)
+    skip = _skipped(page, rules, walk)
     warnings = []
     if page.cut:
         warnings.append("the page was longer than the parse limit; only its start was read")
     if rules.content_selectors:
         chosen: dict[int, ET.Element] = {}
         for s in rules.content_selectors:
-            chosen.update((id(el), el) for el in compile_selector(s).select(page.root))
+            chosen.update((id(el), el) for el in compile_selector(s).select(page.root, walk))
         # In document order, and not inside another chosen element, whose text holds it: one
         # pass marks each element that has a chosen ancestor.
         under: dict[int, bool] = {}
         picked: list[ET.Element] = []
-        for el, parent, *_r in elements(page.root):
+        for el, parent, *_r in walk:
             up = parent is not None and (under[id(parent)] or id(parent) in chosen)
             under[id(el)] = up
             if id(el) in chosen and not up:
@@ -183,10 +187,10 @@ def extract(page: Page, rules: ExtractionRules) -> Extracted:
         if not picked:
             warnings.append("no element matched the content selectors")
     else:
-        text, method = _main(page, skip, rules.min_text_length)
+        text, method = _main(page, skip, rules.min_text_length, walk)
     if len(text) < rules.min_text_length:
         warnings.append(f"the text is shorter than {rules.min_text_length} characters")
-    title_el = _first(page, rules.title_selector, skip)
+    title_el = _first(page, rules.title_selector, skip, walk)
     if title_el is None:
         title_el = page.root.find("head/title")
     if title_el is None:
@@ -194,7 +198,7 @@ def extract(page: Page, rules: ExtractionRules) -> Extracted:
     title = None
     if title_el is not None:
         title = text_of(title_el, set()).replace("\n", " ")[:MAX_TITLE] or None
-    date_el = _first(page, rules.date_selector, skip)
+    date_el = _first(page, rules.date_selector, skip, walk)
     published = None
     if date_el is not None:
         raw = date_el.get("datetime") or date_el.get("content") or text_of(date_el, set())

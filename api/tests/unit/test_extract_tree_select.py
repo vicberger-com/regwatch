@@ -40,7 +40,7 @@ def test_the_tree_is_a_browsers_tree() -> None:
      ("li:nth-child(+3)", ["c"]), ("li:first-child", ["a"]), ("li:last-child", ["c"]),
      ("table > tbody > tr > td", ["t"]), ("ul li:last-child, #main>p:first-child", ["1", "c"]),
      ("p , li:not(:last-child)", ["1", "2", "3", "a", "b"]), ("* > section *", ["3"]),
-     ("#nope", []), ("div:not(#main) p", [])],
+     ("#nope", []), ("div:not(#main) p", []), ("li:nth-child(2n + 1)", ["a", "c"])],
 )  # fmt: skip
 def test_the_subset_matches_as_css_does(selector: str, expected: list[str]) -> None:
     assert texts(selector) == expected
@@ -55,7 +55,9 @@ def test_the_subset_matches_as_css_does(selector: str, expected: list[str]) -> N
      ("a:nth-child(foo)", "an\\+b"), ("p.x div", None), (".x p", None), ("p.x span", None),
      (".a div", None), ("a.b c", None), ("x.y", None), ("div.x#y", None), ("p#x", None),
      (".x div", None), ("p.a.b", None), ("a, " * 10 + "a", "at most 10"),
-     (" ".join(["p"] * 9), "at most 8"), ("p.x*", "must come first")],
+     (" ".join(["p"] * 9), "at most 8"), ("p.x*", "must come first"),
+     ("li:nth-child(\u0663)", "an\\+b"), ("li:nth-child(\uff13)", "an\\+b"),
+     ("li:nth-child(2 n+1)", "an\\+b"), ("#1x", "not supported"), ("a\u3000b", "not supported")],
 )  # fmt: skip
 def test_selectors_outside_the_subset_are_refused(selector: str, message: str | None) -> None:
     if message is None:
@@ -79,7 +81,8 @@ def test_hostile_pages_are_refused_quickly(body: bytes, reason: str) -> None:
     started = time.monotonic()
     with pytest.raises(tree.ParseError) as exc:
         tree.parse(body)
-    assert exc.value.reason == reason and time.monotonic() - started < 5
+    # Generous: the bound matters, not the machine (review finding 7: 5.8 s under coverage).
+    assert exc.value.reason == reason and time.monotonic() - started < 20
 
 
 def test_a_slow_parse_is_stopped(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -110,3 +113,21 @@ def test_matching_costs_elements_times_steps(monkeypatch: pytest.MonkeyPatch) ->
     assert sel.select(tree.parse(body).root) == []
     assert time.monotonic() - started < 1
     assert select.MAX_STEPS == 8
+
+
+def test_matching_follows_the_browser() -> None:
+    """Review finding 4: ASCII whitespace splits classes; SVG names and attributes match
+    ignoring case and namespace; template contents are inert."""
+    body = (
+        '<p class="a\u00a0b">nbsp</p><p class="c\td">tab</p>'
+        '<svg viewBox="0 0 1 1"><rect class=r></rect></svg>'
+        "<template><p class=t>inert</p></template>"
+    ).encode()
+    assert texts(".a", body) == [] and texts(".d", body) == ["tab"]
+    assert texts("[class~=b]", body) == []
+    assert texts("svg rect.r", body) == ["{http://www.w3.org/2000/svg}rect"]
+    assert len(texts("[viewbox]", body)) == 1 and texts(".t", body) == []
+
+
+def test_a_charset_label_that_is_no_text_is_ignored() -> None:
+    assert tree.parse(b"<p>x</p>", "\ud800").root.find(".//p").text == "x"  # type: ignore[union-attr]

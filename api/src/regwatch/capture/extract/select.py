@@ -27,16 +27,21 @@ MAX_SELECTOR = 300
 MAX_ALTERNATIVES = 10
 MAX_STEPS = 8
 _NAME = r"-?[_a-zA-Z][-_a-zA-Z0-9]*"
+_WS = r"[ \t\n\r\f]"  # CSS whitespace: ASCII only (review finding 6)
+_SPLIT = re.compile(r"[ \t\n\r\f]+")  # how a browser splits class and ~= lists (finding 4)
 _TOKEN = re.compile(
     # Combinators before plain whitespace, so " > " and " , " are one token each.
-    rf"""(?P<child>\s*>\s*)|(?P<comma>\s*,\s*)|(?P<space>\s+)|(?P<type>{_NAME}|\*)
-    |\#(?P<id>-?[_a-zA-Z0-9][-_a-zA-Z0-9]*)|\.(?P<cls>{_NAME})
+    rf"""(?P<child>{_WS}*>{_WS}*)|(?P<comma>{_WS}*,{_WS}*)|(?P<space>{_WS}+)|(?P<type>{_NAME}|\*)
+    |\#(?P<id>{_NAME})|\.(?P<cls>{_NAME})
     |\[\s*(?P<attr>{_NAME})\s*(?:(?P<op>[~^$*]?=)\s*(?:(?P<bare>{_NAME})|"(?P<dq>[^"\\]*)"|'(?P<sq>[^'\\]*)')\s*)?\]
     |:(?P<pseudo>first-child|last-child)\b|:nth-child\(\s*(?P<nth>[^)]*?)\s*\)|:not\((?P<neg>[^()]*)\)
     """,
     re.VERBOSE,
 )
-_NTH = re.compile(r"(?:(?P<a>[+-]?\d*)n\s*(?:(?P<sign>[+-])\s*(?P<b1>\d+))?|(?P<b>[+-]?\d+))")
+_NTH = re.compile(
+    r"(?:(?P<a>[+-]?[0-9]{0,6})n(?:(?P<sign>[+-])(?P<b1>[0-9]{1,6}))?"
+    r"|(?P<b>[+-]?[0-9]{1,6}))"
+)
 
 
 class SelectorError(ValueError):
@@ -53,16 +58,17 @@ class _Compound:
     negated: tuple[_Compound, ...] = ()
 
     def matches(self, el: ET.Element, position: int, count: int) -> bool:
-        if self.tag is not None and el.tag != self.tag:
+        # SVG and MathML elements carry their namespace in html5lib's tree (finding 4).
+        if self.tag is not None and el.tag.rsplit("}", 1)[-1].lower() != self.tag:
             return False
         if self.ids and any(el.get("id") != i for i in self.ids):
             return False
         if self.classes:
-            have = set((el.get("class") or "").split())
+            have = set(_SPLIT.split(el.get("class") or ""))
             if not have.issuperset(self.classes):
                 return False
         for name, op, want in self.attrs:
-            value = el.get(name)
+            value = _get(el, name)
             if value is None or not _attr(op, value, want):
                 return False
         for a, b, from_end in self.nth:
@@ -71,13 +77,21 @@ class _Compound:
         return not any(n.matches(el, position, count) for n in self.negated)
 
 
+def _get(el: ET.Element, name: str) -> str | None:
+    """An attribute by name, ignoring case, as for HTML; SVG keeps ``viewBox`` (finding 4)."""
+    value = el.get(name)
+    if value is None:
+        value = next((v for k, v in el.attrib.items() if k.lower() == name), None)
+    return value
+
+
 def _attr(op: str | None, value: str, want: str) -> bool:
     if op is None:
         return True
     if op == "=":
         return value == want
     if op == "~=":
-        return want in value.split()
+        return want in _SPLIT.split(value)
     if not want:  # [a^=""], [a$=""] and [a*=""] match nothing (Selectors 4)
         return False
     return {"^=": value.startswith, "$=": value.endswith, "*=": value.__contains__}[op](want)
@@ -96,10 +110,12 @@ class Selector:
     # Each alternative: its steps left to right, each a compound and the combinator before it.
     alternatives: tuple[tuple[tuple[str, _Compound], ...], ...] = field(repr=False)
 
-    def select(self, root: ET.Element) -> list[ET.Element]:
-        """The matching elements, in document order, each once."""
+    def select(self, root: ET.Element, walk: list[tuple[ET.Element, ET.Element | None, int, int]]
+               | None = None) -> list[ET.Element]:  # fmt: skip
+        """The matching elements, in document order, each once. ``walk`` is ``elements(root)``,
+        when the caller has it already: several selectors on one page walk it once (finding 3)."""
         found: dict[int, ET.Element] = {}
-        walk = elements(root)
+        walk = elements(root) if walk is None else walk
         for steps in self.alternatives:
             # here[id] = which steps match the element; below[id] = which match it or an ancestor
             here: dict[int, int] = {}
@@ -166,7 +182,9 @@ def _inner(text: str, body: str) -> _Compound:
 
 
 def _parse_nth(text: str, expr: str) -> tuple[int, int]:
-    expr = {"odd": "2n+1", "even": "2n"}.get(expr.lower(), expr.replace(" ", ""))
+    # Spaces only around the sign: "2n + 1", not "2 n+1" (review finding 6).
+    expr = {"odd": "2n+1", "even": "2n"}.get(expr.lower(), re.sub(r" *([+-]) *(?=[0-9])",
+                                                              r"\1", expr.strip()))  # fmt: skip
     m = _NTH.fullmatch(expr)
     if m is None:
         raise SelectorError(f"{text!r}: :nth-child takes an+b, odd or even")

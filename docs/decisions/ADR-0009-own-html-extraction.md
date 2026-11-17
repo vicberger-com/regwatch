@@ -1,6 +1,6 @@
 # ADR-0009: Own HTML extraction on html5lib, instead of trafilatura and readability-lxml
 
-**Status:** accepted by the owner on 2026-11-17 · **Date:** 2026-11-17 · **Requirements:** REQ-04, REQ-05, REQ-20
+**Status:** accepted by the owner on 2026-11-17; amendment 1 on 2026-11-17 (security review finding 1) · **Date:** 2026-11-17 · **Requirements:** REQ-04, REQ-05, REQ-20
 **Research:** R-01 C19 and C20; `docs/03-architecture.md` 3.4, 3.5 and 3.6; `docs/modules/M3-capture-framework.md`; ADR-0003; CP-15
 
 ## Context
@@ -19,8 +19,19 @@
 2. **Selectors.** The extraction rules use a CSS subset implemented in the project and checked when a source is saved (CP-15). Anything outside the subset is refused with a message.
 3. **Main text.** When `content_selectors` is empty, a built-in heuristic picks the main text: it removes `exclude_selectors`, scripts, styles, navigation, headers, footers and asides, then takes the block element with the most paragraph text, scored by text length less link text.
 4. **Dates.** An omitted `date_format` means ISO 8601 and a short fixed list of common formats. dateparser is not used.
-5. **Bounds.** Parsing runs in a worker thread and only on bodies within the fetch cap. The tree's depth and node count are capped, so a hostile page cannot exhaust memory.
+5. **Bounds.** Only the first 2 MiB of a body are parsed, and the tree builder caps depth and element count. Extraction runs in a child process (amendment 1 below).
 6. **The plan rows.** The register rows for trafilatura and readability-lxml stay as research records, marked "not used (ADR-0009)".
+
+## Amendment 1 (2026-11-17): extraction runs in a child process
+
+The security review (`docs/evidence/phase-2/M3-html-extract-review.md`, finding 1) found that the parse deadline, checked each time an element is created, does not hold. html5lib can spend minutes in its tokenizer, or in quadratic string building, without creating an element. For example, `<p>` followed by 2 MiB of `"< "` ran for 295 s. A thread cannot be stopped from outside.
+
+Each document is therefore extracted by `python -I -m regwatch.capture.extract.child`, a plain subprocess, because Celery's prefork workers are daemonic and cannot start multiprocessing children.
+- The child limits itself before reading its input: `RLIMIT_CPU` 10 s and `RLIMIT_AS` 1 GiB.
+- The parent kills it after 20 s of wall-clock time.
+- It gets an empty environment, apart from `PATH` and the C locale.
+- A child that runs over, dies, or answers anything but the expected JSON is a typed `ParseError` for that document, never an internal error of the run.
+- Each document costs about 0.3 s of process start-up.
 
 ## Alternatives considered
 

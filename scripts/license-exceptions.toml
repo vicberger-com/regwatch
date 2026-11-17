@@ -38,7 +38,7 @@ package = "webencodings"
 version = "0.5.1"
 license = "BSD-3-Clause"
 scope = "any"
-reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE is the 3-clause text. html5lib's dependency (ADR-0009)"
+reason = "Wheel metadata says 'License: BSD' and the classifier 'BSD License' only; LICENSE is the 3-clause text, and the wheel ships no license file, so api/THIRD_PARTY_NOTICES.md carries it. html5lib's dependency (ADR-0009)"
 reviewed = "gsnedders/python-webencodings tag v0.5.1 (fa2cb5d) LICENSE, read 2026-11-17; register row V, R-01 C20"
 
 [[exception]]

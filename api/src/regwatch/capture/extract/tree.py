@@ -81,7 +81,10 @@ def parse(body: bytes, encoding: str | None = None) -> Page:
     deadline = time.monotonic() + MAX_SECONDS
     parser = html5lib.HTMLParser(tree=_builder(deadline), namespaceHTMLElements=False)
     # An unknown charset label is ignored by html5lib, which then sniffs as browsers do.
-    root = parser.parse(body[:MAX_PARSE_BYTES], transport_encoding=encoding)
+    try:
+        root = parser.parse(body[:MAX_PARSE_BYTES], transport_encoding=encoding)
+    except UnicodeError:  # a label that is no text at all, such as a lone surrogate (finding 6)
+        root = parser.parse(body[:MAX_PARSE_BYTES])
     return Page(root, cut)
 
 
@@ -93,6 +96,8 @@ def elements(root: ET.Element) -> list[tuple[ET.Element, ET.Element | None, int,
     while stack:
         item = stack.pop()
         out.append(item)
-        kids = [k for k in item[0] if isinstance(k.tag, str)]  # comments have a function tag
+        # Comments have a function as their tag. A template's contents are inert in a browser
+        # and match no selector there (review finding 4), so they are not walked.
+        kids = [k for k in item[0] if isinstance(k.tag, str)] if item[0].tag != "template" else []
         stack.extend((k, item[0], n, len(kids)) for n, k in reversed(list(enumerate(kids, 1))))
     return out
