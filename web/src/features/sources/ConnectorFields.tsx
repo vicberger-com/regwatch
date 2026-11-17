@@ -17,6 +17,7 @@ export interface FieldSchema {
   maximum?: number;
   minItems?: number;
   maxItems?: number;
+  maxLength?: number;
   description?: string;
   items?: FieldSchema;
 }
@@ -27,6 +28,16 @@ export interface ObjectSchema {
 }
 
 export type Values = Record<string, unknown>;
+
+/** Every field type this form can show; a test checks the contract uses no other. */
+export const SUPPORTED_TYPES = new Set([
+  "string",
+  "boolean",
+  "integer",
+  "number",
+  "array",
+  "object",
+]);
 
 export const KINDS = Object.keys(
   CONNECTORS.kinds,
@@ -52,6 +63,7 @@ export function toForm(schema: ObjectSchema, stored: Values): Values {
         ? value.filter((v): v is string => typeof v === "string").join("\n")
         : "";
     else if (prop.type === "boolean") out[name] = Boolean(value);
+    else if (prop.type === "object") out[name] = value ?? null;
     else
       out[name] =
         typeof value === "string" || typeof value === "number"
@@ -70,6 +82,10 @@ export function fromForm(schema: ObjectSchema, form: Values): Values {
       out[name] = Boolean(raw);
       continue;
     }
+    if (prop.type === "object") {
+      if (raw && typeof raw === "object") out[name] = raw;
+      continue;
+    }
     const text = typeof raw === "string" ? raw.trim() : "";
     if (!text) continue;
     if (prop.type === "array") {
@@ -85,6 +101,26 @@ export function fromForm(schema: ObjectSchema, form: Values): Values {
     }
   }
   return out;
+}
+
+/**
+ * The config to save when editing: the stored one with the form's fields laid over it, so keys
+ * the form does not edit (object fields such as `params`) are kept, and a field the user
+ * emptied is removed (sources UI review finding 2).
+ */
+export function mergeConfig(
+  schema: ObjectSchema,
+  stored: Values,
+  form: Values,
+): Values {
+  const given = fromForm(schema, form);
+  const shown = new Set(
+    Object.entries(schema.properties)
+      .filter(([, prop]) => prop.type !== "object") // shown read-only, kept as stored
+      .map(([name]) => name),
+  );
+  const kept = Object.entries(stored).filter(([name]) => !shown.has(name));
+  return { ...Object.fromEntries(kept), ...given };
 }
 
 function label(name: string): string {
@@ -147,11 +183,32 @@ export function ConnectorFields({
           );
         }
         let control;
+        if (prop.type === "object") {
+          return (
+            <div key={name} className="flex flex-col gap-1">
+              <span>{caption}</span>
+              <pre
+                id={id}
+                className="whitespace-pre-wrap text-sm"
+                aria-describedby={hint}
+              >
+                {values[name]
+                  ? JSON.stringify(values[name], null, 2)
+                  : "(not set)"}
+              </pre>
+              <span className="text-sm text-text-muted">
+                Kept as stored; this form does not edit it.
+              </span>
+              {description}
+            </div>
+          );
+        }
         if (prop.enum) {
           control = (
             <select
               id={id}
               value={text}
+              required={required.has(name)}
               disabled={disabled}
               aria-describedby={hint}
               className={field}
@@ -159,7 +216,9 @@ export function ConnectorFields({
                 set(e.target.value);
               }}
             >
-              <option value="">(default)</option>
+              <option value="" disabled={required.has(name)}>
+                {required.has(name) ? "Choose…" : "(default)"}
+              </option>
               {prop.enum.map((option) => (
                 <option key={option}>{option}</option>
               ))}
@@ -189,6 +248,7 @@ export function ConnectorFields({
               value={text}
               min={prop.minimum}
               max={prop.maximum}
+              maxLength={prop.maxLength}
               step={prop.type === "number" ? "any" : undefined}
               disabled={disabled}
               required={required.has(name)}
@@ -205,7 +265,14 @@ export function ConnectorFields({
             <label htmlFor={id}>
               {caption}
               {prop.type === "array" && (
-                <span className="text-text-muted"> (one per line)</span>
+                <span className="text-text-muted">
+                  {" "}
+                  (one per line
+                  {prop.maxItems !== undefined
+                    ? `, at most ${String(prop.maxItems)}`
+                    : ""}
+                  )
+                </span>
               )}
             </label>
             {control}

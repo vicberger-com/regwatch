@@ -19,12 +19,10 @@ export const CONNECTORS = {
         "type": "string"
       },
       "exclude_selectors": {
-        "counters": null,
         "description": "removed before hashing and extraction (dates",
         "items": {
           "type": "string"
         },
-        "navigation)": null,
         "type": "array"
       },
       "exclude_url_patterns": {
@@ -70,10 +68,6 @@ export const CONNECTORS = {
         },
         "field_map": {
           "description": "generic_json only; maps url",
-          "external_id to JSONPaths": null,
-          "published_at": null,
-          "summary": null,
-          "title": null,
           "type": "object"
         },
         "item_path": {
@@ -82,8 +76,7 @@ export const CONNECTORS = {
         },
         "params": {
           "description": "provider-specific query parameters",
-          "type": "object",
-          "validated by the adapter": null
+          "type": "object"
         },
         "provider": {
           "enum": [

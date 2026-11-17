@@ -13,6 +13,7 @@ import {
   fromForm,
   KINDS,
   kindSchema,
+  mergeConfig,
   toForm,
   type Values,
 } from "./ConnectorFields";
@@ -59,36 +60,102 @@ export function SourceEditor({
     String(job?.max_items_per_run ?? 200),
   );
   const [rate, setRate] = useState(String(job?.rate_limit_per_minute ?? 30));
+  const [enabled, setEnabled] = useState(current?.enabled ?? true);
+  const [respectAgain, setRespectAgain] = useState(false);
+  const [initialConfig] = useState(() => JSON.stringify(config));
+  const [initialMinutes] = useState(() => minutes);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!schema) return;
-    const jobBody: CaptureJobWrite = {
-      timezone,
-      max_items_per_run: Number(maxItems),
-      rate_limit_per_minute: Number(rate),
-      ...(schedule === "cron"
-        ? { cron, interval_seconds: null }
-        : { interval_seconds: Math.round(Number(minutes) * 60), cron: null }),
-    };
-    const body: SourceWrite = {
-      name,
-      credibility,
-      // The contract types config as an object of any shape; the API checks it per kind.
-      config: fromForm(schema, config) as NonNullable<SourceWrite["config"]>,
-      job: jobBody,
-      ...(current ? {} : { kind: kind as SourceWrite["kind"] & string }),
-    };
-    // Only holders of sources.override_robots see or change the override (M3 acceptance 4);
-    // the API checks the permission again.
-    if (canOverride) {
-      body.robots_policy = override ? "override" : "respect";
-      if (override) body.override_reason = reason;
+    const body = current ? changes(current) : creation();
+    if (!body) {
+      onDone(); // nothing changed
+      return;
     }
     save.mutate(
       { ...(current ? { id: current.id } : {}), body },
       { onSuccess: onDone },
     );
+  }
+
+  function wantedJob(): CaptureJobWrite {
+    const sameMinutes = job && minutes === initialMinutes;
+    return {
+      timezone,
+      max_items_per_run: Number(maxItems),
+      rate_limit_per_minute: Number(rate),
+      ...(schedule === "cron"
+        ? { cron, interval_seconds: null }
+        : {
+            // An unchanged field keeps the stored seconds exactly (review finding 9).
+            interval_seconds: sameMinutes
+              ? (job.interval_seconds ?? 3600)
+              : Math.round(Number(minutes) * 60),
+            cron: null,
+          }),
+    };
+  }
+
+  function creation(): SourceWrite {
+    const body: SourceWrite = {
+      name,
+      credibility,
+      kind: kind as NonNullable<SourceWrite["kind"]>,
+      // The contract types config as an object of any shape; the API checks it per kind.
+      config: fromForm(schema ?? { properties: {} }, config) as NonNullable<
+        SourceWrite["config"]
+      >,
+      job: wantedJob(),
+    };
+    if (canOverride && override) {
+      body.robots_policy = "override";
+      body.override_reason = reason;
+    }
+    return body;
+  }
+
+  /**
+   * Only what the user changed (review findings 1 and 4): an unchanged config is not sent, so
+   * renaming an overridden source is not a new override, and an unchanged schedule is not
+   * sent, so saving does not start a run.
+   */
+  function changes(source: Source): SourceWrite | null {
+    const body: SourceWrite = {};
+    if (name !== source.name) body.name = name;
+    if (credibility !== source.credibility) body.credibility = credibility;
+    if (enabled !== source.enabled) body.enabled = enabled;
+    if (JSON.stringify(config) !== initialConfig) {
+      body.config = mergeConfig(
+        schema ?? { properties: {} },
+        source.config ?? {},
+        config,
+      ) as NonNullable<SourceWrite["config"]>;
+    }
+    const want = wantedJob();
+    const have = source.job;
+    const jobChanges = Object.fromEntries(
+      Object.entries(want).filter(
+        ([key, value]) =>
+          (have as Record<string, unknown> | undefined)?.[key] !== value,
+      ),
+    ) as CaptureJobWrite;
+    if (Object.keys(jobChanges).length > 0) body.job = jobChanges;
+    // Only holders of sources.override_robots change the override (M3 acceptance 4); anyone
+    // who manages sources may return one to respecting robots.txt. The API checks again.
+    const wasOverride = source.robots_policy === "override";
+    if (canOverride) {
+      if (
+        override !== wasOverride ||
+        (override && reason !== source.override_reason)
+      ) {
+        body.robots_policy = override ? "override" : "respect";
+        if (override) body.override_reason = reason;
+      }
+    } else if (wasOverride && respectAgain) {
+      body.robots_policy = "respect";
+    }
+    return Object.keys(body).length > 0 ? body : null;
   }
 
   return (
@@ -178,6 +245,7 @@ export function SourceEditor({
             <input
               type="number"
               min={15}
+              step="any"
               value={minutes}
               className={field}
               onChange={(e) => {
@@ -234,6 +302,18 @@ export function SourceEditor({
           />
         </label>
       </fieldset>
+      {current && (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => {
+              setEnabled(e.target.checked);
+            }}
+          />
+          Enabled (captures on its schedule)
+        </label>
+      )}
       {canOverride ? (
         <fieldset className="flex flex-col gap-2 rounded border border-border p-2">
           <legend>robots.txt</legend>
@@ -265,10 +345,24 @@ export function SourceEditor({
         </fieldset>
       ) : (
         current?.robots_policy === "override" && (
-          <p className="text-sm text-text-muted">
-            robots.txt is overridden for this source ({current.override_reason}
-            ). Changing where it points needs the override permission.
-          </p>
+          <fieldset className="flex flex-col gap-1 rounded border border-border p-2">
+            <legend>robots.txt</legend>
+            <p className="text-sm text-text-muted">
+              robots.txt is overridden for this source (
+              {current.override_reason}). Changing its addresses, or turning it
+              back on, needs the override permission.
+            </p>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={respectAgain}
+                onChange={(e) => {
+                  setRespectAgain(e.target.checked);
+                }}
+              />
+              Respect robots.txt again
+            </label>
+          </fieldset>
         )
       )}
       {save.isError && (

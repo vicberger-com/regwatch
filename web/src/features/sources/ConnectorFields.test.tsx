@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { fromForm, kindSchema, toForm } from "./ConnectorFields";
+import {
+  fromForm,
+  KINDS,
+  kindSchema,
+  mergeConfig,
+  SUPPORTED_TYPES,
+  toForm,
+} from "./ConnectorFields";
 
 describe("connector form values", () => {
   const rss = kindSchema("rss");
@@ -41,5 +48,36 @@ describe("connector form values", () => {
       max_entries: "many",
     });
     expect(kindSchema("nope")).toBeNull();
+  });
+
+  it("supports every field type the contract uses", () => {
+    for (const kind of KINDS) {
+      const schema = kindSchema(kind);
+      if (!schema) throw new Error(kind);
+      for (const [name, prop] of Object.entries(schema.properties)) {
+        expect(SUPPORTED_TYPES.has(prop.type ?? ""), `${kind}.${name}`).toBe(
+          true,
+        );
+        if (prop.type === "array")
+          expect(prop.items?.type, `${kind}.${name}`).toBe("string");
+      }
+    }
+  });
+
+  it("merges the form over the stored config", () => {
+    const api = kindSchema("api_feed");
+    if (!api) throw new Error("no api_feed schema");
+    const stored = {
+      provider: "eur_lex",
+      params: { a: 1 },
+      unknown_key: "kept",
+    };
+    const form = { ...toForm(api, stored), item_path: "$.x" };
+    expect(mergeConfig(api, stored, form)).toEqual({
+      provider: "eur_lex",
+      params: { a: 1 },
+      unknown_key: "kept",
+      item_path: "$.x",
+    });
   });
 });

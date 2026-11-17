@@ -92,7 +92,7 @@ describe("sources screen", () => {
       await screen.findByText(/2 runs in 7 days · 50% succeeded/),
     ).toBeInTheDocument();
     const runs = await screen.findByRole("table", {
-      name: "Runs, newest first",
+      name: "Runs, newest first: 1 of 1",
     });
     expect(within(runs).getByText("unsafe-feed")).toBeInTheDocument();
     expect(within(runs).getByText(/refused for safety/)).toBeInTheDocument();
@@ -161,12 +161,10 @@ describe("sources screen", () => {
     });
     const body = calls.find((c) => c.key === "PATCH /sources/s1")
       ?.body as Record<string, unknown>;
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       robots_policy: "override",
       override_reason: "Owner agreed in writing",
-      job: { interval_seconds: 1800 },
-    });
-    expect(body).not.toHaveProperty("kind");
+    }); // only what changed: no config, job or kind (review findings 1 and 4)
   });
 
   it("shows the field the API refused", async () => {
@@ -217,11 +215,143 @@ describe("sources screen", () => {
       await screen.findByRole("button", { name: "Run now" }),
     );
     expect(await screen.findByText("Run queued.")).toBeInTheDocument();
+    vi.stubGlobal("confirm", () => true);
     await userEvent.click(
       screen.getByRole("button", { name: "Disable source" }),
     );
     await vi.waitFor(() => {
       expect(calls.some((c) => c.key === "DELETE /sources/s1")).toBe(true);
     });
+  });
+
+  it("lets editors rename an overridden source and return it to respecting robots.txt", async () => {
+    const overridden = {
+      ...SOURCE,
+      robots_policy: "override",
+      override_reason: "Owner agreed",
+    };
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      ...BASE,
+      "GET /sources": [200, { ...PAGE, items: [overridden] }],
+      "PATCH /sources/s1": [200, overridden],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit EU feed" }),
+    );
+    const form = screen.getByRole("form", { name: "Edit source EU feed" });
+    expect(within(form).queryByLabelText(/Override robots.txt/)).toBeNull();
+    const nameField = within(form).getByLabelText("Name");
+    await userEvent.clear(nameField);
+    await userEvent.type(nameField, "Renamed");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.key === "PATCH /sources/s1")).toHaveLength(
+        1,
+      );
+    });
+    // Review finding 1: no config, so the API does not see a new override.
+    expect(calls.find((c) => c.key === "PATCH /sources/s1")?.body).toEqual({
+      name: "Renamed",
+    });
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit EU feed" }),
+    );
+    const again = screen.getByRole("form", { name: "Edit source EU feed" });
+    await userEvent.click(
+      within(again).getByLabelText("Respect robots.txt again"),
+    );
+    await userEvent.click(within(again).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.filter((c) => c.key === "PATCH /sources/s1")).toHaveLength(
+        2,
+      );
+    });
+    const body = calls.filter((c) => c.key === "PATCH /sources/s1")[1]?.body;
+    expect(body).toEqual({ robots_policy: "respect" });
+    expect(body).not.toHaveProperty("override_reason");
+  });
+
+  it("keeps settings the form does not edit when an api_feed source is saved", async () => {
+    const feed = {
+      ...SOURCE,
+      kind: "api_feed",
+      config: {
+        provider: "generic_json",
+        endpoint_url: "https://api.example/x",
+        params: { q: "regulation" },
+        field_map: { url: "$.link" },
+      },
+    };
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      ...BASE,
+      "GET /sources": [200, { ...PAGE, items: [feed] }],
+      "PATCH /sources/s1": [200, feed],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit EU feed" }),
+    );
+    const form = screen.getByRole("form", { name: "Edit source EU feed" });
+    expect(within(form).getByText(/"q": "regulation"/)).toBeInTheDocument();
+    await userEvent.clear(within(form).getByLabelText(/Endpoint url/));
+    await userEvent.type(within(form).getByLabelText(/Item path/), "$.items");
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.key === "PATCH /sources/s1")).toBe(true);
+    });
+    const body = calls.find((c) => c.key === "PATCH /sources/s1")
+      ?.body as Record<string, unknown>;
+    // Review finding 2: params and field_map survive; the emptied endpoint_url is removed.
+    expect(body.config).toEqual({
+      provider: "generic_json",
+      params: { q: "regulation" },
+      field_map: { url: "$.link" },
+      item_path: "$.items",
+    });
+  });
+
+  it("turns a disabled source back on, and shows panel errors as alerts", async () => {
+    const off = { ...SOURCE, enabled: false };
+    const { calls } = fakeApi({
+      "GET /auth/me": [200, EDITOR],
+      "GET /sources": [200, { ...PAGE, items: [off] }],
+      "GET /capture-runs": [500, problem(500, "runs are down")],
+      "GET /sources/s1/health": [500, problem(500, "health is down")],
+      "PATCH /sources/s1": [200, SOURCE],
+    });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Runs and health of EU feed" }),
+    );
+    const alerts = await screen.findAllByRole("alert");
+    expect(alerts.map((a) => a.textContent).join(" ")).toMatch(
+      /health is down.*runs are down|runs are down.*health is down/,
+    );
+    expect(screen.getByRole("button", { name: "Run now" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Edit EU feed" }));
+    const form = screen.getByRole("form", { name: "Edit source EU feed" });
+    await userEvent.click(within(form).getByLabelText(/Enabled/));
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(calls.find((c) => c.key === "PATCH /sources/s1")?.body).toEqual({
+        enabled: true,
+      });
+    });
+  });
+
+  it("gives readers a Close button on the runs panel", async () => {
+    fakeApi({ "GET /auth/me": [200, READER], ...BASE });
+    renderAt("/admin/sources");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Runs and health of EU feed" }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Close" }));
+    expect(
+      screen.queryByRole("heading", { name: /health and runs/ }),
+    ).toBeNull();
   });
 });

@@ -64,7 +64,7 @@ export function SourcesPage({
       )}
       {editing && (
         <SourceEditor
-          key={editing === "new" ? "new" : editing.id}
+          key={editing === "new" ? "edit-new" : `edit-${editing.id}`}
           current={editing === "new" ? null : editing}
           canOverride={canOverride}
           onDone={() => {
@@ -96,29 +96,31 @@ export function SourcesPage({
               <td>{when(s.job?.last_run_at)}</td>
               <td>{when(s.job?.next_run_at)}</td>
               <td>{s.enabled ? "enabled" : "disabled"}</td>
-              <td className="flex gap-2">
-                <button
-                  type="button"
-                  className={button}
-                  aria-label={`Runs and health of ${s.name}`}
-                  onClick={() => {
-                    setOpen(open?.id === s.id ? null : s);
-                  }}
-                >
-                  Runs
-                </button>
-                {canManage && (
+              <td>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     className={button}
-                    aria-label={`Edit ${s.name}`}
+                    aria-label={`Runs and health of ${s.name}`}
                     onClick={() => {
-                      setEditing(s);
+                      setOpen(open?.id === s.id ? null : s);
                     }}
                   >
-                    Edit
+                    Runs
                   </button>
-                )}
+                  {canManage && (
+                    <button
+                      type="button"
+                      className={button}
+                      aria-label={`Edit ${s.name}`}
+                      onClick={() => {
+                        setEditing(s);
+                      }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -150,7 +152,7 @@ export function SourcesPage({
       )}
       {open && (
         <SourceRuns
-          key={open.id}
+          key={`runs-${open.id}`}
           source={open}
           canManage={canManage}
           onClose={() => {
@@ -180,6 +182,19 @@ function SourceRuns({
   const runNow = useRunNow();
   const disable = useDisableSource();
 
+  function act(action: "run" | "disable") {
+    // One error at a time, from the action just taken (review finding 11).
+    runNow.reset();
+    disable.reset();
+    if (action === "run") runNow.mutate(jobId);
+    else if (
+      window.confirm(
+        `Disable ${source.name}? It stops capturing; its items are kept.`,
+      )
+    )
+      disable.mutate(source.id, { onSuccess: onClose });
+  }
+
   return (
     <section
       aria-labelledby="runs-heading"
@@ -188,8 +203,15 @@ function SourceRuns({
       <h2 id="runs-heading" className="text-xl font-semibold">
         {source.name}: health and runs
       </h2>
+      {health.isPending && <p>Loading health…</p>}
+      {health.isError && (
+        <p role="alert" className="text-critical">
+          {problemText(health.error, "The health could not be loaded.")}
+        </p>
+      )}
       {health.data && (
-        <p role="status">
+        // Plain text, not a live region: it holds untrusted error text and refreshes.
+        <p>
           Health {health.data.health} · {health.data.runs_7d} runs in 7 days ·{" "}
           {Math.round((health.data.success_rate_7d ?? 0) * 100)}% succeeded
           {health.data.last_error
@@ -197,51 +219,70 @@ function SourceRuns({
             : ""}
         </p>
       )}
-      {canManage && (
-        <div className="flex gap-2">
+      <div className="flex gap-2">
+        {canManage && (
           <button
             type="button"
             className={button}
             disabled={!source.enabled || !jobId || runNow.isPending}
             onClick={() => {
-              runNow.mutate(jobId);
+              act("run");
             }}
           >
             Run now
           </button>
-          {source.enabled && (
-            <button
-              type="button"
-              className={button}
-              disabled={disable.isPending}
-              onClick={() => {
-                disable.mutate(source.id, { onSuccess: onClose });
-              }}
-            >
-              Disable source
-            </button>
-          )}
-          <button type="button" className={button} onClick={onClose}>
-            Close
+        )}
+        {canManage && source.enabled && (
+          <button
+            type="button"
+            className={button}
+            disabled={disable.isPending}
+            onClick={() => {
+              act("disable");
+            }}
+          >
+            Disable source
           </button>
-        </div>
-      )}
-      {runNow.isSuccess && <p role="status">Run queued.</p>}
+        )}
+        <button type="button" className={button} onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {/* Present before it is filled, so screen readers announce the change. */}
+      <p role="status">{runNow.isSuccess ? "Run queued." : ""}</p>
       {(runNow.isError || disable.isError) && (
         <p role="alert" className="text-critical">
           {problemText(runNow.error ?? disable.error, "The action failed.")}
         </p>
       )}
-      {runs.data && <RunTable runs={runs.data.items} />}
+      {runs.isPending && jobId && <p>Loading runs…</p>}
+      {runs.isError && (
+        <p role="alert" className="text-critical">
+          {problemText(runs.error, "The runs could not be loaded.")}
+        </p>
+      )}
+      {runs.data && <RunTable runs={runs.data.items} total={runs.data.total} />}
     </section>
   );
 }
 
-function RunTable({ runs }: { runs: CaptureRun[] }) {
+function reason(
+  errorClass: string,
+  message: string | null | undefined,
+): string {
+  // An own-property lookup: a class such as "__proto__" or "toString" is not a reason (13).
+  return Object.hasOwn(REASONS, errorClass)
+    ? (REASONS[errorClass] ?? "")
+    : (message ?? "");
+}
+
+function RunTable({ runs, total }: { runs: CaptureRun[]; total: number }) {
   if (runs.length === 0) return <p>No runs yet.</p>;
   return (
     <table className="w-full border-collapse text-left">
-      <caption className="sr-only">Runs, newest first</caption>
+      <caption className="sr-only">
+        Runs, newest first: {runs.length} of {total}
+      </caption>
       <thead>
         <tr className="border-b border-border">
           <th scope="col">Started</th>
@@ -264,7 +305,7 @@ function RunTable({ runs }: { runs: CaptureRun[] }) {
               {r.error_class ? (
                 <>
                   <code>{r.error_class}</code>{" "}
-                  {REASONS[r.error_class] ?? r.error_message}
+                  {reason(r.error_class, r.error_message)}
                 </>
               ) : (
                 (r.error_message ?? "")

@@ -22,11 +22,23 @@ HEADER = (
 )
 
 
+def _clean(value: object) -> object:
+    """Drop keys whose value is null. In the contract's flow mappings an unquoted comma inside a
+    description splits it into bogus keys such as ``counters: null`` (sources UI review 3;
+    quoting is proposed as CP-12); a real schema never has a null-valued keyword."""
+    if isinstance(value, dict):
+        return {k: _clean(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_clean(v) for v in value]
+    return value
+
+
 def render() -> str:
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
     kinds = {k: v for k, v in contract.items() if isinstance(v, dict) and "config" in v}
     rules = contract["common_extraction_rules"]
-    payload = {"kinds": {k: v["config"] for k, v in kinds.items()}, "extraction_rules": rules}
+    payload = _clean({"kinds": {k: v["config"] for k, v in kinds.items()},
+                      "extraction_rules": rules})  # fmt: skip
     body = json.dumps(payload, indent=2, sort_keys=True)
     return HEADER + f"export const CONNECTORS = {body} as const;\n"
 
