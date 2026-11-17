@@ -305,6 +305,9 @@ async def test_a_run_that_took_less_than_was_offered_is_partial(h: Harness) -> N
     """API feed review 2: the item limit, or a connector that stopped early, is partial."""
     got = await h.run(Fake([f"https://e.org/{n}" for n in range(5)]), max_items=3)
     assert (got.status, got.error_class, got.items_new) == ("partial", "truncated", 3)
+    # Re-verification R1: no cursor yet, so the message asks the admin to act (BL-94, CP-14).
+    assert "next run continues" not in (got.error_message or "")
+    assert "raise the items per run" in (got.error_message or "")
 
     class Stops(Fake):
         async def discover(self, job: JobSettings,

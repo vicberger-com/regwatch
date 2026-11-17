@@ -67,6 +67,8 @@ FR_EASTERN = ZoneInfo("America/New_York")  # Federal Register dates are US Easte
 MAX_JSON_BYTES = 5 * 1024 * 1024  # a page of 1,000 records is about 2 MiB (review finding 6)
 MAX_LIST = 50
 MAX_QUERY = 1500  # stays well under SafeFetcher's 2,048-character URL limit
+LOWER_BOUND = "conditions[publication_date][gte]"
+MAX_FIXED_LOOKBACK = timedelta(days=366)
 MAX_PAGES = 10
 MAX_PARAMS = 50
 MAX_PARAM_VALUE = 2000
@@ -155,9 +157,21 @@ def check_params(config: ApiFeedConfig) -> None:
         raise ConnectorError("bad-config", "endpoint_url is for generic_json only")
     if config.provider == "federal_register":
         query(config.params, None, datetime.now(UTC))
-        if not any("publication_date" in key for key in config.params):
-            raise ConnectorError("bad-config", "bound each run with a publication_date "
-                                 "condition (R-06)")  # fmt: skip
+        _check_lower_bound(config.params.get(LOWER_BOUND))
+
+
+def _check_lower_bound(value: Any) -> None:
+    """R-06: each run is bounded from below by the last success, or by a recent fixed date. An
+    upper bound alone, or a date years back, truncates every run (re-verification R4)."""
+    if isinstance(value, str) and _PLACEHOLDER.match(value.strip()):
+        return
+    try:
+        since = date.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        since = None
+    if since is None or since < (datetime.now(UTC) - MAX_FIXED_LOOKBACK).date():
+        wanted = "{last_success_date - N days} or a date within the last year"
+        raise ConnectorError("bad-config", f"set {LOWER_BOUND} to {wanted}")
 
 
 def _blocked(headers: dict[str, str], url: str) -> bool:
@@ -168,7 +182,11 @@ def _blocked(headers: dict[str, str], url: str) -> bool:
 def _fr_link(value: Any) -> str | None:
     """A Federal Register or GovInfo link, checked as any captured link (finding 4)."""
     link = entry_link({"link": value}, FEDERAL_REGISTER)
-    return link if link is not None and urlsplit(link).hostname in FR_LINK_HOSTS else None
+    if link is None:
+        return None
+    parts = urlsplit(link)  # https on the default port only (re-verification R3)
+    ok = parts.scheme == "https" and parts.port is None and parts.hostname in FR_LINK_HOSTS
+    return link if ok else None
 
 
 def _published(value: Any) -> datetime | None:

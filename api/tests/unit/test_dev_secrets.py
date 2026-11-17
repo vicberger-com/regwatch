@@ -71,6 +71,7 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
         return [line for line in text.splitlines() if not line.startswith("REGWATCH_QUEUE_URL=")]
 
     assert without_queue(upgraded) == without_queue(old_app)  # secrets kept
+    assert (tmp_path / "deploy/db.env").read_text() == db  # db.env untouched (R5)
     assert (tmp_path / "deploy/queue.env").exists() and "valkey://regwatch:" in upgraded
     app = upgraded
 
@@ -79,3 +80,11 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
                            text=True, check=False, env={"PATH": os.environ["PATH"]})  # fmt: skip
     assert again.returncode == 1 and "BL-61" in again.stderr
     assert (tmp_path / "deploy/.env").read_text() == app  # left alone
+
+
+def test_only_the_queue_reads_queue_env() -> None:
+    """BL-90 (a), API feed re-verification R5: the Valkey password reaches no other service."""
+    readers = [name for name, service in COMPOSE["services"].items()
+               if "queue.env" in (service.get("env_file") or [])
+               or service.get("env_file") == "queue.env"]  # fmt: skip
+    assert readers == ["queue"]

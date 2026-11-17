@@ -217,7 +217,12 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         status, (error_class, message) = "partial", stopped
     elif status == "success" and (truncated or "truncated" in ctx.notes):
         status, error_class = "partial", "truncated"
-        message = "more documents were offered than one run takes; the next run continues"
+        # Not "the next run continues": without a cursor the next run asks for the same window
+        # (API feed re-verification R1, BL-94, CP-14), so the admin must act.
+        message = (
+            "more documents were offered than one run takes; raise the items per run "
+            "or narrow the query"
+        )
     return Outcome(status, error_class, message,
                    robots_decision=_decision(allowed, refused, len(entries) + failures),
                    items_new=len(entries), bytes_fetched=counter.fetched,

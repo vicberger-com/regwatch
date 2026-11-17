@@ -316,3 +316,32 @@ async def test_other_refusals_pass_through() -> None:
     with pytest.raises(FetchRefusedError) as exc:
         await discover(Disallowed([page([doc(1)])]))
     assert exc.value.reason == "robots"
+
+
+@pytest.mark.parametrize(
+    "link",
+    ["http://www.federalregister.gov/d/1", "https://www.federalregister.gov:8443/d/1",
+     "https://www.govinfo.gov:444/x.pdf"],
+)  # fmt: skip
+def test_record_links_are_https_on_the_default_port(link: str) -> None:
+    """Re-verification R3."""
+    from regwatch.capture.connectors.api_feed import _fr_link
+
+    assert _fr_link(link) is None
+    assert _fr_link("https://www.govinfo.gov/x.pdf") == "https://www.govinfo.gov/x.pdf"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"conditions[publication_date][lte]": "2026-11-01"},  # an upper bound alone
+     {"conditions[publication_date][gte]": "1994-01-01"},  # years back
+     {"x_publication_date": "{last_success_date - 3 days}"},  # a look-alike key
+     {"conditions[publication_date][gte]": "soon"},
+     {"conditions[publication_date][gte]": ["2026-11-01"]}],
+)  # fmt: skip
+def test_the_lower_bound_must_be_real(params: dict[str, Any]) -> None:
+    """Re-verification R4: each of these truncates every run."""
+    from regwatch.capture.connectors.api_feed import check_params
+
+    with pytest.raises(ConnectorError):
+        check_params(ApiFeedConfig(provider="federal_register", params=params))  # type: ignore[arg-type]
