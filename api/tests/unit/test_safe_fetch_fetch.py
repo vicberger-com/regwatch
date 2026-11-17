@@ -131,6 +131,19 @@ async def test_timeouts_and_connection_errors_are_refusals() -> None:
         await fetcher(refused).fetch("https://example.org/")
     assert exc.value.reason == "connect"
 
+    def reset(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError("connection reset", request=request)
+
+    def broken(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("illegal header line", request=request)
+
+    with pytest.raises(FetchRefusedError) as exc:  # any other transport error: connect
+        await fetcher(reset).fetch("https://example.org/")
+    assert exc.value.reason == "connect"
+    with pytest.raises(FetchRefusedError) as exc:  # not valid HTTP: never retried (run review 9)
+        await fetcher(broken).fetch("https://example.org/")
+    assert exc.value.reason == "protocol"
+
     async def stalls(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(5)
         return httpx.Response(200)  # pragma: no cover - the deadline ends it first
@@ -419,7 +432,7 @@ async def test_dns_counts_against_the_deadline() -> None:
 @pytest.mark.parametrize(
     ("path", "reason"),
     [("/raw/hang?seconds=5", "timeout"), ("/raw/slow-headers?interval_ms=200", "timeout"),
-     ("/raw/garbage", "connect"), ("/lie/short", "connect")],
+     ("/raw/garbage", "protocol"), ("/lie/short", "protocol")],
 )  # fmt: skip
 async def test_misbehaving_servers_are_refusals(server: FixtureServer, path: str,
                                                 reason: str) -> None:  # fmt: skip
@@ -477,7 +490,7 @@ async def test_a_certificate_for_another_name_is_refused(tmp_path: Path) -> None
         assert good.status == 200 and good.body == b"ok"
         with pytest.raises(FetchRefusedError) as exc:
             await PinnedFetcher(pins, client_tls).fetch(f"https://bad.example:{port}/")
-        assert exc.value.reason == "connect"  # the certificate names good.example only
+        assert exc.value.reason == "tls"  # the certificate names good.example only
         with pytest.raises(FetchRefusedError):  # and an unknown authority is refused too
             await PinnedFetcher(pins).fetch(f"https://good.example:{port}/")
     finally:

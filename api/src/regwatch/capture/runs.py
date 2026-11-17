@@ -54,7 +54,7 @@ MAX_HANDOVERS = 3  # hand-overs after the first; then the sweep ends the run (fi
 ABANDONED_AFTER = timedelta(hours=2)
 RUN_NOW_SPACING = timedelta(seconds=60)  # finding 9
 MAX_ERROR = 500  # capture_run.error_message: at most 500 characters, never page content
-NOT_THE_SOURCE = frozenset({"abandoned", "queue-unavailable"})
+NOT_THE_SOURCE = frozenset({"abandoned", "queue-unavailable", "internal-error"})
 
 
 _URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"<>]+")
@@ -282,7 +282,12 @@ async def execute(db: AsyncSession, job_id: uuid.UUID,
     if make_context is None:
         outcome = Outcome("failed", "no-connector", "no fetcher was configured for this run")
     else:
-        outcome = await run_connector(run.id, job, source, make_context)
+        try:
+            outcome = await run_connector(run.id, job, source, make_context)
+        except Exception as exc:  # noqa: BLE001 - the run must end with an outcome (finding 2)
+            # A store, broker or memory failure is ours, not the source's; the message names
+            # only the kind of failure, never its text.
+            outcome = Outcome("failed", "internal-error", f"the run failed: {type(exc).__name__}")
     await _close(db, run, outcome.status, outcome.error_class, outcome.error_message,
                  datetime.now(UTC), outcome)  # fmt: skip
     await db.commit()

@@ -23,6 +23,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.config import validate_config, validate_rules
+from regwatch.capture.execution import RUN_DEADLINE_S
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.safe_fetch.policy import (
     FetchRefusedError,
@@ -234,6 +235,13 @@ def check_job(values: dict[str, Any], job: CaptureJob | None) -> None:
             raise invalid("job.timezone", "not a known time zone") from None
     if values.get("max_items_per_run", 1) < 1:
         raise invalid("job.max_items_per_run", "at least 1")
+    items = values.get("max_items_per_run", job.max_items_per_run if job else 200) or 200
+    rate = values.get("rate_limit_per_minute", job.rate_limit_per_minute if job else 30) or 30
+    if items * 60 / rate > RUN_DEADLINE_S:
+        # A run that cannot finish in time stops partway every time (run review finding 1).
+        raise invalid("job.max_items_per_run", f"at {rate} a minute, {items} items take longer"
+                      f" than a run may last ({RUN_DEADLINE_S // 60} minutes); lower the items"
+                      " or raise the rate")  # fmt: skip
     if "extraction_rules" in values:
         validate_rules(values["extraction_rules"])
     for key in ("timezone", "max_items_per_run", "rate_limit_per_minute", "render_js",

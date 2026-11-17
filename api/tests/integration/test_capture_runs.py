@@ -391,9 +391,10 @@ async def test_the_worker_wiring(
     from regwatch.capture.connectors.base import JobSettings
     from regwatch.capture.connectors.config import ExtractionRules, RssConfig
 
-    put = await admin.put(_api("/admin/settings/general.contact_email"),
-                          json={"value": "ops@example.org"})  # fmt: skip
-    assert put.status_code == 200, put.text
+    for key, value in (("general.contact_email", "ops@example.org"),
+                       ("capture.max_body_bytes", 2_000_000)):  # fmt: skip
+        put = await admin.put(_api(f"/admin/settings/{key}"), json={"value": value})
+        assert put.status_code == 200, put.text
     monkeypatch.setattr(tasks, "_robots", {})
     valkey = FakeValkey()
     make = await tasks.context_factory(db, valkey)
@@ -405,8 +406,13 @@ async def test_the_worker_wiring(
     )  # type: ignore[arg-type]
     ctx = await make(job)
     assert ctx.fetcher.fetcher.user_agent == "regwatch/0.1.0 (+ops@example.org)"
-    assert ctx.fetcher.fetcher.limits.max_bytes == 10 * 1024 * 1024
+    assert ctx.fetcher.fetcher.limits.max_bytes == 2_000_000  # the setting, not the default
     assert ctx.now().tzinfo is not None
+    put = await admin.put(_api("/admin/settings/general.contact_email"),
+                          json={"value": "other@example.org"})  # fmt: skip
+    assert put.status_code == 200
+    await tasks.context_factory(db, valkey)
+    assert list(tasks._robots) == ["regwatch/0.1.0 (+other@example.org)"]  # finding 10
 
     made = (await admin.post(_api("/sources"), json=rss())).json()
     clients: list[FakeValkey] = []
@@ -433,3 +439,29 @@ async def test_the_worker_wiring(
     last = (await admin.get(_api("/capture-runs"), params={"job_id": made["job"]["id"]})).json()
     assert last["items"][0]["error_class"] == "private-address"
     assert len(clients) == 2 and all(c.closed for c in clients)
+
+
+async def test_an_unexpected_failure_still_ends_the_run(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+) -> None:
+    """Run review finding 2: a store that fails ends the run as internal-error, names only the
+    kind of failure, and does not count against the source."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 202
+    make = _factory(_site("User-agent: *\nAllow: /\n"), {})
+
+    async def broken(job: Any) -> Any:
+        ctx = await make(job)
+
+        async def store(key: str, body: bytes) -> None:
+            raise OSError("disk full at /data/objectstore/raw/secret")
+
+        ctx.store = store
+        return ctx
+
+    assert await runs.execute(db, jid, broken) == "failed"
+    run = (await admin.get(_api("/capture-runs"), params={"job_id": str(jid)})).json()["items"][0]
+    assert run["error_class"] == "internal-error" and run["error_message"] == (
+        "the run failed: OSError")  # fmt: skip
+    assert (await admin.get(_api(f"/sources/{made['id']}/health"))).json()["health"] == "unknown"

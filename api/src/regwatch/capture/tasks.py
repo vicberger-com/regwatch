@@ -75,6 +75,20 @@ def user_agent(template: str, contact: str) -> str:
     return " ".join(text.split())[:MAX_USER_AGENT] or "regwatch"
 
 
+MIN_BODY = 64 * 1024
+MAX_BODY = 50 * 1024 * 1024
+
+
+def body_cap(value: Any) -> int:
+    """``capture.max_body_bytes`` within 64 KiB to 50 MiB: zero would fail every run and a huge
+    value would let one body exhaust a worker (finding 8)."""
+    try:
+        wanted = int(value)
+    except (TypeError, ValueError):
+        wanted = 10 * 1024 * 1024
+    return min(max(wanted, MIN_BODY), MAX_BODY)
+
+
 def _valkey() -> Any:
     import redis.asyncio as aioredis
 
@@ -92,9 +106,12 @@ async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
 
     settings = await values(db, SETTING_KEYS)
     agent = user_agent(str(settings["capture.user_agent"]), str(settings["general.contact_email"]))
-    limits = FetchLimits(max_bytes=int(settings["capture.max_body_bytes"]))
+    limits = FetchLimits(max_bytes=body_cap(settings["capture.max_body_bytes"]))
     fetcher = SafeFetcher(agent, limits)
-    robots = _robots.setdefault(agent, RobotsPolicy(fetcher))
+    if agent not in _robots:  # a new user agent: the old cache is of no further use (finding 10)
+        _robots.clear()
+        _robots[agent] = RobotsPolicy(fetcher)
+    robots = _robots[agent]
     limiter = ValkeyRateLimiter(valkey)
 
     async def make(job: JobSettings) -> ConnectorContext:

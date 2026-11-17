@@ -270,6 +270,12 @@ class SafeFetcher:
             raise FetchRefusedError(
                 "encoding", f"{target.host}: a damaged compressed body: {exc}"
             ) from None
+        except httpx.ConnectError as exc:
+            # A certificate or TLS failure is not worth retrying like a refused connection.
+            tls = isinstance(exc.__context__, ssl.SSLError) or "CERTIFICATE" in str(exc).upper()
+            raise FetchRefusedError("tls" if tls else "connect", f"{target.host}: {exc}") from None
+        except (httpx.RemoteProtocolError, httpx.LocalProtocolError) as exc:
+            raise FetchRefusedError("protocol", f"{target.host}: {exc}") from None
         except httpx.HTTPError as exc:
             raise FetchRefusedError("connect", f"{target.host}: {exc}") from None
 
