@@ -140,6 +140,9 @@ export function SourceEditor({
           (have as Record<string, unknown> | undefined)?.[key] !== value,
       ),
     ) as CaptureJobWrite;
+    // Disabling stops the source and its job; turning the source back on restarts both, or it
+    // would show enabled and never run (sources UI re-verification, finding 14).
+    if (enabled && !source.enabled) jobChanges.enabled = true;
     if (Object.keys(jobChanges).length > 0) body.job = jobChanges;
     // Only holders of sources.override_robots change the override (M3 acceptance 4); anyone
     // who manages sources may return one to respecting robots.txt. The API checks again.
@@ -219,6 +222,8 @@ export function SourceEditor({
             values={config}
             onChange={setConfig}
             idPrefix="cfg"
+            // Any change here on an overridden source is a new override (finding 15).
+            disabled={!canOverride && current?.robots_policy === "override"}
           />
         )}
       </fieldset>

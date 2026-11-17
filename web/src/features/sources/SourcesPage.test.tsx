@@ -242,6 +242,8 @@ describe("sources screen", () => {
     );
     const form = screen.getByRole("form", { name: "Edit source EU feed" });
     expect(within(form).queryByLabelText(/Override robots.txt/)).toBeNull();
+    // Finding 15: its connector settings are locked for editors without the permission.
+    expect(within(form).getByLabelText(/Feed url/)).toBeDisabled();
     const nameField = within(form).getByLabelText("Name");
     await userEvent.clear(nameField);
     await userEvent.type(nameField, "Renamed");
@@ -315,7 +317,8 @@ describe("sources screen", () => {
   });
 
   it("turns a disabled source back on, and shows panel errors as alerts", async () => {
-    const off = { ...SOURCE, enabled: false };
+    // As disabling leaves it: the source and its job both off (finding 14).
+    const off = { ...SOURCE, enabled: false, job: { ...JOB, enabled: false } };
     const { calls } = fakeApi({
       "GET /auth/me": [200, EDITOR],
       "GET /sources": [200, { ...PAGE, items: [off] }],
@@ -339,6 +342,7 @@ describe("sources screen", () => {
     await vi.waitFor(() => {
       expect(calls.find((c) => c.key === "PATCH /sources/s1")?.body).toEqual({
         enabled: true,
+        job: { enabled: true },
       });
     });
   });

@@ -22,14 +22,24 @@ HEADER = (
 )
 
 
-def _clean(value: object) -> object:
-    """Drop keys whose value is null. In the contract's flow mappings an unquoted comma inside a
-    description splits it into bogus keys such as ``counters: null`` (sources UI review 3;
-    quoting is proposed as CP-12); a real schema never has a null-valued keyword."""
+KEEP_NULL = {"default"}  # a keyword whose value may really be null
+DROPPED: list[str] = []
+
+
+def _clean(value: object, path: str = "") -> object:
+    """Drop keys whose value is null, and say which. In the contract's flow mappings an unquoted
+    comma inside a description splits it into bogus keys such as ``counters: null`` (sources UI
+    review 3; the quoting is proposed as CP-12, BL-93)."""
     if isinstance(value, dict):
-        return {k: _clean(v) for k, v in value.items() if v is not None}
+        out = {}
+        for k, v in value.items():
+            if v is None and k not in KEEP_NULL:
+                DROPPED.append(f"{path}.{k}".lstrip("."))
+                continue
+            out[k] = _clean(v, f"{path}.{k}")
+        return out
     if isinstance(value, list):
-        return [_clean(v) for v in value]
+        return [_clean(v, path) for v in value]
     return value
 
 
@@ -44,7 +54,11 @@ def render() -> str:
 
 
 def main(argv: list[str]) -> int:
+    DROPPED.clear()
     text = render()
+    for key in DROPPED:
+        print(f"connectors.yaml: dropped the bogus key {key!r} (an unquoted comma?)",
+              file=sys.stderr)
     if "--check" in argv:
         return 0 if OUTPUT.exists() and OUTPUT.read_text(encoding="utf-8") == text else 1
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
