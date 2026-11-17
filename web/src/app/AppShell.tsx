@@ -51,6 +51,9 @@ export function AppShell() {
           {hasPermission(me, "taxonomy.read") && (
             <Link to="/admin/jurisdictions">Jurisdictions</Link>
           )}
+          {hasPermission(me, "sources.read") && (
+            <Link to="/admin/sources">Sources</Link>
+          )}
         </nav>
         <div className="flex items-center gap-3">
           <ThemeSwitch />

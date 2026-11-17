@@ -19,6 +19,7 @@ import { UsersPage } from "@/features/admin/UsersPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { JurisdictionsPage } from "@/features/jurisdictions/JurisdictionsPage";
+import { SourcesPage } from "@/features/sources/SourcesPage";
 import { FlagsPage } from "@/features/settings/FlagsPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { BrandingPage } from "@/features/branding/BrandingPage";
@@ -140,6 +141,22 @@ const jurisdictionsRoute = createRoute({
   },
 });
 
+const sourcesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/sources",
+  staticData: { title: "Sources" },
+  component: function Sources() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "sources.read")) return <NotPermitted />;
+    return (
+      <SourcesPage
+        canManage={hasPermission(me, "sources.manage")}
+        canOverride={hasPermission(me, "sources.override_robots")}
+      />
+    );
+  },
+});
+
 const rolesRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/roles",
@@ -219,6 +236,7 @@ export const routeTree = rootRoute.addChildren([
     rolesRoute,
     flagsRoute,
     jurisdictionsRoute,
+    sourcesRoute,
     settingsRoute,
     brandingRoute,
     auditRoute,
