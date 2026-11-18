@@ -481,10 +481,12 @@ def test_a_punycode_label_ends_in_a_letter_or_digit() -> None:
 
 
 async def test_pages_that_are_gone_leave_the_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Re-verification R10: a site that replaces pages never fills the state for good."""
+    """Re-verification R10 and R27: a site that replaces two pages a run never fills the state
+    for good; a gone page leaves after three runs of 404 while the site serves (6 live, up to
+    6 lingering, the seed: 13)."""
     from regwatch.capture.connectors import web_page
 
-    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    monkeypatch.setattr(web_page, "MAX_STATE", 13)
     objects: dict[str, bytes] = {}
     cursor = None
     live = [f"/d{n}" for n in range(6)]
@@ -499,7 +501,7 @@ async def test_pages_that_are_gone_leave_the_state(monkeypatch: pytest.MonkeyPat
         live = live[2:] + [f"/d{6 + 2 * run}", f"/d{7 + 2 * run}"]
         site.pages.update({f"reg.example{p}": (404, {}) for p in gone})
     state = json.loads(objects[cursor["listing_ref"]])
-    assert len(state) <= 10
+    assert len(state) <= 13
 
 
 async def test_no_live_page_is_new_twice_behind_a_deep_site(
@@ -587,14 +589,17 @@ async def test_a_page_that_redirects_elsewhere_is_gone() -> None:
     objects: dict[str, bytes] = {}
     first = await crawl(site, objects)
     site.pages["reg.example/old"] = (301, {"location": "https://reg.example/"})
-    second = await crawl(site, objects, first.cursor)
-    assert [d.url for d in second.documents if d.change != "unchanged"] == []
-    state = json.loads(objects[second.cursor["listing_ref"]])
+    cursor = first.cursor
+    for _ in range(3):  # gone after three such runs while the site serves (R27)
+        second = await crawl(site, objects, cursor)
+        cursor = second.cursor or cursor
+        assert [d.url for d in second.documents if d.change != "unchanged"] == []
+    state = json.loads(objects[cursor["listing_ref"]])
     assert "https://reg.example/old" not in state
     site.pages["reg.example/"] = ("Home", ["/moved"])
     site.pages["reg.example/moved"] = (301, {"location": "https://reg.example/renamed"})
     site.pages["reg.example/renamed"] = ("Renamed", [])
-    third = await crawl(site, objects, second.cursor)
+    third = await crawl(site, objects, cursor)
     assert "https://reg.example/renamed" in [d.url for d in third.documents]  # crawled as itself
 
 
@@ -647,3 +652,54 @@ async def test_a_redirect_target_is_normalised_like_a_link() -> None:
                 )  # fmt: skip
     got = await crawl(site, {})
     assert [d.url for d in got.documents].count("https://reg.example/doc/") == 1
+
+
+@pytest.mark.parametrize(
+    ("fail", "runs"),
+    [({"reg.example/": (404, {}), **{f"reg.example/p{n}": (404, {}) for n in range(6)}}, 1),
+     ({"reg.example/": (410, {}), **{f"reg.example/p{n}": (410, {}) for n in range(6)}}, 1),
+     ({f"reg.example/p{n}": (404, {}) for n in range(6)}, 1),
+     ({"reg.example/": (302, {"location": "https://status.example/"}),
+       **{f"reg.example/p{n}": (302, {"location": "https://status.example/"}) for n in range(6)}},
+      3)],
+)  # fmt: skip
+async def test_a_site_wide_failure_forgets_nothing(fail: dict[str, Any], runs: int) -> None:
+    """Re-verification 8 R27: a bad deploy, a site-wide 410, a content backend down for a run,
+    or an off-site status page for three runs: the recovery run is unchanged."""
+    pages = {"reg.example/": ("Home", [f"/p{n}" for n in range(6)]),
+             **{f"reg.example/p{n}": (f"P{n}", []) for n in range(6)}}  # fmt: skip
+    site = Site(dict(pages))
+    objects: dict[str, bytes] = {}
+    cursor = (await crawl(site, objects)).cursor
+    site.pages.update(fail)
+    for _ in range(runs):
+        cursor = (await crawl(site, objects, cursor)).cursor or cursor
+    site.pages = dict(pages)
+    after = await crawl(site, objects, cursor)
+    assert (after.items_new, after.items_unchanged) == (0, 7)
+
+
+async def test_an_extraction_timeout_forgets_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R25: too-slow can be a busy worker, so it never counts towards forgetting a page."""
+    site = Site({"reg.example/": ("Home", ["/a"]), "reg.example/a": ("A", [])})
+    objects: dict[str, bytes] = {}
+    cursor = (await crawl(site, objects)).cursor
+    real = web_crawl._extract
+
+    async def slow(got: Any, job: Any, links: Any = None) -> Any:
+        if got.url.endswith("/a"):
+            raise ConnectorError("too-slow", "slow")
+        return await real(got, job, links)
+
+    monkeypatch.setattr(web_crawl, "_extract", slow)
+    for _ in range(4):
+        cursor = (await crawl(site, objects, cursor)).cursor or cursor
+    assert "https://reg.example/a" in json.loads(objects[cursor["listing_ref"]])
+
+
+async def test_finish_without_a_crawl_is_harmless() -> None:
+    ctx = ConnectorContext(fetcher=None, store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    config = WebCrawlConfig(seed_urls=[SEED], allowed_domains=["reg.example"])  # type: ignore[list-item]
+    job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules())
+    await web_crawl.WebCrawlConnector().finish(job, ctx)
+    assert ctx.state is None

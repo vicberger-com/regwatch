@@ -191,11 +191,15 @@ class WebCrawlConnector:
                     yield Candidate(url=url, hints={"error": failed_seed})
                     continue
                 if exc.reason == "refused-host":  # it redirects off the allowed addresses
-                    ctx.scratch["listing"]["hard_failed"].add(url)
+                    # Counted only if its site served other pages: a whole site redirecting to
+                    # an off-site status page forgets nothing (re-verification 8 R27).
+                    ctx.scratch["listing"]["client_errors"].append((url, origin))
                 yield Candidate(url=url, hints={"error": exc})
                 continue
-            if got.status in GONE:  # no longer on the site: dropped, and a skip (R10, R18)
-                ctx.scratch["listing"]["gone"].add(url)
+            if got.status in GONE:  # a skip (R18); forgotten after MAX_FAILURES such runs in
+                # a row while its site served other pages, never at once: a site-wide 404 is a
+                # bad deploy, not every page gone (R10, R27).
+                ctx.scratch["listing"]["client_errors"].append((url, origin))
                 gone = ConnectorError("unavailable", f"the page is gone (HTTP {got.status})")
                 yield Candidate(url=url, hints={"error": gone})
                 continue
@@ -203,9 +207,10 @@ class WebCrawlConnector:
             final = entry_link({"link": got.url}, got.url) or got.url
             final = final.split("?", 1)[0] if strip else final
             if depth > 0 and final != url:
-                # A page that redirects to another page is gone under this address; the page it
-                # leads to is crawled under its own, if allowed (R16 (B)).
-                ctx.scratch["listing"]["gone"].add(url)
+                # A page that redirects to another page is gone under this address, by the same
+                # rule as a 404 (R16 (B), R27); the page it leads to is crawled under its own.
+                ctx.scratch["listing"]["client_errors"].append((url, origin))
+                ctx.scratch["listing"]["tried"][url] = ctx.now().isoformat()
                 if final not in seen and _allowed(final, domains) and keep(final):
                     seen.add(final)
                     known.add(final)
