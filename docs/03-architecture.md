@@ -97,7 +97,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | webencodings 0.5.1 | html5lib's character-encoding labels | BSD-3 | V `fa2cb5d` (v0.5.1), R-01 C20 | dependency | M3 |
 | Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | V `bcb9deb` | dependency, tooling | M3, tests |
 | changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
-| SearXNG | metasearch | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
+| SearXNG | metasearch, discovery only (ADR-0010); image `searxng/searxng@sha256:0b9f3ddd…` (tag `2026.11.17-b99cf7496`) | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
 | httpx | HTTP client with timeouts | BSD-3 | V `26d48e0` | dependency | M3 |
 | protego 0.7.0 | robots.txt parser for SafeFetcher (M3 design notes; acceptance 4) | BSD-3-Clause | V `06ccad4` (0.7.0) | dependency | M3 |
 | tenacity 9.2.1 | bounded retries for capture fetches (at most 3 per run, M3 design notes) | Apache-2.0 | V `4410996` (9.2.1) | dependency | M3 |
@@ -182,6 +182,7 @@ All eight are `proposed`; the owner accepts them at Gate G0 (#2). Index: `docs/d
 | [ADR-0006](decisions/ADR-0006-celery-valkey-scheduling.md) | Celery and Valkey for scheduling | Procrastinate; APScheduler in-process; Temporal | accepted (G0); amendment 1 accepted 2026-11-17 (run lock in PostgreSQL) |
 | [ADR-0007](decisions/ADR-0007-local-auth-then-oidc.md) | Local authentication first, OpenID Connect later | Keycloak from day one | accepted (G0) |
 | [ADR-0008](decisions/ADR-0008-gotenberg-pdf.md) | Gotenberg for PDF | WeasyPrint only; browser-side pdfmake | accepted (G0) |
+| [ADR-0010](decisions/ADR-0010-internet-search-provider.md) | SearXNG for discovery only, no fallback key yet | Exa or Brave free-tier fallback; a paid API; no search at launch | accepted 2026-11-18 |
 | [ADR-0009](decisions/ADR-0009-own-html-extraction.md) | Own HTML extraction on html5lib | trafilatura with lxml from source; trafilatura with an LGPL exception; `html.parser` | accepted 2026-11-17 |
 
 ## 3.8 Phase 0 open-source review protocol (REQ-19, REQ-20)
