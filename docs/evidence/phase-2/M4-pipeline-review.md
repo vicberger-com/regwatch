@@ -82,9 +82,9 @@ Fixed: 2, 3, 4, 6, 10; 11 deferral accepted. Partly fixed: 1 (first claim: a fee
 
 | # | Severity | Fix | Verified |
 | --- | --- | --- | --- |
-| 1 (first claim) | high | an official source whose own URL is on the page's host takes the item, and its text replaces the other's (`ingest._owns`) | pending |
-| N1 | medium | the replay check compares with the start of the latest version's run (`ingest._captured`) | pending |
-| N2 | low | past the budget a pair counts only what lies between the common prefix and suffix (`versioning._between`) | pending |
+| 1 (first claim) | high | an official source whose own URL is on the page's host takes the item, and its text replaces the other's (`ingest._owns`) | verified (4235bd6) |
+| N1 | medium | the replay check compares with the start of the latest version's run (`ingest._captured`) | verified (4235bd6) |
+| N2 | low | past the budget a pair counts only what lies between the common prefix and suffix (`versioning._between`) | verified (4235bd6) |
 | N3 and residuals of 4, 5, 8, 9, 10, 12 | low | BL-107 (f) to (h) | deferred |
 
 ## Re-verification 2 (7ea4364): not signed off
@@ -93,7 +93,7 @@ Fixed: N1, N2 (linear, never below the true difference), no ping-pong between of
 
 | # | Severity | Fix | Verified |
 | --- | --- | --- | --- |
-| N4 | high | CP-19 (owner approved): ownership from the row, not the source; `item.fetched_host` is set from a row whose final URL is on the item's host, an unfetched item passes to the first source that fetches it, a fetched item never changes source; `Source.url` is no longer used | pending |
+| N4 | high | CP-19 (owner approved): ownership from the row, not the source; `item.fetched_host` is set from a row whose final URL is on the item's host, an unfetched item passes to the first source that fetches it, a fetched item never changes source; `Source.url` is no longer used | verified (4235bd6) |
 | unrecorded-run replay | low | BL-107 (h) | deferred |
 
 ## Re-verification 3 (c5481da): not signed off
@@ -102,9 +102,9 @@ Fixed: the `www.` handling, races on a claim, and R6 and R7. Partly fixed: N4. N
 
 | # | Severity | Fix | Verified |
 | --- | --- | --- | --- |
-| N5 | high | a fetched page claims only with extracted text; an `api_feed` row from a known provider speaks for that provider's host (`ingest.PROVIDER_HOSTS`), so its items are fetched and never taken | pending |
-| N6 | high | the same: EUR-Lex's row speaks for `eur-lex.europa.eu` and takes an item a feed only listed | pending |
-| backfill | medium | migration 0005 sets `fetched_host` of existing items to their own host | pending |
+| N5 | high | a fetched page claims only with extracted text; an `api_feed` row from a known provider speaks for that provider's host (`ingest.PROVIDER_HOSTS`), so its items are fetched and never taken | verified (4235bd6) |
+| N6 | high | the same: EUR-Lex's row speaks for `eur-lex.europa.eu` and takes an item a feed only listed | verified (4235bd6) |
+| backfill | medium | migration 0005 sets `fetched_host` of existing items to their own host | verified (4235bd6) |
 | port ignored; feed full-page title | low | BL-107 (h) | deferred |
 
 ## Re-verification 4 (a4d9bad): not signed off
@@ -113,9 +113,13 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 
 | # | Severity | Fix | Verified |
 | --- | --- | --- | --- |
-| N7 | high | the same test on every path: a row is fetched only with extracted text or from its official API, so creation no longer marks a textless full page fetched | pending |
-| provider guard | info | the row's provider must equal the source's configured provider (`api_feed:<provider>` from the source row), so a later `generic_json` adapter can never speak for a provider's host | pending |
+| N7 | high | the same test on every path: a row is fetched only with extracted text or from its official API, so creation no longer marks a textless full page fetched | verified (4235bd6) |
+| provider guard | info | the row's provider must equal the source's configured provider (`api_feed:<provider>` from the source row), so a later `generic_json` adapter can never speak for a provider's host | verified (4235bd6) |
 | R15 | medium | open first-claim risk for PDFs, recorded in BL-107 (b) for the extraction slice | deferred |
+
+## Re-verification 5 (4235bd6): signed off
+
+**Signed off for the M4 pipeline slice.** No high finding remains open. N5 and N7 are fixed; the provider guard holds (a row's provider must equal the source's configured provider). Open, medium, to fix before M4 acceptance is claimed: N8 (the first source to fetch a page with text owns it, so the official source's later changes are dropped and a search title stays) and R15 (a summary planted at a PDF URL holds until text extraction), both in BL-109. The low items stay in BL-107.
 
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
@@ -133,7 +137,7 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 - **Translation flag:** `translation_pending` is set for any language not starting with `en`. This never blocks the pipeline (Q5).
 - **Worker:** `process.*` is routed to `process`, messages are JSON only, remote control is off, and the address-space and memory-per-child caps apply to processing as well.
 
-**Sign-off at review:** commits `f1070ec` and `d40ee8c` are **not signed off**.
+**Sign-off at review:** commits `f1070ec` and `d40ee8c` are **not signed off**. **Signed off after re-verification 5 at `4235bd6`** (see above; BL-109 open before M4 acceptance).
 - Finding 1 (high) breaks item integrity across sources, with only an ordinary hostile feed needed.
 - Finding 2 (high) lets one monitored page hold a shared worker slot for minutes per run, and lets a run of such pages lose its manifest.
 - Both must be fixed, with tests, before the slice merges. Findings 3 to 6 (medium) should be fixed in this slice or the next PR of the stack, before M4 acceptance is claimed. Findings 7 to 12 (low) can follow and are tracked in BACKLOG.
