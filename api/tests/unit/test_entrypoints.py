@@ -29,7 +29,7 @@ def test_worker_and_beat_start_celery(
     monkeypatch.setattr(app, "start", lambda argv: calls.append(("start", argv)))
     entrypoints.worker()
     entrypoints.beat()
-    assert calls[0][0] == "worker" and calls[0][1][:3] == ["worker", "--queues", "capture"]
+    assert calls[0][0] == "worker" and calls[0][1][:3] == ["worker", "--queues", "capture,process"]
     assert calls[1] == ("start", ["beat", "--loglevel", "INFO", "--scheduler",
                                   worker.BEAT_SCHEDULER])  # fmt: skip
     worker.celery_app.cache_clear()

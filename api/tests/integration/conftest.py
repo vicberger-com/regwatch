@@ -116,3 +116,14 @@ def upgrade(url: str, revision: str = "head") -> None:
 
 def downgrade(url: str, revision: str = "base") -> None:
     command.downgrade(alembic_config(url), revision)
+
+
+@pytest.fixture(autouse=True)
+def processing_handovers(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A finished run hands its manifest to M4 through the broker; integration tests record the
+    hand-over instead, so no test reaches a real queue."""
+    from regwatch.capture import runs
+
+    handed: list[str] = []
+    monkeypatch.setattr(runs, "_to_processing", handed.append)
+    return handed

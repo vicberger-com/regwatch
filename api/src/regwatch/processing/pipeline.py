@@ -1,0 +1,86 @@
+"""The M4 chain for one capture run's manifest (``process.extract`` with the stages it runs:
+dedupe, version, geotag, events; translate and classify join as they land).
+
+The manifest is read back from the object store under the exact key the run wrote, and each
+document is processed in its own transaction, so one bad row never loses the others. A row
+that fails is logged by kind, never by content, and counted.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+import structlog
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.processing import geotag
+from regwatch.processing.events import raise_events, tag_jurisdictions
+from regwatch.processing.ingest import ingest
+from regwatch.processing.models import Item
+from regwatch.taxonomy.models import Jurisdiction
+
+MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
+MAX_ROWS = 2000
+Load = Callable[[str], Awaitable[bytes | None]]
+_log = structlog.get_logger("regwatch.processing")
+
+
+@dataclass
+class Counts:
+    by_kind: dict[str, int] = field(default_factory=dict)
+    failed: int = 0
+
+    def add(self, kind: str) -> None:
+        self.by_kind[kind] = self.by_kind.get(kind, 0) + 1
+
+
+async def process_manifest(db: AsyncSession, key: str, load: Load) -> Counts:
+    """Every document of the run whose manifest is ``key``."""
+    counts = Counts()
+    match = MANIFEST.fullmatch(key)
+    if match is None:
+        raise ValueError("not a run manifest key")
+    source_id, run_id = uuid.UUID(match[1]), uuid.UUID(match[2])
+    raw = await load(key)
+    data: Any = json.loads(raw) if raw else {}
+    rows = data.get("documents") if isinstance(data, dict) else None
+    source = await db.scalar(select(Source).where(Source.id == source_id))
+    job = await db.scalar(select(CaptureJob).where(CaptureJob.source_id == source_id))
+    if not isinstance(rows, list) or source is None:
+        return counts
+    threshold = float(job.change_threshold_pct) if job is not None else 5.0
+    # The version names the run that brought it, if that run is still recorded.
+    known: uuid.UUID | None = await db.scalar(select(CaptureRun.id).where(CaptureRun.id == run_id))
+    wanted = list(source.default_jurisdiction_ids or [])
+    found = await db.scalars(select(Jurisdiction.code).where(Jurisdiction.id.in_(wanted)))
+    defaults = list(found.all())
+    await db.commit()
+    for row in rows[:MAX_ROWS]:
+        if not isinstance(row, dict):
+            counts.failed += 1
+            continue
+        try:
+            got = await ingest(db, source_id, known, row, threshold)
+            counts.add(got.kind)
+            if got.kind in ("new", "changed") and got.item_id is not None:
+                item = await db.get(Item, got.item_id)
+                assert item is not None  # noqa: S101 - just made or locked
+                value = row.get("text")
+                text = value if isinstance(value, str) else ""
+                hits = geotag.detect(item.title, text, item.canonical_url, defaults)
+                ids = await tag_jurisdictions(db, item, hits)
+                kind = "new_item" if got.kind == "new" else "content_changed"
+                await raise_events(db, item, kind, ids, got.changed_pct)
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 - one row never stops the run's others
+            await db.rollback()
+            counts.failed += 1
+            _log.warning("processing_row_failed", run_id=str(run_id), error=type(exc).__name__)
+    return counts

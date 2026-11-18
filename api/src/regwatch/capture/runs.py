@@ -39,7 +39,7 @@ from sqlalchemy import bindparam, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from regwatch.capture.execution import ContextFactory, Outcome, run_connector
+from regwatch.capture.execution import ContextFactory, Outcome, manifest_key, run_connector
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.schedule import CronError, next_run
 from regwatch.capture.schemas import CaptureRun as RunOut
@@ -298,8 +298,17 @@ async def claim(db: AsyncSession, job_id: uuid.UUID) -> CaptureRun | None:
     return run
 
 
-async def execute(db: AsyncSession, job_id: uuid.UUID,
-                  make_context: ContextFactory | None = None) -> str | None:  # fmt: skip
+Handover = Callable[[str], None]
+
+
+def _to_processing(key: str) -> None:  # pragma: no cover - the broker; tests replace it
+    from regwatch.processing.tasks import enqueue
+
+    enqueue(key)
+
+
+async def execute(db: AsyncSession, job_id: uuid.UUID, make_context: ContextFactory | None = None,
+                  hand_over: Handover | None = None) -> str | None:  # fmt: skip
     """``capture.run_job``: run the job's claimed run with its kind's connector; returns its
     status, or None when there was nothing to run. ``make_context`` builds the fetcher and the
     store (``capture.tasks`` gives the real ones)."""
@@ -332,6 +341,11 @@ async def execute(db: AsyncSession, job_id: uuid.UUID,
     await _close(db, run, outcome.status, outcome.error_class, outcome.error_message,
                  datetime.now(UTC), outcome)  # fmt: skip
     await db.commit()
+    if outcome.documents:  # M4 makes items from the manifest the run stored
+        try:
+            (hand_over or _to_processing)(manifest_key(str(source.id), run.id))
+        except Exception:  # noqa: BLE001 - the run is done; it is logged, never undone
+            _log.exception("processing_handover_failed", run_id=str(run.id))
     return outcome.status
 
 

@@ -1,0 +1,66 @@
+# Curated cues M4 tags jurisdictions by, beside the country names in gazetteer.json (M4 design
+# notes: gazetteer match on country names and demonyms; acceptance 2). Project data, written by
+# hand. Full names only: acronyms (BSI, NCSC, CNIL alone) name several bodies across countries.
+# authorities: an agency or legislature of that jurisdiction (confidence 0.9).
+# demonyms: adjectives of the jurisdiction in the rule languages (confidence 0.75).
+EU:
+  authorities: [European Commission, European Parliament, Council of the European Union,
+                European Union Agency for Cybersecurity, European Data Protection Board,
+                European Data Protection Supervisor, Official Journal of the European Union,
+                Europäische Kommission, Commission européenne, Comisión Europea, Comissão Europeia]
+  names: [European Union, Europäische Union, Union européenne, Unión Europea, União Europeia,
+          欧州連合]
+DE:
+  authorities: [Bundesamt für Sicherheit in der Informationstechnik, Bundesnetzagentur,
+                Bundesbeauftragte für den Datenschutz und die Informationsfreiheit,
+                Bundesministerium des Innern, Bundesgesetzblatt, Deutscher Bundestag]
+  demonyms: [German, deutsche, deutschen, deutscher, allemand, allemande, alemán, alemana, alemão, alemã]
+FR:
+  authorities: [Commission nationale de l'informatique et des libertés,
+                Agence nationale de la sécurité des systèmes d'information, Journal officiel de la République française,
+                Assemblée nationale]
+  demonyms: [French, française, français, französische, francés, francesa, francês]
+GB:
+  authorities: [Information Commissioner's Office, Department for Science, Innovation and Technology,
+                UK Parliament, House of Commons, House of Lords]
+  names: [United Kingdom, Great Britain]
+  demonyms: [British]
+US:
+  authorities: [Federal Trade Commission, Cybersecurity and Infrastructure Security Agency,
+                Securities and Exchange Commission, National Institute of Standards and Technology,
+                Federal Communications Commission, United States Congress, Federal Register]
+  names: [United States, U.S.]
+JP:
+  authorities: [個人情報保護委員会, 内閣サイバーセキュリティセンター, 経済産業省, 総務省, デジタル庁,
+                Personal Information Protection Commission of Japan]
+  demonyms: [Japanese, japonais, japonaise, japanische, japonés, japonesa, japonês]
+CN:
+  authorities: [国家互联网信息办公室, 全国人民代表大会, Cyberspace Administration of China]
+  demonyms: [Chinese, chinois, chinoise, chinesische, chino, china, chinês]
+CA:
+  authorities: [Office of the Privacy Commissioner of Canada, Innovation, Science and Economic Development Canada]
+  demonyms: [Canadian, canadien, canadienne]
+AU:
+  authorities: [Office of the Australian Information Commissioner, Australian Cyber Security Centre]
+  demonyms: [Australian]
+SG:
+  authorities: [Personal Data Protection Commission Singapore, Cyber Security Agency of Singapore,
+                Infocomm Media Development Authority]
+BR:
+  authorities: [Autoridade Nacional de Proteção de Dados, Congresso Nacional]
+  demonyms: [Brazilian, brasileiro, brasileira, brésilien, brasileño]
+IN:
+  authorities: [Ministry of Electronics and Information Technology, Indian Computer Emergency Response Team]
+  demonyms: [Indian]
+ES:
+  authorities: [Agencia Española de Protección de Datos, Boletín Oficial del Estado]
+  demonyms: [Spanish, español, española, espagnol]
+IT:
+  authorities: [Garante per la protezione dei dati personali, Agenzia per la cybersicurezza nazionale]
+  demonyms: [Italian, italiano, italiana, italien, italienne]
+NL:
+  authorities: [Autoriteit Persoonsgegevens]
+  demonyms: [Dutch]
+IE:
+  authorities: [Data Protection Commission of Ireland]
+  demonyms: [Irish]
