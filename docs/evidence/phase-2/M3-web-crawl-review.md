@@ -444,9 +444,9 @@ The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3
 
 | # | Severity | Description | Fix PR | Verified |
 | --- | --- | --- | --- | --- |
-| R24 | medium | **A site-wide 401 or 403 for three runs forgets every page, so when the block lifts, every page is `new` again.** `hard_failed` counts every 4xx except 404, 408, 410 and 429, without regard to whether the rest of the site answered. A 403 or 401 for every page is how web application firewalls and bot rules usually block a crawler for a time, and some servers answer 403 during maintenance. **Failure case** (`q19_outage_classes.py`): every page but the seed answers 403, or 401, on runs 2 to 4. After run 4 the state holds only the seed. On run 5, with the site back and nothing changed, 6 pages go to M4 as `new`. A rule that blocks for a few hours is enough on an hourly job. This class came from my own R20 suggestion ("4xx other than 408 and 429"), which did not separate a block from a missing page. **Fix:** count a hard failure only for a page whose host gave a successful answer to another page in the same run, that is, when the site was up for us. Or treat 401 and 403 like 5xx, never counted, because an access refusal is not evidence that the page is gone. Test q19 with 403 and 401. | follow-up commit: 401 and 403 never count; any other 4xx counts only if the same origin served other pages in that run (decided in the crawl's `finish`), so a site-wide block or upkeep forgets nothing; outage test with 503, 429, 408, 403 and 401; the forget test uses a 400 while the seed's host serves | |
-| R25 | low | **A long run of `too-slow` extractions forgets pages.** Extraction errors count as hard. `too-slow` can come from a busy worker host (the child's wall limit covers start-up on a busy host, `isolate.WALL_SECONDS`), not only from the page. **Failure case** (`q20_long_outage.py`): with every page `too-slow` on runs 2 to 9, the recovery run is `new` 6. Three runs are not enough, because the `unreadable-pages` stop caps each run at three. **Fix:** count `too-slow` only when the child ran out of CPU (`SIGXCPU`), not on the wall-clock timeout, or not at all; `too-large`, `too-deep` and `parse-failed` describe the page and can stay hard. | follow-up commit: an extraction `too-slow` never counts (a busy worker); `too-deep`, `too-large` and unreadable pages still do | |
-| R26 | info | (a) A gone page that answers 503 for ever is kept, as discussed above: acceptable; a long time-based fallback would fit BL-101. (b) URLs that redirect to another spelling of themselves (an upper-case host, `:443`, a fragment) end in SafeFetcher's redirect limit. That is `redirects`, not hard, so they are now kept and asked each rotation instead of being forgotten after three runs. Such servers are broken for browsers too, and the cost is one request a rotation. | accepted; a time-based fallback for pages failing every try for a long time recorded, BL-101 (j) | |
+| R24 | medium | **A site-wide 401 or 403 for three runs forgets every page, so when the block lifts, every page is `new` again.** `hard_failed` counts every 4xx except 404, 408, 410 and 429, without regard to whether the rest of the site answered. A 403 or 401 for every page is how web application firewalls and bot rules usually block a crawler for a time, and some servers answer 403 during maintenance. **Failure case** (`q19_outage_classes.py`): every page but the seed answers 403, or 401, on runs 2 to 4. After run 4 the state holds only the seed. On run 5, with the site back and nothing changed, 6 pages go to M4 as `new`. A rule that blocks for a few hours is enough on an hourly job. This class came from my own R20 suggestion ("4xx other than 408 and 429"), which did not separate a block from a missing page. **Fix:** count a hard failure only for a page whose host gave a successful answer to another page in the same run, that is, when the site was up for us. Or treat 401 and 403 like 5xx, never counted, because an access refusal is not evidence that the page is gone. Test q19 with 403 and 401. | follow-up commit: 401 and 403 never count; any other 4xx counts only if the same origin served other pages in that run (decided in the crawl's `finish`), so a site-wide block or upkeep forgets nothing; outage test with 503, 429, 408, 403 and 401; the forget test uses a 400 while the seed's host serves | yes (re-verification 8, `q19_outage_classes.py` and `q21_site_wide.py`: three runs of 403 or 401 on every inner page keep all 7 entries and the recovery run is `new` 0; a 400 on inner pages while the seed's host serves is forgotten after three runs, as designed, and a site-wide 400 is kept). The same guard is missing for 404, 410 and off-site redirects (R27) |
+| R25 | low | **A long run of `too-slow` extractions forgets pages.** Extraction errors count as hard. `too-slow` can come from a busy worker host (the child's wall limit covers start-up on a busy host, `isolate.WALL_SECONDS`), not only from the page. **Failure case** (`q20_long_outage.py`): with every page `too-slow` on runs 2 to 9, the recovery run is `new` 6. Three runs are not enough, because the `unreadable-pages` stop caps each run at three. **Fix:** count `too-slow` only when the child ran out of CPU (`SIGXCPU`), not on the wall-clock timeout, or not at all; `too-large`, `too-deep` and `parse-failed` describe the page and can stay hard. | follow-up commit: an extraction `too-slow` never counts (a busy worker); `too-deep`, `too-large` and unreadable pages still do | yes (`q20_long_outage.py`: eight runs of `too-slow` keep all 7 entries; the recovery run is `new` 0) |
+| R26 | info | (a) A gone page that answers 503 for ever is kept, as discussed above: acceptable; a long time-based fallback would fit BL-101. (b) URLs that redirect to another spelling of themselves (an upper-case host, `:443`, a fragment) end in SafeFetcher's redirect limit. That is `redirects`, not hard, so they are now kept and asked each rotation instead of being forgotten after three runs. Such servers are broken for browsers too, and the cost is one request a rotation. | accepted; a time-based fallback for pages failing every try for a long time recorded, BL-101 (j) | (a) deferred, accepted (BL-101 (j)); (b) accepted as recorded |
 
 **Sign-off at re-verification 7:** **not signed off** for the crawl slice (`c209055`, `8ee0c7e`, `3d58c2e`, `a63d20c`, `457809b`, `36a2987`, `23f9b91`, `2b53773`).
 - **Fixed and verified since re-verification 6:**
@@ -457,5 +457,57 @@ The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3
   - R25 is low and can go to BL-101.
   - R26 is info.
   - R21 and R22 (b) and (c) are in BL-101 (i).
+
+· M3 web crawl independent review · 2026-11-18
+
+## Re-verification 8
+**Scope:** branch `sec/M3-web-crawl-followups`, commit `cc14551`, on top of `4c66ce1` (this record):
+- `connectors/web_crawl.py`: `TRANSIENT_STATUSES` with 401 and 403; `client_errors` and `served`, which `finish` applies before `finish_state`; `too-slow` not hard;
+- BL-101 (j);
+- the new tests.
+
+The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3 web crawl independent review
+
+**Method:**
+- **Reading:** I read the diff, every path in `discover` that marks a page gone or hard-failed (`gone` for 404 and 410, `hard_failed` for `refused-host` and extraction errors, `client_errors` for other 4xx), and `finish`.
+- **Tests:** `uv run pytest -q tests/unit/test_connector_web_crawl.py tests/unit/test_connector_web_page.py tests/unit/test_capture_dryrun.py tests/unit/test_capture_execution.py` gave 130 passed. I did not rerun `make lint` or `make test-api`; the coordinator reports both passing.
+- **Probes:** I reran `q19_outage_classes.py` and `q20_long_outage.py`, and added `/tmp/web-crawl-review/rv8/q21_site_wide.py`. It has six pages and a seed. Either every inner page, or the whole site with the seed, fails one way for some runs, and then the site is back with nothing changed. The probe counts what the recovery run hands to M4 as `new`. The cases:
+  - inner pages 403, 401 or 503 for three runs while the seed serves;
+  - inner pages 400 for three runs while the seed serves, and the whole site 400 for three runs;
+  - the whole site 404, or 410, for one run;
+  - inner pages 404 for one run while the seed serves;
+  - the whole site redirecting off-site (to `status.other.example`) for three runs.
+- **Limits:** as before.
+
+**Results:**
+- R24 and R25 are fixed and verified (see the Verified column). R26 is deferred to BL-101 (j) or accepted.
+- Every transient class from re-verification 7 still keeps the state, now including 401 and 403. A 400 while the host serves other pages is forgotten after three runs, which is the intended rule.
+- The site-wide cases outside the new guard still forget everything:
+
+| Case (`q21_site_wide.py`) | Failing runs | State before recovery | `new` on recovery |
+| --- | --- | --- | --- |
+| whole site 404, one run | `skipped` / `unavailable` | 0 | 7 |
+| whole site 410, one run | `skipped` / `unavailable` | 0 | 7 |
+| inner pages 404, one run, seed serving | `success` | 1 | 6 |
+| whole site redirects off-site, three runs | `failed` / `fetch-failed` | 0 | 7 |
+| whole site 400, three runs | `failed` / `fetch-failed` | 7 | 0 |
+
+**New findings:**
+
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| R27 | medium | **A 404 or 410 forgets a page at once, and an off-site redirect counts as hard, both without R24's "the host served other pages" guard. One run of a site-wide 404 (a bad deploy, a content backend down behind a static home page), or three runs of a site-wide maintenance or sign-in redirect, forgets every page, and the next good run sends the whole site to M4 as `new`.** 404 and 410 go to `gone` in `discover`, and `refused-host` goes to `hard_failed`, before `finish` applies the guard. **Failure cases** (`q21_site_wide.py`, see the table above): (a) a whole-site 404 or 410 for one run leaves an empty state, and the next run is `new` 7; (b) inner pages answering 404 for one run while the home page serves leave only the seed, and the next run is `new` 6; (c) a whole-site redirect to an off-site status page for three runs leaves an empty state, and the next run is `new` 7. The 404 run is also shown as `skipped` / `unavailable`, which does not count against the source's health, so nothing flags it. I accepted a single page's transient 404 as info in R15 (a); I missed the site-wide case until now. **Fix:** (a) treat 404 and 410 as client errors under R24's guard, counted only when the host served other pages that run; (b) count them towards forgetting, but with a threshold of two runs rather than at once, so that one bad deploy behind a working home page does not forget the site; (c) apply the same guard to `refused-host`; (d) optionally, when every page of the run answered 404 or 410, report the run as failed rather than skipped. Test the whole-site 404 for one run, inner-page 404 for one run with the seed serving, and the whole-site off-site redirect for three runs. | | |
+
+**Sign-off at re-verification 8:** **not signed off** for the crawl slice (`c209055` to `cc14551`).
+- **Fixed and verified since re-verification 7:**
+  - R24: 401 and 403 never count, and other client errors count only while the host serves;
+  - R25: `too-slow` never counts.
+- **Still open: R27 (medium).** The guard that R24 added for client errors is missing from the two other ways a page is forgotten: 404 or 410, at once, and an off-site redirect. A single bad deploy that answers 404 site-wide, or a few runs of a maintenance redirect, still sends the whole site to M4 as `new` afterwards. The fix extends the existing guard, with a two-run threshold for 404 and 410, and is small. It needs the three `q21` cases as tests.
+- Everything else open is low or info, or deferred to BL-101 and accepted:
+  - R21, R22 (b) and (c) in BL-101 (i);
+  - R26 (a) in BL-101 (j);
+  - R3's message, R7 and R4's compact format in BL-101 (g) and (h).
+
+With R27 fixed and tested, I expect to sign off.
 
 · M3 web crawl independent review · 2026-11-18
