@@ -117,7 +117,7 @@ async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
     async def make(job: JobSettings) -> ConnectorContext:
         capture = CaptureFetcher(fetcher, limiter, robots=robots,
                                  rate_per_minute=job.rate_per_minute)  # fmt: skip
-        return ConnectorContext(fetcher=capture, store=objectstore.put, load=objectstore.get,
+        return ConnectorContext(fetcher=capture, store=objectstore.put,
                                 now=lambda: datetime.now(UTC))  # fmt: skip
 
     return make

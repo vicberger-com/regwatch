@@ -76,7 +76,6 @@ class JobSettings:
     robots_override: str | None = None  # the admin's recorded reason, or None to obey
     last_success_at: datetime | None = None  # when the last successful run started
     cursor: dict[str, Any] | None = None  # where the job got to (CP-14), or None
-    change_threshold_pct: float = 5.0  # below this, a changed page counts as unchanged
 
 
 @dataclass
@@ -87,8 +86,6 @@ class ConnectorContext:
     # What a connector reports beside its candidates, such as "truncated" when it stopped
     # before the source ran out (API feed review finding 2).
     notes: set[str] = field(default_factory=set)
-    # Reads back what ``store`` wrote (for example a page's previous text), or None if absent.
-    load: Callable[[str], Awaitable[bytes | None]] | None = None
     # The job's next cursor, set by a connector that keeps its own state there (CP-16: a web
     # page's last content hash); written only if the run fetched every document.
     state: dict[str, Any] | None = None

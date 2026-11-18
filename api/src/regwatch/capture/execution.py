@@ -109,9 +109,7 @@ def job_settings(job: CaptureJob, source: Source,
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
                        render_js=job.render_js, robots_override=override,
-                       last_success_at=last_success_at, cursor=job.cursor,
-                       change_threshold_pct=float(5 if job.change_threshold_pct is None
-                                                  else job.change_threshold_pct))  # fmt: skip
+                       last_success_at=last_success_at, cursor=job.cursor)  # fmt: skip
 
 
 def _transient(exc: BaseException) -> bool:
@@ -178,7 +176,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     base = await make_context(settings)
     counter = _CountingFetcher(base.fetcher)
     ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
-                           notes=base.notes, load=base.load)  # fmt: skip
+                           notes=base.notes)  # fmt: skip
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
     unchanged = 0  # fetched and compared: the same as last time, so not for M4 (CP-16)

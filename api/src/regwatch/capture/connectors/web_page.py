@@ -6,19 +6,20 @@ acceptance 2; connectors.yaml ``web_page``; ADR-0009; CP-16).
 - The text comes from ``extract_isolated``: a child process per page with hard limits, never an
   in-process parse of captured HTML (HTML extraction review R4, BL-98). A run fetches its
   documents one after another, so a worker process runs at most one child at a time.
-- Change detection: the job's cursor holds the last content hash and the object store key of
-  its text (CP-16). The same hash is ``unchanged``. A different one is compared line by line:
-  the share of lines added or removed, against the job's ``change_threshold_pct``. Below the
-  threshold the page counts as ``unchanged`` and the stored baseline stays, so slow drift adds
-  up until it crosses the threshold; at or above it, the page is ``changed`` and the baseline
-  moves. The first run is ``new``.
+- Change detection (CP-16): the job's cursor holds the last content hash and the object store
+  key of its text. The same hash is ``unchanged``: counted, nothing stored, nothing for M4. Any
+  other hash is ``changed`` (``new`` on the first run) and goes to M4 with the previous text's
+  key, and the baseline moves. How much a page changed, and whether it is worth an event, is
+  M4's decision: its threshold counts characters, and a status change is always an event (M4
+  spec). M3 never drops a change (web page review findings 1 and 2).
+- The raw body is stored only for a new or changed page, so unchanged runs leave no objects
+  behind (finding 5).
 - ``listing`` mode and ``render_js`` answer ``not-implemented`` until they land.
 """
 
 from __future__ import annotations
 
 import hashlib
-from collections import Counter
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -38,15 +39,6 @@ from regwatch.capture.extract.isolate import extract_isolated
 from regwatch.capture.extract.tree import ParseError
 
 HTML = frozenset({"text/html", "application/xhtml+xml"})
-
-
-def changed_pct(before: str, after: str) -> float:
-    """Lines added or removed, as a share of all lines of both texts (0 to 100). Linear: a
-    multiset difference, not a diff, which would be quadratic on hostile text."""
-    old, new = Counter(before.split("\n")), Counter(after.split("\n"))
-    changed = sum((old - new).values()) + sum((new - old).values())
-    total = sum(old.values()) + sum(new.values())
-    return round(100.0 * changed / total, 2) if total else 0.0
 
 
 def _charset(content_type: str) -> str | None:
@@ -86,12 +78,23 @@ class WebPageConnector:
             raise ConnectorError(
                 exc.reason, "the page could not be read within the limits"
             ) from None
+        before = job.cursor or {}
+        if before.get("content_hash") == found.content_hash:
+            change = "unchanged"  # counted only: nothing stored, nothing for M4
+        else:
+            change = "changed" if before.get("content_hash") else "new"
+            text_ref = f"text/{job.source_id}/{found.content_hash}.txt"
+            await ctx.store(text_ref, found.text.encode())
+            ctx.state = {"content_hash": found.content_hash, "text_ref": text_ref}
         key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
-        await ctx.store(key, got.body)
-        change, pct = await _compare(found.text, found.content_hash, job, ctx)
+        if change != "unchanged":
+            await ctx.store(key, got.body)
+        previous = before.get("text_ref") if change == "changed" else None
         metadata: dict[str, Any] = {"title": found.title, "method": found.method,
                                     "warnings": found.warnings, "content_hash": found.content_hash,
-                                    "changed_pct": pct,
+                                    # For M4's diff; its own key checks apply when it reads it.
+                                    "previous_text_ref": previous if isinstance(previous, str)
+                                    else None,
                                     "published_at": found.published_at.isoformat()
                                     if found.published_at else None}  # fmt: skip
         return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=got.status,
@@ -102,28 +105,6 @@ class WebPageConnector:
 
     def health(self, job: JobSettings) -> HealthReport:
         return HealthReport("unknown", "health comes from the job's runs")
-
-
-async def _compare(text: str, digest: str, job: JobSettings,
-                   ctx: ConnectorContext) -> tuple[str, float | None]:  # fmt: skip
-    """("new" | "changed" | "unchanged", the changed share or None), and the next state."""
-    before = job.cursor or {}
-    if before.get("content_hash") == digest:
-        return "unchanged", 0.0
-    text_ref = f"text/{job.source_id}/{digest}.txt"
-    previous: bytes | None = None
-    ref = before.get("text_ref")
-    if isinstance(ref, str) and ref.startswith(f"text/{job.source_id}/") and ctx.load is not None:
-        previous = await ctx.load(ref)
-    if previous is not None:
-        pct = changed_pct(previous.decode("utf-8", errors="replace"), text)
-        if pct < job.change_threshold_pct:
-            return "unchanged", pct  # the baseline stays, so small changes add up
-    await ctx.store(text_ref, text.encode())
-    ctx.state = {"content_hash": digest, "text_ref": text_ref}
-    if previous is None:
-        return ("changed" if before.get("content_hash") else "new"), None
-    return "changed", pct
 
 
 register(WebPageConnector())

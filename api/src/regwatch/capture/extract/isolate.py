@@ -16,6 +16,7 @@ import json
 import os
 import signal
 import sys
+import weakref
 from datetime import datetime
 from typing import Any
 
@@ -28,8 +29,23 @@ MAX_ANSWER = 16 * 1024 * 1024
 COMMAND = (sys.executable, "-I", "-m", "regwatch.capture.extract.child")
 
 
+_locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakKeyDictionary()
+)
+
+
 async def extract_isolated(body: bytes, encoding: str | None,
                            rules: ExtractionRules) -> Extracted:  # fmt: skip
+    """One child at a time per worker process (HTML extraction review R4, BL-98 (a); web page
+    review finding 6): each child may take 1 GiB and 10 s of CPU, so concurrent callers in one
+    process wait their turn instead of multiplying that."""
+    loop = asyncio.get_running_loop()
+    lock = _locks.setdefault(loop, asyncio.Lock())
+    async with lock:
+        return await _extract(body, encoding, rules)
+
+
+async def _extract(body: bytes, encoding: str | None, rules: ExtractionRules) -> Extracted:
     # Only what the child parses, plus one byte so it knows the page was cut (R5).
     body = body[: MAX_PARSE_BYTES + 1]
     request = json.dumps({"body": base64.b64encode(body).decode(), "encoding": encoding,

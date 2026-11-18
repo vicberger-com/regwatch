@@ -102,3 +102,17 @@ async def test_only_what_is_parsed_is_sent() -> None:
     """R5: a 6 MiB body sends 2 MiB and one byte; the child still reports the cut."""
     got = await isolate.extract_isolated(b"<p>" + b"word " * 1_200_000, None, ExtractionRules())
     assert got.warnings[0].startswith("the page was longer")
+
+
+async def test_one_child_at_a_time_per_process(monkeypatch: pytest.MonkeyPatch,
+                                               tmp_path: Any) -> None:  # fmt: skip
+    """BL-98 (a): concurrent callers in one process wait their turn."""
+    log = tmp_path / "log"
+    script = (f"import time; f = open({str(log)!r}, 'a'); f.write('start\\n'); f.flush(); "
+              "time.sleep(0.3); f.write('end\\n'); f.flush(); "
+              "print('{\"error\": \"too-deep\"}')")  # fmt: skip
+    monkeypatch.setattr(isolate, "COMMAND", (sys.executable, "-I", "-c", script))
+    calls = [isolate.extract_isolated(b"<p>x</p>", None, ExtractionRules()) for _ in range(3)]
+    results = await asyncio.gather(*calls, return_exceptions=True)
+    assert all(isinstance(r, ParseError) for r in results)
+    assert log.read_text().split() == ["start", "end"] * 3  # never two children at once
