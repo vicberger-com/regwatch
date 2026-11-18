@@ -57,6 +57,19 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
     assert oct((tmp_path / "deploy/queue.env").stat().st_mode)[-3:] == "600"
     assert "VALKEY_PASSWORD" not in app and "VALKEY_PASSWORD" not in db
     assert owner_password not in queue
+    # ADR-0010: the SearXNG key, in search.env for the search container only.
+    search = (tmp_path / "deploy/search.env").read_text()
+    key = next(line.split("=", 1)[1] for line in search.splitlines()
+               if line.startswith("SEARXNG_SECRET="))  # fmt: skip
+    assert len(key) == 64 and key not in app and key not in db and key not in queue
+    assert oct((tmp_path / "deploy/search.env").stat().st_mode)[-3:] == "600"
+    # A setup from before the search sidecar: only search.env is written.
+    (tmp_path / "deploy/search.env").unlink()
+    added = subprocess.run([bash, str(tmp_path / "scripts/dev-env.sh")], capture_output=True,  # noqa: S603
+                           text=True, check=True, env={"PATH": os.environ["PATH"]})  # fmt: skip
+    assert added.stdout.strip() == "wrote deploy/search.env"
+    assert (tmp_path / "deploy/.env").read_text() == app
+    assert (tmp_path / "deploy/queue.env").read_text() == queue
 
     # A setup from before the queue password: only queue.env and the queue URL line change.
     (tmp_path / "deploy/queue.env").unlink()
@@ -88,3 +101,19 @@ def test_only_the_queue_reads_queue_env() -> None:
                if "queue.env" in (service.get("env_file") or [])
                or service.get("env_file") == "queue.env"]  # fmt: skip
     assert readers == ["queue"]
+
+
+def _env_files(service: dict[str, object]) -> list[str]:
+    entries = service.get("env_file") or []
+    entries = entries if isinstance(entries, list) else [entries]
+    return [e["path"] if isinstance(e, dict) else e for e in entries]  # type: ignore[index]
+
+
+def test_only_search_reads_search_env_and_joins_egress() -> None:
+    """ADR-0010 decision 6 (CP-18): the key and the internet reach the search sidecar alone,
+    and it publishes no port."""
+    services = COMPOSE["services"]
+    assert [n for n, s in services.items() if "search.env" in _env_files(s)] == ["search"]
+    assert [n for n, s in services.items() if "egress" in (s.get("networks") or [])] == ["search"]
+    assert "ports" not in services["search"] and "@sha256:" in services["search"]["image"]
+    assert COMPOSE["networks"]["regwatch"]["internal"] is True

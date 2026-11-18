@@ -1,6 +1,7 @@
 .env
 deploy/db.env
 deploy/queue.env
+deploy/search.env
 *.log
 node_modules/
 __pycache__/
