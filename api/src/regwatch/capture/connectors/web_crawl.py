@@ -54,6 +54,7 @@ from regwatch.capture.connectors.web_page import (
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
 GONE = frozenset({404, 410})
+MAX_FAILURES = 3  # runs in a row a remembered page failed before it is forgotten (R16 (C))
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
 # The last label: letters, or an internationalised one in punycode (R5).
@@ -112,16 +113,21 @@ class WebCrawlConnector:
         ctx.scratch["listing"] = {"listed": listed, "pages": {}, "previous": previous,
                                   "origin": None, "unreadable": 0, "tried": {},
                                   "keep_unlisted": True, "gone": set(),
-                                  "depths": {}}  # fmt: skip
+                                  "depths": {}, "max_failures": MAX_FAILURES,
+                                  "passed": set()}  # fmt: skip
         # Seeds first (their links are the crawl); then pages never checked, at any depth;
         # then the longest unchecked, shallower first among equals. A crawl cut short by its
         # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
         frontier: list[tuple[int, str, int, int, str]] = []
         order = 0
 
+        best: dict[str, int] = {}  # the shallowest depth each URL was pushed at (R17)
+        done: set[str] = set()
+
         def push(url: str, depth: int) -> None:
             nonlocal order
             order += 1
+            best[url] = depth
             checked = previous.get(url, ["", "", ""])[2]
             heapq.heappush(frontier, (0 if depth == 0 else 1, checked, depth, order, url))
 
@@ -131,8 +137,12 @@ class WebCrawlConnector:
         # Every remembered page is asked again in its turn, at the depth it was found at, so a
         # page that has gone answers 404 or 410 and leaves the state, and one still there keeps
         # its baseline. Nothing is forgotten by age or evicted (re-verification R13, R14).
+        # A remembered page the domains or URL patterns no longer allow is forgotten now, so
+        # narrowing them frees room (re-verification R16 (A)).
+        for url in [u for u in previous if not (_allowed(u, domains) and keep(u))]:
+            del previous[url]
         for url, entry in previous.items():
-            if url not in seen and _allowed(url, domains) and keep(url):
+            if url not in seen:
                 depth = int(entry[3]) if entry[3].isdigit() else config.max_depth
                 seen.add(url)
                 push(url, min(max(depth, 1), config.max_depth))
@@ -143,6 +153,9 @@ class WebCrawlConnector:
                 ctx.notes.update({"truncated", "crawl-limit"})
                 return
             _seed, _checked, depth, _n, url = heapq.heappop(frontier)
+            if url in done or depth > best.get(url, depth):
+                continue  # a deeper copy of a page already taken at a shallower depth (R17)
+            done.add(url)
             ctx.scratch["listing"]["depths"][url] = str(depth)
             requests += 1
             listed.append(url)
@@ -177,8 +190,21 @@ class WebCrawlConnector:
                     continue
                 yield Candidate(url=url, hints={"error": exc})
                 continue
-            if got.status in GONE:  # no longer on the site: dropped from the state (R10)
+            if got.status in GONE:  # no longer on the site: dropped, and a skip (R10, R18)
                 ctx.scratch["listing"]["gone"].add(url)
+                gone = ConnectorError("unavailable", f"the page is gone (HTTP {got.status})")
+                yield Candidate(url=url, hints={"error": gone})
+                continue
+            final = got.url.split("?", 1)[0] if strip else got.url
+            if depth > 0 and final != url:
+                # A page that redirects to another page is gone under this address; the page it
+                # leads to is crawled under its own, if allowed (R16 (B)).
+                ctx.scratch["listing"]["gone"].add(url)
+                if final not in seen and _allowed(final, domains) and keep(final):
+                    seen.add(final)
+                    known.add(final)
+                    push(final, depth)
+                continue
             if not 200 <= got.status < 300:
                 failed = ConnectorError("http-status", f"the page answered HTTP {got.status}")
                 yield Candidate(url=url, hints={"error": failed})
@@ -187,6 +213,7 @@ class WebCrawlConnector:
                 # Not a page of the site's text: no document, but tried, so it rotates to the
                 # back like a failed page instead of taking the budget every run (R1).
                 ctx.scratch["listing"]["tried"][url] = ctx.now().isoformat()
+                ctx.scratch["listing"]["passed"].add(url)  # answered: not a failure (R16 (C))
                 continue
             try:
                 found = await _extract(got, job, "a" if depth < config.max_depth else None)
@@ -197,6 +224,9 @@ class WebCrawlConnector:
                 link = entry_link({"link": href}, got.url)
                 if link is not None and strip:
                     link = link.split("?", 1)[0]
+                if link is not None and link in seen and depth + 1 < best.get(link, 0):
+                    push(link, depth + 1)  # found again, nearer the seed: follow it from there
+                    continue
                 if (link is None or link in seen or not _allowed(link, domains)
                         or not keep(link)):  # fmt: skip
                     continue

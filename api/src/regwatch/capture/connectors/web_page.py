@@ -157,10 +157,10 @@ async def _previous_listing(job: JobSettings, ctx: ConnectorContext) -> dict[str
         return {}
     if not isinstance(data, dict):
         return {}
-    # [content_hash, text_ref, checked_at, depth]; older entries have fewer items. The depth
-    # is the crawl's, as text, "" in listing mode.
-    return {u: (v + ["", ""])[:4] for u, v in data.items()
-            if isinstance(u, str) and isinstance(v, list) and 2 <= len(v) <= 4
+    # [content_hash, text_ref, checked_at, depth, failures]; older entries have fewer items.
+    # The depth and the failures in a row are the crawl's, as text, "" in listing mode.
+    return {u: (v + ["", "", ""])[:5] for u, v in data.items()
+            if isinstance(u, str) and isinstance(v, list) and 2 <= len(v) <= 5
             and all(isinstance(x, str) for x in v)}  # fmt: skip
 
 
@@ -211,9 +211,16 @@ async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
     for u in listing["listed"]:
         entry = listing["pages"].get(u)
         if entry is None and u in listing["tried"]:
-            old = listing["previous"].get(u) or ["", "", "", ""]
-            depth = listing.get("depths", {}).get(u, old[3] if len(old) > 3 else "")
-            entry = [old[0], old[1], listing["tried"][u], depth]
+            old = (listing["previous"].get(u) or []) + ["", "", "", "", ""]
+            depth = listing.get("depths", {}).get(u, old[3])
+            passed = u in listing.get("passed", ())  # answered, but not a page: no failure
+            failures = "0" if passed else str(int(old[4]) + 1 if old[4].isdigit() else 1)
+            entry = [old[0], old[1], listing["tried"][u], depth, failures]
+            limit = listing.get("max_failures")
+            if limit and int(failures) >= limit:  # failed this often in a row: forgotten
+                entry = None
+                pages[u] = None
+                continue
         pages[u] = entry or listing["previous"].get(u)
     for u in listing.get("gone", ()):  # 404 or 410 this run: the page is gone (crawl R10)
         pages.pop(u, None)

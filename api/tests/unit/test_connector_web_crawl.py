@@ -59,6 +59,7 @@ def tick() -> datetime:
 
 async def crawl(site: Site, objects: dict[str, bytes], cursor: Any = None, *,
                 override: str | None = None, max_items: int = 100,
+                rules: dict[str, Any] | None = None,
                 **config: Any) -> execution.Outcome:  # fmt: skip
     async def make(settings: JobSettings) -> ConnectorContext:
         async def public(host: str, port: int) -> list[str]:
@@ -84,7 +85,8 @@ async def crawl(site: Site, objects: dict[str, bytes], cursor: Any = None, *,
                     robots_policy="override" if override else "respect", config=settings,
                     override_reason=override)  # fmt: skip
     job = CaptureJob(max_items_per_run=max_items, rate_limit_per_minute=6000, render_js=False,
-                     extraction_rules={"content_selectors": ["div.c"]}, cursor=cursor)  # fmt: skip
+                     extraction_rules={"content_selectors": ["div.c"], **(rules or {})},
+                     cursor=cursor)  # fmt: skip
     return await execution.run_connector(uuid.uuid4(), job, source, make)
 
 
@@ -131,7 +133,8 @@ async def test_the_page_limit_truncates_and_other_pages_are_passed_over() -> Non
     cut = await crawl(site, {}, max_pages_per_run=3)
     assert (cut.status, cut.error_class, len(cut.documents)) == ("partial", "truncated", 3)
     whole = await crawl(site, {})
-    assert len(whole.documents) == 6 and whole.status == "partial"  # /gone is a 404: failed
+    assert len(whole.documents) == 6 and whole.status == "success"  # /gone is a 404: a skip (R18)
+    assert "unavailable 1" in (whole.error_message or "")
     assert "reg.example/r.pdf" not in names(whole)
 
 
@@ -558,3 +561,63 @@ async def test_an_inner_redirect_under_the_override_is_one_failure() -> None:
     got = await crawl(site, {}, override="The regulator agreed in writing")
     assert got.status == "partial" and got.error_class == "some-failed"
     assert {"reg.example/p0", "reg.example/p1"} <= {n for n in names(got)}
+
+
+async def test_narrowing_the_patterns_frees_the_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification R16 (A): excluded pages leave the state at once."""
+    from regwatch.capture.connectors import web_page
+
+    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    pages: dict[str, Any] = {"reg.example/": ("Home", [f"/news/n{n}" for n in range(8)]
+                                              + [f"/docs/d{n}" for n in range(4)])}  # fmt: skip
+    pages.update({f"reg.example/news/n{n}": (f"N{n}", []) for n in range(8)})
+    pages.update({f"reg.example/docs/d{n}": (f"D{n}", []) for n in range(4)})
+    site = Site(pages)
+    objects: dict[str, bytes] = {}
+    first = await crawl(site, objects)
+    narrowed = await crawl(site, objects, first.cursor, rules={"exclude_url_patterns": ["/news/"]})
+    state = json.loads(objects[narrowed.cursor["listing_ref"]])
+    assert not any("/news/" in u for u in state)
+    assert {f"https://reg.example/docs/d{n}" for n in range(4)} <= set(state)
+
+
+async def test_a_page_that_redirects_elsewhere_is_gone() -> None:
+    """R16 (B): a removed page answering 301 to the home page leaves the state."""
+    site = Site({"reg.example/": ("Home", ["/old"]), "reg.example/old": ("Old", [])})
+    objects: dict[str, bytes] = {}
+    first = await crawl(site, objects)
+    site.pages["reg.example/old"] = (301, {"location": "https://reg.example/"})
+    second = await crawl(site, objects, first.cursor)
+    assert [d.url for d in second.documents if d.change != "unchanged"] == []
+    state = json.loads(objects[second.cursor["listing_ref"]])
+    assert "https://reg.example/old" not in state
+    site.pages["reg.example/"] = ("Home", ["/moved"])
+    site.pages["reg.example/moved"] = (301, {"location": "https://reg.example/renamed"})
+    site.pages["reg.example/renamed"] = ("Renamed", [])
+    third = await crawl(site, objects, second.cursor)
+    assert "https://reg.example/renamed" in [d.url for d in third.documents]  # crawled as itself
+
+
+async def test_a_page_failing_three_runs_in_a_row_is_forgotten() -> None:
+    """R16 (C)."""
+    site = Site({"reg.example/": ("Home", ["/flaky"]), "reg.example/flaky": ("F", [])})
+    objects: dict[str, bytes] = {}
+    cursor = (await crawl(site, objects)).cursor
+    site.pages["reg.example/"] = ("Home", [])  # no longer linked, and now failing
+    site.pages["reg.example/flaky"] = (503, {})
+    for _ in range(3):
+        cursor = (await crawl(site, objects, cursor)).cursor or cursor
+    assert "https://reg.example/flaky" not in json.loads(objects[cursor["listing_ref"]])
+
+
+async def test_a_shallower_link_lowers_a_pages_depth() -> None:
+    """R17: x first found at max_depth, later linked from the seed, has its links followed."""
+    site = Site({"reg.example/": ("Home", ["/a"]), "reg.example/a": ("A", ["/x"]),
+                 "reg.example/x": ("X", ["/y"]), "reg.example/y": ("Y", [])})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    first = await crawl(site, objects, max_depth=2)
+    assert "reg.example/y" not in site.asked
+    site.pages["reg.example/"] = ("Home", ["/a", "/x"])
+    site.asked.clear()
+    await crawl(site, objects, first.cursor, max_depth=2)
+    assert "reg.example/y" in site.asked
