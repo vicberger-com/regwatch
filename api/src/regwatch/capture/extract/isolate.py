@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Any
 
 from regwatch.capture.connectors.config import ExtractionRules
-from regwatch.capture.extract.text import Extracted
+from regwatch.capture.extract.text import MAX_HREF, MAX_LINKS, Extracted
 from regwatch.capture.extract.tree import MAX_PARSE_BYTES
 from regwatch.capture.extract.tree import ParseError as ParseError  # callers import it here
 
@@ -35,22 +35,24 @@ _locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
 )
 
 
-async def extract_isolated(body: bytes, encoding: str | None,
-                           rules: ExtractionRules) -> Extracted:  # fmt: skip
+async def extract_isolated(body: bytes, encoding: str | None, rules: ExtractionRules,
+                           links_selector: str | None = None) -> Extracted:  # fmt: skip
     """One child at a time per worker process (HTML extraction review R4, BL-98 (a); web page
     review finding 6): each child may take 1 GiB and 10 s of CPU, so concurrent callers in one
     process wait their turn instead of multiplying that."""
     loop = asyncio.get_running_loop()
     lock = _locks.setdefault(loop, asyncio.Lock())
     async with lock:
-        return await _extract(body, encoding, rules)
+        return await _extract(body, encoding, rules, links_selector)
 
 
-async def _extract(body: bytes, encoding: str | None, rules: ExtractionRules) -> Extracted:
+async def _extract(body: bytes, encoding: str | None, rules: ExtractionRules,
+                   links_selector: str | None) -> Extracted:  # fmt: skip
     # Only what the child parses, plus one byte so it knows the page was cut (R5).
     body = body[: MAX_PARSE_BYTES + 1]
     request = json.dumps({"body": base64.b64encode(body).decode(), "encoding": encoding,
-                          "rules": rules.model_dump(mode="json")}).encode()  # fmt: skip
+                          "rules": rules.model_dump(mode="json"),
+                          "links_selector": links_selector}).encode()  # fmt: skip
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C"}
     child = await asyncio.create_subprocess_exec(
         *COMMAND, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -78,9 +80,14 @@ def _answer(out: bytes) -> Extracted:
         if "error" in got:
             raise ParseError(str(got["error"])[:40], "the page could not be extracted")
         published = got["published_at"]
+        hrefs = got.get("links", [])
+        if (not isinstance(hrefs, list) or len(hrefs) > MAX_LINKS
+                or not all(isinstance(h, str) and len(h) <= MAX_HREF for h in hrefs)):  # fmt: skip
+            raise ValueError("links")
         return Extracted(text=got["text"], content_hash=got["content_hash"], title=got["title"],
                          published_at=datetime.fromisoformat(published) if published else None,
-                         method=got["method"], warnings=list(got["warnings"]))  # fmt: skip
+                         method=got["method"], warnings=list(got["warnings"]),
+                         links=hrefs)  # fmt: skip
     except ParseError:
         raise
     except (ValueError, KeyError, TypeError):

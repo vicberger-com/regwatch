@@ -155,3 +155,17 @@ def test_hidden_and_graphic_text_is_never_the_main_text(body: bytes) -> None:
     """Re-verification R3: what monitoring hashes is what a reader sees."""
     got = text.extract(tree.parse(body), ExtractionRules())
     assert got.text == "v" * 300
+
+
+def test_links_from_a_listing_selector(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = (
+        b'<ul class=d><li><a href=" /a ">A</a><li><a href="/a">A again</a><li><a>none</a>'
+        b'<li><a href="' + b"x" * 2049 + b'">long</a></ul><p><a class=one href="/b">B</a></p>'
+    )
+    page = tree.parse(body)
+    walk = tree.elements(page.root)
+    assert text.links(page, "ul.d", walk) == ["/a"]
+    assert text.links(page, "a.one", walk) == ["/b"]
+    monkeypatch.setattr(text, "MAX_LINKS", 1)
+    assert text.links(page, "a", walk) == ["/a"]
+    assert text.extract(page, ExtractionRules(), "a.one").links == ["/b"]

@@ -44,6 +44,8 @@ async def test_the_tokenizer_cannot_stall_a_run() -> None:
      ("print('not json')", "parse-failed"),
      ("print('{\"text\": 1}')", "parse-failed"),
      ("print('{\"error\": \"too-deep\"}')", "too-deep"),
+     ("import json; print(json.dumps({'text': '', 'content_hash': 'h', 'title': None, "
+      "'published_at': None, 'method': 'm', 'warnings': [], 'links': [1]}))", "parse-failed"),
      ("import os, signal; os.kill(os.getpid(), signal.SIGXCPU)", "too-slow")],
 )  # fmt: skip
 async def test_a_child_that_fails_is_a_parse_error(monkeypatch: pytest.MonkeyPatch, script: str,

@@ -35,14 +35,15 @@ def answer(request: dict[str, Any]) -> dict[str, Any]:
 
     try:
         page = tree.parse(base64.b64decode(request["body"]), request.get("encoding"))
-        got = text.extract(page, ExtractionRules.model_validate(request.get("rules") or {}))
+        got = text.extract(page, ExtractionRules.model_validate(request.get("rules") or {}),
+                           request.get("links_selector"))  # fmt: skip
     except tree.ParseError as exc:
         return {"error": exc.reason}
     except MemoryError:
         return {"error": "too-large"}
     return {"text": got.text, "content_hash": got.content_hash, "title": got.title,
             "published_at": got.published_at.isoformat() if got.published_at else None,
-            "method": got.method, "warnings": got.warnings}  # fmt: skip
+            "method": got.method, "warnings": got.warnings, "links": got.links}  # fmt: skip
 
 
 def main() -> None:  # pragma: no cover - run as a process by isolate.py; tested there

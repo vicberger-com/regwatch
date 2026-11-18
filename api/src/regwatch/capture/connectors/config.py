@@ -12,7 +12,15 @@ import re
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import AnyUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AnyUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from regwatch.capture.extract.select import SelectorError, compile_selector
 from regwatch.core.errors import ProblemError, ProblemFieldError
@@ -54,6 +62,22 @@ class ExtractionRules(_Strict):
             _check_selector(selector)
         return value
 
+    @field_validator("include_url_patterns", "exclude_url_patterns")
+    @classmethod
+    def _url_patterns(cls, value: list[str]) -> list[str]:
+        from regwatch.taxonomy.rules import PatternError, compile_pattern
+
+        if len(value) > MAX_SELECTORS:
+            raise ValueError(f"at most {MAX_SELECTORS} patterns")
+        for pattern in value:
+            if len(pattern) > 200:
+                raise ValueError("a pattern is at most 200 characters")
+            try:
+                compile_pattern(pattern)
+            except PatternError as exc:
+                raise ValueError(str(exc)) from None
+        return value
+
     @field_validator("title_selector", "date_selector")
     @classmethod
     def _selector(cls, value: str | None) -> str | None:
@@ -91,6 +115,14 @@ class WebPageConfig(_Strict):
     listing_link_selector: str | None = None
     max_links: int = Field(default=50, le=500)
     wait_for_selector: str | None = None
+
+    @model_validator(mode="after")
+    def _listing(self) -> WebPageConfig:
+        if self.mode == "listing" and not self.listing_link_selector:
+            raise ValueError("listing mode needs listing_link_selector")
+        if self.listing_link_selector is not None:
+            _check_selector(self.listing_link_selector)
+        return self
 
 
 class WebCrawlConfig(_Strict):

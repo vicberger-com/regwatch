@@ -36,6 +36,8 @@ CELLS = frozenset({"td", "th"})
 PARAGRAPHS = frozenset({"p", "pre", "li", "td", "blockquote", "dd"})
 MAX_TEXT = 1_000_000  # characters kept; a page is at most 2 MiB parsed
 MAX_TITLE = 500
+MAX_LINKS = 2000  # hrefs returned for listing mode; the connector keeps at most max_links
+MAX_HREF = 2048  # SafeFetcher's URL limit
 # ISO 8601 first, then common written forms (CP-15); English month names only.
 DATE_FORMATS = ("%d %B %Y", "%d %b %Y", "%B %d, %Y", "%b %d, %Y", "%d.%m.%Y", "%Y/%m/%d")
 _SPACE = re.compile(r"[^\S\n]+")
@@ -50,6 +52,7 @@ class Extracted:
     published_at: datetime | None = None
     method: str = "selectors"  # selectors, main, article or blocks
     warnings: list[str] = field(default_factory=list)
+    links: list[str] = field(default_factory=list)  # hrefs as written, for listing mode
 
 
 def normalize(text: str) -> str:
@@ -174,7 +177,23 @@ def _first(page: Page, selector: str | None, skip: set[int], walk: Walk) -> ET.E
     return found[0] if found else None
 
 
-def extract(page: Page, rules: ExtractionRules) -> Extracted:
+def links(page: Page, selector: str, walk: Walk) -> list[str]:
+    """The hrefs of the elements the selector matches, in document order and each once: an
+    ``a`` element's own, else those of the ``a`` elements inside it. As written, unresolved;
+    the connector resolves and checks them as any captured link."""
+    out: dict[str, None] = {}
+    for el in compile_selector(selector).select(page.root, walk):
+        anchors = [el] if el.tag == "a" else list(el.iter("a"))
+        for a in anchors:
+            href = (a.get("href") or "").strip()
+            if href and len(href) <= MAX_HREF:
+                out.setdefault(href, None)
+            if len(out) >= MAX_LINKS:
+                return list(out)
+    return list(out)
+
+
+def extract(page: Page, rules: ExtractionRules, links_selector: str | None = None) -> Extracted:
     """The page's text, hash, title and date by the job's rules (checked when saved)."""
     walk = elements(page.root)  # once per page, for every selector (review finding 3)
     skip = _skipped(page, rules, walk)
@@ -218,4 +237,5 @@ def extract(page: Page, rules: ExtractionRules) -> Extracted:
         if published is None:
             warnings.append("the date could not be read")
     digest = hashlib.sha256(text.encode()).hexdigest()
-    return Extracted(text, digest, title, published, method, warnings)
+    found = links(page, links_selector, walk) if links_selector else []
+    return Extracted(text, digest, title, published, method, warnings, found)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -122,8 +123,8 @@ async def test_a_page_that_cannot_be_read_is_a_typed_failure() -> None:
     assert exc.value.reason == "too-deep"
 
 
-@pytest.mark.parametrize(("config", "render"), [({"mode": "listing"}, False), ({}, True)])
-async def test_listing_mode_and_rendering_are_not_built_yet(config: dict[str, Any],
+@pytest.mark.parametrize(("config", "render"), [({}, True)])
+async def test_rendering_is_not_built_yet(config: dict[str, Any],
                                                             render: bool) -> None:  # fmt: skip
     settings = JobSettings(**{**job(**config).__dict__, "render_js": render})
     ctx = context(Site(b""), {})
@@ -214,3 +215,138 @@ def test_only_this_sources_text_keys_reach_m4(ref: Any) -> None:
     assert web_page._own_text_ref(ref, "s1") is None
     good = "text/s1/" + "a" * 64 + ".txt"
     assert web_page._own_text_ref(good, "s1") == good
+
+
+class Listing:
+    """A listing page linking to documents; each document's body can be changed per test."""
+
+    def __init__(self, links: list[str], docs: dict[str, str]) -> None:
+        self.links, self.docs = links, docs
+        self.paths: list[str] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.paths.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=httpx.ByteStream(b""))
+        if request.url.path == "/list":
+            items = "".join(f'<li><a href="{h}">doc</a></li>' for h in self.links)
+            body = f"<nav><a href='/nav'>menu</a></nav><ul class=docs>{items}</ul>".encode()
+        else:
+            body = f"<div class=c><p>{self.docs.get(request.url.path, 'none')}</p></div>".encode()
+        return httpx.Response(200, headers={"content-type": "text/html"},
+                              stream=httpx.ByteStream(body))  # fmt: skip
+
+
+async def listing_run(site: Listing, objects: dict[str, bytes], cursor: dict[str, Any] | None,
+                      max_links: int = 50, **rules: Any) -> Any:  # fmt: skip
+    import uuid
+
+    from regwatch.capture import execution
+    from regwatch.capture.models import CaptureJob, Source
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        async def public(host: str, port: int) -> list[str]:
+            return ["93.184.215.14"]
+
+        async def no_wait(seconds: float) -> None:
+            return None
+
+        async def store(key: str, body: bytes) -> None:
+            objects[key] = body
+
+        async def load(key: str) -> bytes | None:
+            return objects.get(key)
+
+        fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
+                              transport=httpx.MockTransport(site))  # fmt: skip
+        capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000, sleep=no_wait)
+        return ConnectorContext(fetcher=capture, store=store, now=lambda: NOW, load=load)
+
+    source = Source(id=uuid.UUID(int=7), kind="web_page", robots_policy="respect",
+                    config={"page_url": "https://regulator.example/list", "mode": "listing",
+                            "listing_link_selector": "ul.docs", "max_links": max_links},
+                    override_reason=None)  # fmt: skip
+    job_row = CaptureJob(max_items_per_run=100, rate_limit_per_minute=6000, render_js=False,
+                         extraction_rules={"content_selectors": ["div.c"], **rules},
+                         cursor=cursor)  # fmt: skip
+    return await execution.run_connector(uuid.uuid4(), job_row, source, make)
+
+
+async def test_listing_mode_compares_each_linked_page() -> None:
+    site = Listing(["/a", "b", "https://regulator.example/a", "javascript:x()", "http://10.0.0.1/x"],
+                   {"/a": "Act A", "/b": "Act B"})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    first = await listing_run(site, objects, None)
+    assert (first.status, first.items_new, first.items_unchanged) == ("success", 2, 0)
+    assert [d.url for d in first.documents] == ["https://regulator.example/a",
+                                                "https://regulator.example/b"]  # fmt: skip
+    assert "/nav" not in site.paths  # only the selector's links
+    ref = first.cursor["listing_ref"]
+    assert ref.startswith("state/00000000-0000-0000-0000-000000000007/")
+    same = await listing_run(site, objects, first.cursor)
+    assert (same.items_unchanged, same.items_new, same.cursor) == (2, 0, None)
+    site.docs["/b"] = "Act B, amended"
+    site.links = ["/b"]  # /a is no longer listed
+    moved = await listing_run(site, objects, first.cursor)
+    assert (moved.items_changed, moved.items_unchanged) == (1, 0)
+    assert moved.documents[0].metadata["previous_text_ref"].startswith("text/")
+    state = json.loads(objects[moved.cursor["listing_ref"]])
+    assert list(state) == ["https://regulator.example/b"]
+
+
+async def test_listing_limits_patterns_and_a_foreign_state_key() -> None:
+    site = Listing([f"/d{n}" for n in range(5)] + ["/skip-me"], {})
+    objects: dict[str, bytes] = {}
+    cut = await listing_run(site, objects, None, max_links=3)
+    assert (cut.status, cut.error_class, cut.items_new) == ("partial", "truncated", 3)
+    some = await listing_run(site, objects, None, exclude_url_patterns=["skip"],
+                             include_url_patterns=["/d[0-1]$", "skip"])  # fmt: skip
+    assert [d.url.rsplit("/", 1)[1] for d in some.documents] == ["d0", "d1"]
+    foreign = {"listing_ref": "state/other/" + "a" * 64 + ".json"}
+    objects["state/other/" + "a" * 64 + ".json"] = b'{"https://regulator.example/d0": ["x", "y"]}'
+    fresh = await listing_run(site, objects, foreign, max_links=1)
+    assert fresh.documents[0].change == "new"  # another source's state is never read
+    broken = {"listing_ref": "state/00000000-0000-0000-0000-000000000007/" + "b" * 64 + ".json"}
+    objects[broken["listing_ref"]] = b"not json"
+    assert (await listing_run(site, objects, broken, max_links=1)).documents[0].change == "new"
+
+
+@pytest.mark.parametrize(
+    ("config", "rules"),
+    [({"mode": "listing"}, {}), ({"mode": "listing", "listing_link_selector": "a:hover"}, {}),
+     ({}, {"include_url_patterns": ["(a)\\1"]}), ({}, {"exclude_url_patterns": ["x" * 201]})],
+)  # fmt: skip
+def test_listing_settings_are_checked_when_saved(config: dict[str, Any],
+                                                 rules: dict[str, Any]) -> None:  # fmt: skip
+    from regwatch.capture.connectors.config import validate_config, validate_rules
+    from regwatch.core.errors import ProblemError
+
+    with pytest.raises(ProblemError):
+        validate_config("web_page", {"page_url": URL, **config})
+        validate_rules(rules)
+
+
+async def test_stale_rows_fail_as_bad_config() -> None:
+    """Rows saved before these checks: a bad pattern, a listing without its selector."""
+
+    class Rules:
+        include_url_patterns = ["(a)\\1"]
+        exclude_url_patterns: list[str] = []
+
+    with pytest.raises(ConnectorError) as exc:
+        web_page._url_filter(Rules())
+    assert exc.value.reason == "bad-config"
+    stale = WebPageConfig.model_construct(page_url=URL, mode="listing", listing_link_selector=None,
+                                          max_links=5, wait_for_selector=None)  # fmt: skip
+    settings = JobSettings(**{**job().__dict__, "config": stale})
+    with pytest.raises(ConnectorError) as exc:
+        [c async for c in web_page.WebPageConnector().discover(settings, context(Site(b""), {}))]
+    assert exc.value.reason == "bad-config"
+
+
+async def test_a_state_object_that_is_not_a_map_is_ignored() -> None:
+    sid = "00000000-0000-0000-0000-000000000007"
+    ref = f"state/{sid}/" + "c" * 64 + ".json"
+    site = Listing(["/a"], {"/a": "A"})
+    got = await listing_run(site, {ref: b"[1, 2]"}, {"listing_ref": ref})
+    assert got.documents[0].change == "new"

@@ -176,7 +176,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     base = await make_context(settings)
     counter = _CountingFetcher(base.fetcher)
     ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
-                           notes=base.notes)  # fmt: skip
+                           notes=base.notes, load=base.load)  # fmt: skip
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
     unchanged = 0  # fetched and compared: the same as last time, so not for M4 (CP-16)
@@ -212,6 +212,9 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
                     else:
                         failures += 1
+            finish = getattr(connector, "finish", None)
+            if finish is not None:  # discovery ran to its end: the connector's own state
+                await finish(settings, ctx)
     except TimeoutError:
         if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
             raise

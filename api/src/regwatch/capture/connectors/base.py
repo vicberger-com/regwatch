@@ -89,6 +89,11 @@ class ConnectorContext:
     # The job's next cursor, set by a connector that keeps its own state there (CP-16: a web
     # page's last content hash); written only if the run fetched every document.
     state: dict[str, Any] | None = None
+    # Reads back an object this source's connector wrote (listing mode's per-URL state); keys
+    # are checked against an exact pattern by the connector before they are read.
+    load: Callable[[str], Awaitable[bytes | None]] | None = None
+    # Per-run working data of the connector, between discover, fetch and finish.
+    scratch: dict[str, Any] = field(default_factory=dict)
 
 
 class Connector(Protocol):
