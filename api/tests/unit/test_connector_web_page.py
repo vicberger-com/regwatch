@@ -290,15 +290,17 @@ async def test_listing_mode_compares_each_linked_page() -> None:
                                                 "https://regulator.example/b"]  # fmt: skip
     assert "/nav" not in site.paths  # only the selector's links
     ref = first.cursor["listing_ref"]
-    assert ref == "state/00000000-0000-0000-0000-000000000007/listing.json"  # one per source (R5)
+    assert ref == "state/00000000-0000-0000-0000-000000000007/listing-a.json"  # two slots (R8)
     same = await listing_run(site, objects, first.cursor)
-    assert (same.items_unchanged, same.items_new, same.cursor) == (2, 0, None)
+    assert (same.items_unchanged, same.items_new) == (2, 0)
+    assert same.cursor["listing_ref"].endswith("listing-b.json")  # the other slot (R8)
     site.docs["/b"] = "Act B, amended"
     site.links = ["/b"]  # /a is no longer listed
     moved = await listing_run(site, objects, first.cursor)
     assert (moved.items_changed, moved.items_unchanged) == (1, 0)
     assert moved.documents[0].metadata["previous_text_ref"].startswith("text/")
-    state = json.loads(objects[ref])
+    state = json.loads(objects[moved.cursor["listing_ref"]])
+    assert moved.cursor["listing_ref"].endswith("listing-b.json")
     assert list(state) == ["https://regulator.example/b"]
 
 
@@ -310,11 +312,11 @@ async def test_listing_limits_patterns_and_a_foreign_state_key() -> None:
     some = await listing_run(site, objects, None, exclude_url_patterns=["skip"],
                              include_url_patterns=["/d[0-1]$", "skip"])  # fmt: skip
     assert [d.url.rsplit("/", 1)[1] for d in some.documents] == ["d0", "d1"]
-    foreign = {"listing_ref": "state/other/listing.json"}
-    objects["state/other/listing.json"] = b'{"https://regulator.example/d0": ["x", "y"]}'
+    foreign = {"listing_ref": "state/other/listing-a.json"}
+    objects["state/other/listing-a.json"] = b'{"https://regulator.example/d0": ["x", "y"]}'
     fresh = await listing_run(site, objects, foreign, max_links=1)
     assert fresh.documents[0].change == "new"  # another source's state is never read
-    broken = {"listing_ref": "state/00000000-0000-0000-0000-000000000007/listing.json"}
+    broken = {"listing_ref": "state/00000000-0000-0000-0000-000000000007/listing-b.json"}
     objects[broken["listing_ref"]] = b"not json"
     assert (await listing_run(site, objects, broken, max_links=1)).documents[0].change == "new"
 
@@ -354,7 +356,7 @@ async def test_stale_rows_fail_as_bad_config() -> None:
 
 async def test_a_state_object_that_is_not_a_map_is_ignored() -> None:
     sid = "00000000-0000-0000-0000-000000000007"
-    ref = f"state/{sid}/listing.json"
+    ref = f"state/{sid}/listing-a.json"
     site = Listing(["/a"], {"/a": "A"})
     got = await listing_run(site, {ref: b"[1, 2]"}, {"listing_ref": ref})
     assert got.documents[0].change == "new"
@@ -423,7 +425,7 @@ async def test_the_item_limit_rotates_through_the_links() -> None:
 
     first = await listing_run(site, objects, None, max_items=2)
     second = await listing_run(site, objects, first.cursor, max_items=2)
-    third = await listing_run(site, objects, first.cursor, max_items=2)  # the key stays (R5)
+    third = await listing_run(site, objects, second.cursor, max_items=2)
     names = [[d.url.rsplit("/", 1)[1] for d in r.documents] for r in (first, second, third)]
     assert names == [["d0", "d1"], ["d2", "d3"], ["d4"]]
 
@@ -460,3 +462,15 @@ async def test_another_port_or_scheme_is_another_site() -> None:
                    {"/a": "A"})  # fmt: skip
     got = await listing_run(site, {}, None)
     assert [d.url for d in got.documents] == ["https://regulator.example/a"]
+
+
+async def test_new_state_counts_only_once_the_cursor_moves() -> None:
+    """Re-verification R8: a run that fails after writing its state leaves the old in force."""
+    site = Listing(["/a"], {"/a": "version 1"})
+    objects: dict[str, bytes] = {}
+    first = await listing_run(site, objects, None)
+    site.docs["/a"] = "version 2 - the obligation is repealed"
+    lost = await listing_run(site, objects, first.cursor)  # suppose its commit then failed
+    assert lost.documents[0].change == "changed" and lost.cursor != first.cursor
+    retry = await listing_run(site, objects, first.cursor)  # the cursor did not move
+    assert retry.documents[0].change == "changed"  # the change is not lost

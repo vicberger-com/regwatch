@@ -35,7 +35,7 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import bindparam, func, select, update
+from sqlalchemy import bindparam, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,8 +108,9 @@ async def _advance_cursor(db: AsyncSession, run: CaptureRun, cursor: dict[str, A
         .where(CaptureJob.id == run.job_id))  # fmt: skip
     if changed is not None and changed > run.created_at:
         return  # saved since the run began: the old query's position must not come back
-    # SQL NULL for "no cursor": a JSONB-typed None would be sent as JSON null and never match.
-    unchanged = (CaptureJob.cursor.is_(None) if started_from is None else
+    # "No cursor" is SQL NULL; a JSON null stored before migration 0004 counts as none too.
+    unchanged = (or_(CaptureJob.cursor.is_(None), CaptureJob.cursor == text("'null'::jsonb"))
+                 if started_from is None else
                  CaptureJob.cursor == bindparam("started", started_from, type_=JSONB))  # fmt: skip
     await db.execute(
         update(CaptureJob)
@@ -141,7 +142,8 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
         job.last_run_at = now
         # Only over the cursor the run started from: settings saved meanwhile reset it, and
         # the old query's position must not come back (CP-13/14 review, low finding).
-        if cursor is not None and status in ("success", "partial"):
+        on_failure = outcome is not None and outcome.cursor_on_failure and status == "failed"
+        if cursor is not None and (status in ("success", "partial") or on_failure):
             await _advance_cursor(db, run, cursor, outcome.cursor_from if outcome else None)
     if source is None or status == "skipped" or error_class in NOT_THE_SOURCE:
         return

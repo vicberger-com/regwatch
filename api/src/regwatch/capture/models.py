@@ -61,7 +61,8 @@ class CaptureJob(Base):
     enabled: Mapped[bool] = mapped_column(server_default=text("true"))
     next_run_at: Mapped[datetime | None]
     last_run_at: Mapped[datetime | None]
-    cursor: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # CP-14; the worker writes it
+    # CP-14; the worker writes it. None is SQL NULL, never JSON null (migration 0004).
+    cursor: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
 
 
 class CaptureRun(Base):

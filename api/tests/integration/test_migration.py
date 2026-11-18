@@ -52,7 +52,7 @@ def test_upgrade_downgrade_upgrade_on_empty_database(postgres: Postgres, empty_d
     downgrade(url)
     assert postgres.schema_dump(empty_db) == before
     upgrade(url)
-    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0003"
+    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0004"
 
 
 def test_schema_matches_contract(postgres: Postgres, empty_db: str) -> None:

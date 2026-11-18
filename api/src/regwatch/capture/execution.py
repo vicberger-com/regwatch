@@ -93,6 +93,9 @@ class Outcome:
     bytes_fetched: int = 0
     cursor: dict[str, Any] | None = None  # the job's new cursor (CP-14), or None to keep it
     cursor_from: dict[str, Any] | None = None  # the cursor the run started from
+    # Write the cursor even if the run failed: per-document state that kept every entry it
+    # did not update (web listing re-verification R7).
+    cursor_on_failure: bool = False
     documents: list[RawDocument] = field(default_factory=list)
 
 
@@ -270,7 +273,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                    items_changed=sum(1 for _, d in entries if d.change == "changed"),
                    items_unchanged=unchanged, bytes_fetched=counter.fetched,
                    documents=[doc for _, doc in entries], cursor=cursor,
-                   cursor_from=settings.cursor)  # fmt: skip
+                   cursor_from=settings.cursor, cursor_on_failure=per_document)  # fmt: skip
 
 
 def _cursor(current: dict[str, Any] | None, entries: list[tuple[Candidate, RawDocument]],

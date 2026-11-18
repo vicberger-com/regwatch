@@ -72,14 +72,18 @@ def _own_text_ref(value: Any, source_id: str) -> str | None:
     return None
 
 
-def _listing_key(source_id: str) -> str:
-    """One state object per source, overwritten each run (re-verification R5): a run is the
-    only writer, as a job has at most one unfinished run (CP-11)."""
-    return f"state/{source_id}/listing.json"
+SLOTS = ("a", "b")
+
+
+def _listing_key(source_id: str, slot: str) -> str:
+    """Two state objects per source, used in turn (re-verification R5 and R8): a run writes the
+    slot the cursor does not point to, and the new state counts only once the run commits and
+    the cursor moves to it; a run that fails before that leaves the old state in force."""
+    return f"state/{source_id}/listing-{slot}.json"
 
 
 def _own_listing_ref(value: Any, source_id: str) -> str | None:
-    return value if value == _listing_key(source_id) else None
+    return value if value in {_listing_key(source_id, s) for s in SLOTS} else None
 
 
 def _origin(url: str) -> tuple[str, str, int] | None:
@@ -258,7 +262,10 @@ class WebPageConnector:
                 entry = [old[0], old[1], listing["tried"][u]]
             pages[u] = entry or listing["previous"].get(u)
         body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()
-        key = _listing_key(job.source_id)
+        current = _own_listing_ref((job.cursor or {}).get("listing_ref"), job.source_id)
+        key = _listing_key(
+            job.source_id, "b" if current == _listing_key(job.source_id, "a") else "a"
+        )
         await ctx.store(key, body)
         ctx.state = {"listing_ref": key}
 

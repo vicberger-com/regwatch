@@ -580,3 +580,58 @@ async def test_the_test_button_runs_on_a_worker(
 
 async def _none() -> None:
     return None
+
+
+async def test_per_document_state_is_kept_on_a_failed_run(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Web listing re-verification R7: a listing whose first pages fail still records that
+    they were tried, so a new source does not stall on them; other connectors do not."""
+    from regwatch.capture import execution
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    for on_failure, expected in ((False, None), (True, {"listing_ref": "x"})):
+        await db.execute(update(CaptureJob).where(CaptureJob.id == jid).values(cursor=None))
+        db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+        await db.commit()
+
+        async def failed(*args: Any, _flag: bool = on_failure) -> Any:
+            return execution.Outcome("failed", "unreadable-pages", "x", cursor={"listing_ref": "x"},
+                                     cursor_on_failure=_flag)  # fmt: skip
+
+        monkeypatch.setattr(runs, "run_connector", failed)
+        assert await runs.execute(db, jid, _factory(_site(""), {})) == "failed"
+        assert (await _job(db, str(jid))).cursor == expected
+
+
+async def test_a_cleared_cursor_is_sql_null_and_can_be_written_again(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Clearing the cursor stored JSON null, which the worker's IS NULL never matched, so a
+    job's cursor was never written again after a settings change (migration 0004)."""
+    from sqlalchemy import text as sql
+
+    from regwatch.capture import execution
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    jid = uuid.UUID(made["job"]["id"])
+    await db.execute(update(CaptureJob).where(CaptureJob.id == jid).values(cursor={"a": 1}))
+    await db.commit()
+    new_feed = {"config": {"feed_url": "https://feeds.example/cleared"}}
+    assert (await admin.patch(_api(f"/sources/{made['id']}"), json=new_feed)).status_code == 200
+    is_null = sql("SELECT cursor IS NULL FROM capture_job WHERE id = :id")
+    assert await db.scalar(is_null, {"id": jid}) is True
+    # A JSON null left from before the fix still counts as no cursor.
+    await db.execute(
+        sql("UPDATE capture_job SET cursor = 'null'::jsonb WHERE id = :id"), {"id": jid}
+    )
+    db.add(CaptureRun(job_id=jid, started_at=datetime.now(UTC)))
+    await db.commit()
+
+    async def moved(*args: Any) -> Any:
+        return execution.Outcome("success", cursor={"publication_date": "2026-11-12"})
+
+    monkeypatch.setattr(runs, "run_connector", moved)
+    assert await runs.execute(db, jid, _factory(_site(""), {})) == "success"
+    assert (await _job(db, str(jid))).cursor == {"publication_date": "2026-11-12"}
