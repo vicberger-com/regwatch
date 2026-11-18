@@ -20,6 +20,7 @@ acceptance 2; connectors.yaml ``web_page``; ADR-0009; CP-16).
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -35,8 +36,7 @@ from regwatch.capture.connectors.base import (
     register,
 )
 from regwatch.capture.connectors.config import ExtractionRules, WebPageConfig
-from regwatch.capture.extract.isolate import extract_isolated
-from regwatch.capture.extract.tree import ParseError
+from regwatch.capture.extract.isolate import ParseError, extract_isolated
 
 HTML = frozenset({"text/html", "application/xhtml+xml"})
 
@@ -46,6 +46,15 @@ def _charset(content_type: str) -> str | None:
         name, _, value = part.strip().partition("=")
         if name.lower() == "charset" and value:
             return value.strip("\"' ")[:40]
+    return None
+
+
+def _own_text_ref(value: Any, source_id: str) -> str | None:
+    """The previous text's key, only if it is exactly one this source wrote: a stale or edited
+    cursor must never point M4's diff at another source's object (re-verification R1)."""
+    if isinstance(value, str) and re.fullmatch(rf"text/{re.escape(source_id)}/[0-9a-f]{{64}}\.txt",
+                                               value):  # fmt: skip
+        return value
     return None
 
 
@@ -89,12 +98,13 @@ class WebPageConnector:
         key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
         if change != "unchanged":
             await ctx.store(key, got.body)
-        previous = before.get("text_ref") if change == "changed" else None
+        previous = (
+            _own_text_ref(before.get("text_ref"), job.source_id) if change == "changed" else None
+        )
         metadata: dict[str, Any] = {"title": found.title, "method": found.method,
                                     "warnings": found.warnings, "content_hash": found.content_hash,
                                     # For M4's diff; its own key checks apply when it reads it.
-                                    "previous_text_ref": previous if isinstance(previous, str)
-                                    else None,
+                                    "previous_text_ref": previous,
                                     "published_at": found.published_at.isoformat()
                                     if found.published_at else None}  # fmt: skip
         return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=got.status,

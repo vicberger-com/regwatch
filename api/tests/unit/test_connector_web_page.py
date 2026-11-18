@@ -169,17 +169,48 @@ async def test_a_run_with_the_real_connector() -> None:
     assert execution.manifest_key(str(source.id), uuid.UUID(int=2)) not in objects
 
 
-def test_connectors_never_parse_captured_html_in_process() -> None:
-    """BL-98 (a): only extract.isolate may be used by connectors; tree, text and select run in
-    the child alone."""
+def test_no_code_outside_extract_parses_captured_html_in_process() -> None:
+    """BL-98 (a), re-verification R2: by the syntax tree, over the whole package, not by
+    substrings. Only capture/extract may import html5lib or extract.tree, text and select;
+    config.py may import compile_selector, which compiles an admin's selector, never a page."""
+    import ast
     import pathlib
 
-    import regwatch.capture.connectors as package
+    import regwatch
 
-    for path in pathlib.Path(package.__file__).parent.glob("*.py"):
-        if path.name == "config.py":  # compiles the admin's selectors when saved; never a page
+    banned = {"html5lib", "regwatch.capture.extract.tree", "regwatch.capture.extract.text",
+              "regwatch.capture.extract.select"}  # fmt: skip
+    root = pathlib.Path(regwatch.__file__).parent
+    allowed = {("capture/connectors/config.py", "regwatch.capture.extract.select")}
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
+        if rel.startswith("capture/extract/"):
             continue
-        code = path.read_text()
-        for banned in ("extract.text", "extract.select", "tree.parse(", "extract import text",
-                       "extract import select", "extract import tree"):  # fmt: skip
-            assert banned not in code, f"{path.name} uses {banned}"
+        for node in ast.walk(ast.parse(path.read_text())):
+            names: list[str] = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+            for name in names:
+                hit = next((b for b in banned if name == b or name.startswith(b + ".")), None)
+                assert hit is None or (rel, hit) in allowed, f"{rel} imports {name}"
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "text/other/" + "a" * 64 + ".txt",
+        "raw/s1/runs/x.json",
+        "../../etc/passwd",
+        "text/s1/" + "A" * 64 + ".txt",
+        "text/s1/" + "a" * 63 + ".txt",
+        5,
+        "x" * 100_000,
+    ],
+)
+def test_only_this_sources_text_keys_reach_m4(ref: Any) -> None:
+    """Re-verification R1."""
+    assert web_page._own_text_ref(ref, "s1") is None
+    good = "text/s1/" + "a" * 64 + ".txt"
+    assert web_page._own_text_ref(good, "s1") == good

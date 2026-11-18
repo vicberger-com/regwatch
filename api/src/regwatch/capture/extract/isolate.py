@@ -22,7 +22,8 @@ from typing import Any
 
 from regwatch.capture.connectors.config import ExtractionRules
 from regwatch.capture.extract.text import Extracted
-from regwatch.capture.extract.tree import MAX_PARSE_BYTES, ParseError
+from regwatch.capture.extract.tree import MAX_PARSE_BYTES
+from regwatch.capture.extract.tree import ParseError as ParseError  # callers import it here
 
 WALL_SECONDS = 20.0  # over the child's CPU limit (10 s), for start-up and a busy host
 MAX_ANSWER = 16 * 1024 * 1024

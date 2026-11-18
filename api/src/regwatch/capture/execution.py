@@ -134,8 +134,8 @@ def _manifest(run_id: uuid.UUID, entries: list[tuple[Candidate, RawDocument]]) -
          "title": c.title, "summary": c.summary, "external_id": c.external_id,
          "language": c.language,
          "published_at": c.published_at.isoformat() if c.published_at else None,
-         # What the connector learned from the document itself (a page's title, date and
-         # change share), and whether it is new or changed (CP-16).
+         # What the connector learned from the document itself (a page's title and date, and
+         # the key of its previous text), and whether it is new or changed (CP-16).
          "change": d.change, "metadata": d.metadata}
         for c, d in entries
     ]  # fmt: skip
