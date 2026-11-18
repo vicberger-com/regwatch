@@ -121,6 +121,10 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 
 **Signed off for the M4 pipeline slice.** No high finding remains open. N5 and N7 are fixed; the provider guard holds (a row's provider must equal the source's configured provider). Open, medium, to fix before M4 acceptance is claimed: N8 (the first source to fetch a page with text owns it, so the official source's later changes are dropped and a search title stays) and R15 (a summary planted at a PDF URL holds until text extraction), both in BL-109. The low items stay in BL-107.
 
+## After sign-off: found by the author (not yet re-verified)
+
+`process_manifest` reused the name `kind` for the event kind, so after a run's first new or changed row every later row was ingested with `kind="new_item"` or `"content_changed"` and an official API's rows stopped speaking for their host (introduced in `a4d9bad`). Fixed by naming the event kind `event`; `test_every_row_of_an_official_api_run_speaks_for_its_host` fails without the fix. To be checked in the next review of this module.
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

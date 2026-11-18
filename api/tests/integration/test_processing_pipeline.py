@@ -203,3 +203,26 @@ async def test_the_sweep_hands_over_manifests_never_processed(
     await process_manifest(db, key, loader(objects), store)
     assert marker_key(key) in objects
     assert await sweep(db, loader(objects), hand_over) == 0  # processed: not again
+
+
+async def test_every_row_of_an_official_api_run_speaks_for_its_host(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Regression: the event kind of the first new row once replaced the source's kind, so
+    later rows of a Federal Register run lost the provider's word for their host."""
+    from sqlalchemy import update
+
+    from regwatch.capture.models import Source
+
+    sid = await made_source(admin)
+    await db.execute(update(Source).where(Source.id == uuid.UUID(sid))
+                     .values(kind="api_feed", config={"provider": "federal_register"}))  # fmt: skip
+    await db.commit()
+    rows = [{"url": f"https://www.federalregister.gov/d/2026-{n}", "text": f"Rule {n}. " + BSI,
+             "title": f"R{n}",
+             "metadata": {"provider": "federal_register"}} for n in range(3)]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    await process_manifest(db, key, loader(objects))
+    hosts = (await db.scalars(select(Item.fetched_host).where(
+        Item.source_id == uuid.UUID(sid)))).all()  # fmt: skip
+    assert hosts == ["federalregister.gov"] * 3

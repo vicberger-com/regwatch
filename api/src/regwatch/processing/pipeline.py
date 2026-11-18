@@ -98,8 +98,8 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
                 await classify(db, item, text, rules, terms, min_confidence)
-                kind = "new_item" if got.kind == "new" else "content_changed"
-                await raise_events(db, item, kind, ids, got.changed_pct)
+                event = "new_item" if got.kind == "new" else "content_changed"
+                await raise_events(db, item, event, ids, got.changed_pct)
             await db.commit()
         except SoftTimeLimitExceeded:  # the worker's limit: stop, the sweep hands it over again
             await db.rollback()
