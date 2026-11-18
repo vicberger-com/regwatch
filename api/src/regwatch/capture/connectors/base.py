@@ -94,6 +94,11 @@ class ConnectorContext:
     load: Callable[[str], Awaitable[bytes | None]] | None = None
     # Per-run working data of the connector, between discover, fetch and finish.
     scratch: dict[str, Any] = field(default_factory=dict)
+    # The search sidecar (ADR-0010): an internal client when the flag and the provider allow
+    # search, else None; the hosts of official sources; and a deployment-wide pace for queries.
+    search: Any = None
+    official_hosts: frozenset[str] = frozenset()
+    pace: Callable[[str, float], Awaitable[None]] | None = None
 
 
 class Connector(Protocol):

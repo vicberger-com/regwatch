@@ -67,6 +67,58 @@ async def _request(job: JobSettings, ctx: ConnectorContext) -> dict[str, Any] | 
     return data if isinstance(data, dict) else None
 
 
+async def fetch_document(candidate: Candidate, job: JobSettings, ctx: ConnectorContext,
+                     extra: dict[str, Any]) -> RawDocument:  # fmt: skip
+    """A URL (fetched through SafeFetcher, robots.txt always obeyed) or a stored upload, as a
+    new document: HTML read in the isolated child, PDF and text stored. Shared with the search
+    connector, whose result pages are fetched the same way."""
+    if candidate.hints.get("kind") == "url":
+        got = await ctx.fetcher.fetch(candidate.url, rate_per_minute=job.rate_per_minute,
+                                      robots_override=None)  # fmt: skip
+        # Never the override: anyone with sources.manage can submit any URL here, and the
+        # override's reason was written about another site (8.3; manual review finding 1).
+        if not 200 <= got.status < 300:
+            raise ConnectorError("http-status", f"the page answered HTTP {got.status}")
+        mime = FETCHED_KINDS.get(got.mime or "")
+        if mime is None:
+            raise ConnectorError("unsupported-type", "the address is not HTML, PDF or text")
+        body, final_url, status = got.body, got.url, got.status
+        charset = _charset(got.headers.get("content-type", ""))
+        key = f"raw/{job.source_id}/{hashlib.sha256(body).hexdigest()}"
+        await ctx.store(key, body)
+    else:
+        key = candidate.hints["body_ref"]
+        loaded = await ctx.load(key) if ctx.load is not None else None
+        if loaded is None:
+            raise ConnectorError("bad-request", "the uploaded file is no longer stored")
+        body, final_url, status, mime, charset = (
+            loaded,
+            None,
+            200,
+            candidate.hints["mime"],
+            None,
+        )
+    text: str | None = None
+    metadata: dict[str, Any] = {"title": candidate.title, **extra}
+    if mime == "text/html":
+        rules = job.rules if isinstance(job.rules, ExtractionRules) else ExtractionRules()
+        try:
+            found = await extract_isolated(body, charset, rules)
+        except ParseError as exc:
+            raise ConnectorError(exc.reason, "the page could not be read within the "
+                                 "limits") from None  # fmt: skip
+        text = found.text
+        metadata.update({"title": candidate.title or found.title,
+                         "content_hash": found.content_hash, "warnings": found.warnings,
+                         "published_at": found.published_at.isoformat()
+                         if found.published_at else None})  # fmt: skip
+    elif mime == "text/plain":
+        text = body.decode("utf-8", errors="replace")
+    return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=status, body_ref=key,
+                       mime=mime, final_url=final_url, text=text, metadata=metadata,
+                       change="new")  # fmt: skip
+
+
 class ManualConnector:
     kind = "manual"
     config_schema: type[BaseModel] = ManualConfig
@@ -90,51 +142,7 @@ class ManualConnector:
 
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
-        if candidate.hints.get("kind") == "url":
-            got = await ctx.fetcher.fetch(candidate.url, rate_per_minute=job.rate_per_minute,
-                                          robots_override=None)  # fmt: skip
-            # Never the override: anyone with sources.manage can submit any URL here, and the
-            # override's reason was written about another site (8.3; manual review finding 1).
-            if not 200 <= got.status < 300:
-                raise ConnectorError("http-status", f"the page answered HTTP {got.status}")
-            mime = FETCHED_KINDS.get(got.mime or "")
-            if mime is None:
-                raise ConnectorError("unsupported-type", "the address is not HTML, PDF or text")
-            body, final_url, status = got.body, got.url, got.status
-            charset = _charset(got.headers.get("content-type", ""))
-            key = f"raw/{job.source_id}/{hashlib.sha256(body).hexdigest()}"
-            await ctx.store(key, body)
-        else:
-            key = candidate.hints["body_ref"]
-            loaded = await ctx.load(key) if ctx.load is not None else None
-            if loaded is None:
-                raise ConnectorError("bad-request", "the uploaded file is no longer stored")
-            body, final_url, status, mime, charset = (
-                loaded,
-                None,
-                200,
-                candidate.hints["mime"],
-                None,
-            )
-        text: str | None = None
-        metadata: dict[str, Any] = {"title": candidate.title, "manual": True}
-        if mime == "text/html":
-            rules = job.rules if isinstance(job.rules, ExtractionRules) else ExtractionRules()
-            try:
-                found = await extract_isolated(body, charset, rules)
-            except ParseError as exc:
-                raise ConnectorError(exc.reason, "the page could not be read within the "
-                                     "limits") from None  # fmt: skip
-            text = found.text
-            metadata.update({"title": candidate.title or found.title,
-                             "content_hash": found.content_hash, "warnings": found.warnings,
-                             "published_at": found.published_at.isoformat()
-                             if found.published_at else None})  # fmt: skip
-        elif mime == "text/plain":
-            text = body.decode("utf-8", errors="replace")
-        return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=status, body_ref=key,
-                           mime=mime, final_url=final_url, text=text, metadata=metadata,
-                           change="new")  # fmt: skip
+        return await fetch_document(candidate, job, ctx, {"manual": True})
 
     def health(self, job: JobSettings) -> HealthReport:
         return HealthReport("unknown", "a manual source has no schedule to be healthy on")

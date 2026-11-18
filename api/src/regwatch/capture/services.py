@@ -26,10 +26,12 @@ from regwatch.capture.connectors.api_feed import check_params
 from regwatch.capture.connectors.base import ConnectorError
 from regwatch.capture.connectors.config import (
     ApiFeedConfig,
+    SearchQueryConfig,
     WebCrawlConfig,
     validate_config,
     validate_rules,
 )
+from regwatch.capture.connectors.search_query import check as search_check
 from regwatch.capture.connectors.web_crawl import check as crawl_check
 from regwatch.capture.execution import RUN_DEADLINE_S
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
@@ -141,6 +143,11 @@ async def check_urls(kind: str, values: dict[str, Any]) -> None:
             raise result
     if errors:
         raise invalid_all(errors)
+    if kind == "search_query" and values.get("config") is not None:
+        try:
+            search_check(SearchQueryConfig.model_validate(values["config"]))
+        except ConnectorError as exc:
+            raise invalid("config", exc.detail) from None
     crawl = values.get("config") if kind == "web_crawl" else None
     if crawl is not None:  # after the addresses: domains are host names, seeds on them
         try:
@@ -199,10 +206,10 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     policy = values.get("robots_policy", source.robots_policy if source else "respect")
     config = values.get("config", source.config if source else {}) or {}
     kind = values.get("kind", source.kind if source else None)
-    if policy == "override" and kind == "manual":
+    if policy == "override" and kind in ("manual", "search_query"):
         # A manual source takes any URL its editors submit, so no override reason can be about
         # the sites it will reach (8.3; manual upload review finding 1).
-        raise invalid("robots_policy", "manual sources always obey robots.txt")
+        raise invalid("robots_policy", "manual and search sources always obey robots.txt")
     if policy == "override" and kind == "api_feed" and config.get("provider") in NO_OVERRIDE:
         # Its fair use policy says robots.txt must be followed (R-06 E-UK-3; legislation
         # review finding 1); the adapter also always obeys it.

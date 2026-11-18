@@ -36,6 +36,7 @@ from tenacity import (
 from regwatch.capture.connectors import api_feed as _api_feed  # noqa: F401 - registers it
 from regwatch.capture.connectors import manual as _manual  # noqa: F401 - registers it
 from regwatch.capture.connectors import rss as _rss  # noqa: F401 - registers the connector
+from regwatch.capture.connectors import search_query as _search  # noqa: F401 - registers it
 from regwatch.capture.connectors import web_crawl as _web_crawl  # noqa: F401 - registers it
 from regwatch.capture.connectors import web_page as _web_page  # noqa: F401 - registers it
 from regwatch.capture.connectors.base import (
@@ -111,7 +112,7 @@ def job_settings(job: CaptureJob, source: Source,
     except ProblemError as exc:
         raise ConnectorError("bad-config", "the stored source settings are not valid") from exc
     override = source.override_reason if source.robots_policy == "override" else None
-    if source.kind == "manual":  # never, even if saved before that was refused (manual R1)
+    if source.kind in ("manual", "search_query"):  # never, whatever the row (manual R1)
         override = None
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
@@ -183,7 +184,8 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     base = await make_context(settings)
     counter = _CountingFetcher(base.fetcher)
     ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
-                           notes=base.notes, load=base.load)  # fmt: skip
+                           notes=base.notes, load=base.load, search=base.search,
+                           official_hosts=base.official_hosts, pace=base.pace)  # fmt: skip
     ctx.scratch["run_id"] = str(run_id)  # the manual connector's request is keyed by it
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []

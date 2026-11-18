@@ -73,7 +73,9 @@ async def preview(job: CaptureJob, source: Source, make_context: ContextFactory)
     except ConnectorError as exc:
         return {"candidates": [], "robots_decision": "unknown", "warnings": [exc.detail]}
     base = await make_context(settings)
-    ctx = ConnectorContext(fetcher=base.fetcher, store=_no_store, now=base.now)
+    ctx = ConnectorContext(fetcher=base.fetcher, store=_no_store, now=base.now,
+                           search=base.search, official_hosts=base.official_hosts,
+                           pace=base.pace)  # fmt: skip
     found: list[dict[str, Any]] = []
     warnings: list[str] = []
     decision = "overridden" if settings.robots_override else "allowed"

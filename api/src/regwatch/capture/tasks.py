@@ -10,13 +10,14 @@ import asyncio
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import anyio
 from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture import runs
-from regwatch.capture.connectors.base import ConnectorContext, JobSettings
+from regwatch.capture.connectors.base import ConnectorContext, ConnectorError, JobSettings
 from regwatch.capture.execution import ContextFactory
 from regwatch.capture.safe_fetch import (
     CaptureFetcher,
@@ -98,6 +99,37 @@ def _valkey() -> Any:
                                    socket_connect_timeout=BROKER_TIMEOUT_S)  # fmt: skip
 
 
+PACE_MAX_WAIT_S = 600.0  # a query waits at most 10 minutes for its turn
+
+
+async def _search_context(db: AsyncSession) -> tuple[Any, frozenset[str]]:
+    """The search client, when the ``search.internet`` flag is on and ``search.provider`` is
+    ``searxng`` (ADR-0010), and the hosts of enabled official sources (the official domains
+    the search connector marks results by; ASSUMPTIONS)."""
+    from sqlalchemy import select
+
+    from regwatch.admin.models import FeatureFlag
+    from regwatch.admin.services import values
+    from regwatch.capture.models import Source
+    from regwatch.core.internal import InternalClient
+
+    flag = await db.scalar(select(FeatureFlag.enabled).where(FeatureFlag.key == "search.internet"))
+    provider = (await values(db, ["search.provider"]))["search.provider"]
+    client = (InternalClient(str(get_settings().search_url))
+              if flag and provider == "searxng" else None)  # fmt: skip
+    rows = await db.execute(select(Source.url, Source.config)
+                            .where(Source.enabled, Source.credibility == "official"))  # fmt: skip
+    hosts: set[str] = set()
+    for url, config in rows:
+        for value in [url, *(config or {}).values()]:
+            for one in value if isinstance(value, list) else [value]:
+                if isinstance(one, str) and one.startswith(("http://", "https://")):
+                    host = urlsplit(one).hostname
+                    if host:
+                        hosts.add(host.lower())
+    return client, frozenset(hosts)
+
+
 async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
     """The real fetcher and store for runs, from the capture settings."""
     from datetime import UTC, datetime
@@ -113,12 +145,21 @@ async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
         _robots[agent] = RobotsPolicy(fetcher)
     robots = _robots[agent]
     limiter = ValkeyRateLimiter(valkey)
+    search, official = await _search_context(db)
+
+    async def pace(key: str, interval_s: float) -> None:
+        """One slot at a time per key across every worker, through the Valkey limiter."""
+        wait = await limiter.take(f"internal:{key}", interval_s, PACE_MAX_WAIT_S)
+        if wait is None:
+            raise ConnectorError("rate-limited", "the search queue is busy; the next run tries")
+        await asyncio.sleep(wait)
 
     async def make(job: JobSettings) -> ConnectorContext:
         capture = CaptureFetcher(fetcher, limiter, robots=robots,
                                  rate_per_minute=job.rate_per_minute)  # fmt: skip
         return ConnectorContext(fetcher=capture, store=objectstore.put, load=objectstore.get,
-                                now=lambda: datetime.now(UTC))  # fmt: skip
+                                now=lambda: datetime.now(UTC), search=search,
+                                official_hosts=official, pace=pace)  # fmt: skip
 
     return make
 
