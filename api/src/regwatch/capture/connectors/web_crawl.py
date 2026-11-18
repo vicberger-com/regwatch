@@ -21,9 +21,10 @@
 
 from __future__ import annotations
 
+import heapq
 import re
-from collections import deque
 from collections.abc import AsyncIterator
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -49,8 +50,10 @@ from regwatch.capture.connectors.web_page import (
     document,
     finish_state,
 )
-from regwatch.capture.safe_fetch.policy import FetchRefusedError
+from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
+TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
+MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
 _DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 
 
@@ -66,11 +69,17 @@ def check(config: WebCrawlConfig) -> None:
 
 
 def _allowed(url: str, domains: list[str]) -> bool:
-    origin = _origin(url)
-    if origin is None or origin[0] not in ("http", "https") or origin[2] not in (80, 443):
+    """On an allowed domain, http on 80 or https on 443, by SafeFetcher's own parse of the URL
+    (review finding 8: never the raw host name)."""
+    try:
+        target = parse_target(url)
+    except FetchRefusedError:
         return False
-    host = origin[1].lower()
-    return any(host == d or host.endswith("." + d) for d in domains)
+    if (target.scheme, target.port) not in (("http", 80), ("https", 443)):
+        return False
+    if not _DOMAIN.fullmatch(target.host):  # a plain DNS name: no "\\", "%" or IP (finding 8)
+        return False
+    return any(target.host == d or target.host.endswith("." + d) for d in domains)
 
 
 class WebCrawlConnector:
@@ -95,20 +104,42 @@ class WebCrawlConnector:
         listed: list[str] = []
         ctx.notes.add("state-per-document")
         ctx.scratch["listing"] = {"listed": listed, "pages": {}, "previous": previous,
-                                  "origin": None, "unreadable": 0, "tried": {}}  # fmt: skip
-        frontier: deque[tuple[str, int]] = deque((str(s), 0) for s in config.seed_urls)
-        seen = {url for url, _ in frontier}
+                                  "origin": None, "unreadable": 0, "tried": {},
+                                  "keep_unlisted": True}  # fmt: skip
+        # By depth, then pages never checked, then the longest unchecked: a crawl cut short
+        # by its limits reaches other pages next time (review finding 3).
+        frontier: list[tuple[int, str, int, str]] = []
+        order = 0
+
+        def push(url: str, depth: int) -> None:
+            nonlocal order
+            order += 1
+            heapq.heappush(frontier, (depth, previous.get(url, ["", "", ""])[2], order, url))
+
+        for seed in config.seed_urls:
+            push(str(seed), 0)
+        seen = {str(s) for s in config.seed_urls}
+        requests = 0
         while frontier:
-            if len(listed) >= limit:
-                ctx.notes.add("truncated")  # pages are left in the frontier
+            if requests >= limit:  # every request counts, pages or not (finding 4)
+                ctx.notes.add("truncated")
                 return
-            url, depth = frontier.popleft()
+            depth, _checked, _n, url = heapq.heappop(frontier)
+            requests += 1
             listed.append(url)
-            override = job.robots_override if _origin(url) in seeds else None
+            origin = _origin(url)
+            # The override only for a seed's origin, and then no hop may leave it: the fetcher
+            # applies it to every hop (finding 1, 8.3).
+            override = job.robots_override if origin in seeds else None
+
+            def hop(
+                target: str, _origin_: Any = origin, _strict: bool = override is not None
+            ) -> bool:
+                return _allowed(target, domains) and (not _strict or _origin(target) == _origin_)
+
             try:
-                got = await ctx.fetcher.fetch(
-                    url, rate_per_minute=rate, robots_override=override,
-                    allow_hop=lambda hop: _allowed(hop, domains))  # fmt: skip
+                got = await ctx.fetcher.fetch(url, rate_per_minute=rate, robots_override=override,
+                                              allow_hop=hop)  # fmt: skip
             except FetchRefusedError as exc:
                 yield Candidate(url=url, hints={"error": exc})
                 continue
@@ -131,8 +162,11 @@ class WebCrawlConnector:
                 if (link is None or link in seen or not _allowed(link, domains)
                         or not keep(link)):  # fmt: skip
                     continue
+                if len(frontier) >= MAX_FRONTIER:  # memory stays bounded (finding 5 (a))
+                    ctx.notes.add("truncated")
+                    break
                 seen.add(link)
-                frontier.append((link, depth + 1))
+                push(link, depth + 1)
             hints = {"got": got, "found": found, "previous": previous.get(url, [None, None])[:2]}
             yield Candidate(url=url, title=found.title, hints=hints)
 
@@ -149,10 +183,18 @@ class WebCrawlConnector:
             if listing["unreadable"] >= MAX_UNREADABLE:
                 stop = f"{MAX_UNREADABLE} pages could not be read within the limits"
                 raise ConnectorError("unreadable-pages", stop) from None
+        if isinstance(error, FetchRefusedError) and error.reason in TRANSIENT:
+            # Already tried once in discovery: the run must not wait and retry what it cannot
+            # ask again (finding 7), so it counts as one failed document.
+            raise ConnectorError(error.reason, "the page could not be fetched") from None
         if isinstance(error, (ConnectorError, FetchRefusedError)):
             raise error
-        return await document(candidate, candidate.hints["got"], candidate.hints["found"], job,
-                              ctx)  # fmt: skip
+        try:
+            return await document(candidate, candidate.hints["got"], candidate.hints["found"],
+                                  job, ctx)  # fmt: skip
+        finally:  # the run keeps the candidate for its manifest: let the body go (finding 5 (b))
+            candidate.hints.pop("got", None)
+            candidate.hints.pop("found", None)
 
     async def finish(self, job: JobSettings, ctx: ConnectorContext) -> None:
         await finish_state(job, ctx)

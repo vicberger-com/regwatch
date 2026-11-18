@@ -80,6 +80,16 @@ async def preview(job: CaptureJob, source: Source, make_context: ContextFactory)
     try:
         async with asyncio.timeout(DISCOVERY_DEADLINE_S):
             async for c in connector.discover(settings, ctx):
+                error = c.hints.get("error")
+                if isinstance(error, (ConnectorError, FetchRefusedError)):
+                    # A page discovery could not fetch or read (the crawl): a warning, never a
+                    # working candidate (web crawl review finding 6). The reason, not the detail.
+                    if error.reason == "robots":
+                        decision = (
+                            "unreadable" if "could not be read" in error.detail else "disallowed"
+                        )
+                    warnings.append(f"a page was refused or failed ({error.reason})")
+                    continue
                 found.append({"url": c.url, "title": c.title, "external_id": c.external_id,
                               "published_at": c.published_at.isoformat() if c.published_at
                               else None})  # fmt: skip

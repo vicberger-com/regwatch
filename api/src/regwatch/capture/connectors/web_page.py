@@ -52,6 +52,7 @@ HTML = frozenset({"text/html", "application/xhtml+xml"})
 # Pages that cannot be read within the extraction limits cost up to 20 s each; after this many
 # in one run the run stops (HTML extraction review R4, BL-98 (a); web listing review 3).
 MAX_UNREADABLE = 3
+MAX_STATE = 10_000  # URLs a crawl's state remembers, the most recently checked kept
 UNREADABLE = frozenset({"too-slow", "too-large", "too-deep", "parse-failed"})
 
 
@@ -209,6 +210,10 @@ async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
             old = listing["previous"].get(u) or ["", "", ""]
             entry = [old[0], old[1], listing["tried"][u]]
         pages[u] = entry or listing["previous"].get(u)
+    if listing.get("keep_unlisted"):  # a crawl: pages not reached this run keep their baseline
+        rest = sorted(((u, v) for u, v in listing["previous"].items() if u not in pages),
+                      key=lambda item: item[1][2], reverse=True)  # fmt: skip
+        pages.update(rest[: max(0, MAX_STATE - len(pages))])  # the most recently checked
     body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()
     current = _own_listing_ref((job.cursor or {}).get("listing_ref"), job.source_id)
     key = _listing_key(job.source_id, "b" if current == _listing_key(job.source_id, "a") else "a")

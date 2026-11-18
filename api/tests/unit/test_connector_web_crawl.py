@@ -196,3 +196,150 @@ async def test_sitemaps_and_rendering_are_not_built_yet(config: dict[str, Any],
         [c async for c in web_crawl.WebCrawlConnector().discover(job, ctx)]
     assert exc.value.reason == "not-implemented"
     assert web_crawl.WebCrawlConnector().health(job).status == "unknown"
+
+
+async def test_the_override_never_leaves_the_seed_origin_by_redirect() -> None:
+    """Review finding 1: the fetcher applies the override to every hop, so none may leave."""
+    site = Site({"reg.example/robots.txt": "User-agent: *\nDisallow: /\n",
+                 "docs.reg.example/robots.txt": "User-agent: *\nDisallow: /\n",
+                 "reg.example/": ("Home", ["/go"]),
+                 "reg.example/go": (302, {"location": "https://docs.reg.example/private"}),
+                 "docs.reg.example/private": ("Private", [])})  # fmt: skip
+    got = await crawl(site, {}, override="The regulator agreed in writing")
+    assert names(got) == ["reg.example/"]
+    assert "docs.reg.example/private" not in site.asked
+
+
+async def test_pages_not_reached_keep_their_baseline() -> None:
+    """Finding 2: a seed answering 503 once, or a truncated run, does not make pages new."""
+    pages = {"reg.example/": ("Home", [f"/p{n}" for n in range(4)]),
+             **{f"reg.example/p{n}": (f"P{n}", []) for n in range(4)}}  # fmt: skip
+    site = Site(dict(pages))
+    objects: dict[str, bytes] = {}
+    first = await crawl(site, objects)
+    site.pages["reg.example/"] = (503, {})
+    down = await crawl(site, objects, first.cursor)
+    assert down.status == "failed"
+    site.pages = dict(pages)
+    after = await crawl(site, objects, down.cursor)
+    assert (after.items_new, after.items_unchanged) == (0, 5)
+
+
+async def test_a_truncated_crawl_reaches_other_pages_next_time() -> None:
+    """Finding 3: pages never checked first, then the longest unchecked, within a depth."""
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(6)]),
+                 **{f"reg.example/p{n}": (f"P{n}", []) for n in range(6)}})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    runs: list[list[str]] = []
+    cursor = None
+    for _ in range(3):
+        site.asked.clear()
+        got = await crawl(site, objects, cursor, max_pages_per_run=3)
+        runs.append([a.rsplit("/", 1)[1] for a in site.asked if not a.endswith("robots.txt")])
+        cursor = got.cursor or cursor
+    assert runs == [["", "p0", "p1"], ["", "p2", "p3"], ["", "p4", "p5"]]
+
+
+async def test_every_request_counts_against_the_limits() -> None:
+    """Finding 4: 300 PDFs and a limit of 2 make 2 requests, not 300."""
+    site = Site({"reg.example/": ("Home", [f"/r{n}.pdf" for n in range(300)]),
+                 **{f"reg.example/r{n}.pdf": (200, {"content-type": "application/pdf"})
+                    for n in range(300)}})  # fmt: skip
+    got = await crawl(site, {}, max_pages_per_run=2)
+    assert got.error_class == "truncated"
+    assert sum(1 for a in site.asked if a.endswith(".pdf")) == 1
+
+
+async def test_the_frontier_is_bounded_and_bodies_are_let_go(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Finding 5."""
+    monkeypatch.setattr(web_crawl, "MAX_FRONTIER", 3)
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(10)]),
+                 **{f"reg.example/p{n}": (f"P{n}", []) for n in range(10)}})  # fmt: skip
+    got = await crawl(site, {})
+    assert (got.error_class, len(got.documents)) == ("truncated", 4)
+    from regwatch.capture.connectors.base import Candidate
+
+    ctx_objects: dict[str, bytes] = {}
+    candidate = Candidate(url="https://reg.example/", hints={})
+
+    class Found:
+        text, content_hash, title, method, warnings, published_at = (
+            "t",
+            "a" * 64,
+            None,
+            "m",
+            [],
+            None,
+        )
+
+    got_page = FetchResult("https://reg.example/", 200, {"content-type": "text/html"}, b"<p>t</p>")
+    candidate.hints.update({"got": got_page, "found": Found(), "previous": [None, None]})
+
+    async def store(key: str, body: bytes) -> None:
+        ctx_objects[key] = body
+
+    ctx = ConnectorContext(fetcher=None, store=store, now=lambda: NOW)  # type: ignore[arg-type]
+    ctx.scratch["listing"] = {"listed": [], "pages": {}, "previous": {}, "origin": None,
+                              "unreadable": 0, "tried": {}}  # fmt: skip
+    config = WebCrawlConfig(seed_urls=[SEED], allowed_domains=["reg.example"])  # type: ignore[list-item]
+    job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules())
+    await web_crawl.WebCrawlConnector().fetch(candidate, job, ctx)
+    assert "got" not in candidate.hints and "found" not in candidate.hints
+
+
+async def test_a_timeout_in_discovery_is_one_failure_not_three_retries() -> None:
+    """Finding 7."""
+    from regwatch.capture.safe_fetch import FetchRefusedError
+
+    calls: list[str] = []
+
+    class Slow:
+        async def fetch(self, url: str, **kwargs: Any) -> FetchResult:
+            calls.append(url)
+            raise FetchRefusedError("timeout", "slow")
+
+    config = WebCrawlConfig(seed_urls=[SEED], allowed_domains=["reg.example"])  # type: ignore[list-item]
+    job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules())
+    ctx = ConnectorContext(fetcher=Slow(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    [candidate] = [c async for c in web_crawl.WebCrawlConnector().discover(job, ctx)]
+    with pytest.raises(ConnectorError) as exc:
+        await web_crawl.WebCrawlConnector().fetch(candidate, job, ctx)
+    assert exc.value.reason == "timeout" and calls == [SEED]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://evil.example\\.reg.example/", "https://evil.example%2e.reg.example/",
+     "http://reg.example:443/", "https://reg.example:80/", "https://[::1]/"],
+)  # fmt: skip
+def test_hosts_are_judged_as_safe_fetcher_parses_them(url: str) -> None:
+    """Finding 8 and the info item on ports."""
+    assert not web_crawl._allowed(url, ["reg.example"])
+    assert web_crawl._allowed("https://docs.reg.example/x", ["reg.example"])
+
+
+async def test_the_dry_run_shows_refused_pages_as_warnings() -> None:
+    """Finding 6."""
+    from regwatch.capture import dryrun
+
+    site = Site({"reg.example/robots.txt": "User-agent: *\nDisallow: /\n"})
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        async def public(host: str, port: int) -> list[str]:
+            return ["93.184.215.14"]
+
+        fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
+                              transport=httpx.MockTransport(site))  # fmt: skip
+        capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000)
+        return ConnectorContext(fetcher=capture, store=None, now=lambda: NOW)  # type: ignore[arg-type]
+
+    source = Source(id=uuid.UUID(int=9), kind="web_crawl", robots_policy="respect",
+                    config={"seed_urls": [SEED], "allowed_domains": ["reg.example"]},
+                    override_reason=None)  # fmt: skip
+    job = CaptureJob(max_items_per_run=10, rate_limit_per_minute=6000, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    got = await dryrun.preview(job, source, make)
+    assert got["candidates"] == [] and got["robots_decision"] == "disallowed"
+    assert got["warnings"] == ["a page was refused or failed (robots)"]
