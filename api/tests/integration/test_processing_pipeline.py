@@ -226,3 +226,25 @@ async def test_every_row_of_an_official_api_run_speaks_for_its_host(
     hosts = (await db.scalars(select(Item.fetched_host).where(
         Item.source_id == uuid.UUID(sid)))).all()  # fmt: skip
     assert hosts == ["federalregister.gov"] * 3
+
+
+async def test_a_near_duplicate_title_is_kept_for_review_without_an_event(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 dedupe order: a reworded copy of a story in the same jurisdiction within 7 days."""
+    sid = await made_source(admin)
+    title = "BSI veröffentlicht neue Regeln für Betreiber kritischer Anlagen"
+    rows = [{"url": "https://example.org/a", "text": BSI, "title": title},
+            {"url": "https://mirror.example/b", "text": "Kopie. " + BSI, "title": title + "!"},
+            {"url": "https://example.org/c", "text": "Anders. " + BSI,
+             "title": "BSI warnt vor Schwachstellen in Routern"}]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    counts = await process_manifest(db, key, loader(objects))
+    assert counts.by_kind.get("near_duplicate") == 1
+    items = {i.canonical_url: i for i in (await db.scalars(
+        select(Item).where(Item.source_id == uuid.UUID(sid)))).all()}  # fmt: skip
+    assert items["https://mirror.example/b"].needs_review is True
+    assert items["https://example.org/c"].needs_review is False
+    events = (await db.scalars(select(ChangeEvent.item_id).where(
+        ChangeEvent.item_id.in_([i.id for i in items.values()])))).all()  # fmt: skip
+    assert items["https://mirror.example/b"].id not in events and len(set(events)) == 2

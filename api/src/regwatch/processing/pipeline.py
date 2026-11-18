@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.services import values
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
-from regwatch.processing import geotag
+from regwatch.processing import geotag, neardup
 from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
@@ -76,11 +76,16 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     found = await db.scalars(select(Jurisdiction.code).where(Jurisdiction.id.in_(wanted)))
     defaults = list(found.all())
     rules = await load_rules(db)
-    settings = await values(db, ["classification.min_confidence"])
+    settings = await values(db, ["classification.min_confidence",
+                                 "processing.near_duplicate_ratio"])  # fmt: skip
     try:
         min_confidence = float(settings["classification.min_confidence"])
     except (TypeError, ValueError):
         min_confidence = MIN_CONFIDENCE
+    try:
+        ratio = float(settings["processing.near_duplicate_ratio"])
+    except (TypeError, ValueError):
+        ratio = float(neardup.DEFAULT_RATIO)
     terms = list(source.default_term_ids or [])
     await db.commit()
     for row in rows[:MAX_ROWS]:
@@ -101,7 +106,16 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 ids = await tag_jurisdictions(db, item, hits)
                 await classify(db, item, text, rules, terms, min_confidence)
                 event = "new_item" if got.kind == "new" else "content_changed"
-                await raise_events(db, item, event, ids, got.changed_pct)
+                twin = (
+                    await neardup.near_duplicate(db, item, ids, ratio)
+                    if got.kind == "new"
+                    else None
+                )
+                if twin is not None:  # the same story at another address: no second event
+                    item.needs_review = True
+                    counts.add("near_duplicate")
+                else:
+                    await raise_events(db, item, event, ids, got.changed_pct)
             await db.commit()
         except SoftTimeLimitExceeded:  # the worker's limit: stop, the sweep hands it over again
             await db.rollback()
