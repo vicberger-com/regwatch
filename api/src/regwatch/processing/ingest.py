@@ -100,15 +100,29 @@ def _host(url: str) -> str:
     return url.split("://", 1)[1].split("/", 1)[0] if "://" in url else url
 
 
-def _fetched_host(row: dict[str, Any], canonical: str) -> str | None:
-    """The canonical URL's host when the row's content was fetched from it: its final URL,
-    after redirects, is on that host (``www.`` aside); None for a feed summary, an upload or a
-    page that redirected elsewhere (CP-19, re-verification finding N4)."""
+# The official APIs (``api_feed``) and the hosts of the documents they describe: their rows
+# speak for these URLs though the content comes from another address (EUR-Lex's Cellar) or
+# from the API's record (re-verification 3, findings N5 and N6).
+PROVIDER_HOSTS = {
+    "federal_register": frozenset({"federalregister.gov"}),
+    "eur_lex": frozenset({"eur-lex.europa.eu"}),
+    "legislation_gov_uk": frozenset({"legislation.gov.uk"}),
+}
+
+
+def _fetched_host(row: dict[str, Any], canonical: str, kind: str = "") -> str | None:
+    """The canonical URL's host when the row speaks for that URL (CP-19): its final URL, after
+    redirects, is on that host (``www.`` aside), or it comes from the official API for that
+    host. None for a feed summary, an upload or a page that redirected elsewhere (N4)."""
+    want = _bare(canonical)
+    found = row.get("metadata")
+    provider = found.get("provider") if isinstance(found, dict) else None
+    if kind == "api_feed" and want and want in PROVIDER_HOSTS.get(str(provider), ()):
+        return want
     final = row.get("final_url")
     got = versioning.canonical_url(final) if isinstance(final, str) else None
     if got is None or not got.startswith(("http://", "https://")):
         return None
-    want = _bare(canonical)
     return want if want and _bare(got) == want else None
 
 
@@ -138,6 +152,7 @@ async def ingest(
     row: dict[str, Any],
     threshold_pct: float,
     retried: bool = False,
+    kind: str = "",
 ) -> Ingested:
     """One manifest row as an item; the caller commits."""
     url = row.get("url")
@@ -153,15 +168,18 @@ async def ingest(
                        MAX_TITLE) or canonical[:MAX_TITLE]  # fmt: skip
     now = datetime.now(UTC)
     item = await db.scalar(select(Item).where(Item.url_hash == url_hash).with_for_update())
-    fetched_host = _fetched_host(row, canonical)
+    fetched_host = _fetched_host(row, canonical, kind)
     claimed = False
     if item is not None and item.source_id != source_id:
         # Another source's item: a row from this source never changes it (M4 pipeline review
         # finding 1), unless the item's content was never fetched (a feed's summary) and this
-        # row was fetched from the URL's host; then the item passes to this source, and its
-        # content replaces the summary whatever the change share (CP-19, finding N4). A fetched
-        # item is never taken, so two sources fetching one page never take it in turn.
-        if item.fetched_host is not None or fetched_host is None:
+        # row speaks for the URL: fetched from its host with text, or from its official API;
+        # then the item passes to this source, and its content and title replace the summary
+        # whatever the change share (CP-19, findings N4 to N6). A fetched item is never taken,
+        # so two sources fetching one page never take it in turn. A fetched page without text
+        # (a feed's full page, a PDF) waits for M4's extraction: no empty version over text.
+        speaks = fetched_host is not None and (bool(text) or kind == "api_feed")
+        if item.fetched_host is not None or not speaks:
             return Ingested("duplicate", item.id)
         item.source_id = source_id
         claimed = True
@@ -193,7 +211,7 @@ async def ingest(
         except IntegrityError:
             if retried:  # not the race: let the row fail, logged by the pipeline
                 raise
-            return await ingest(db, source_id, run_id, row, threshold_pct, retried=True)
+            return await ingest(db, source_id, run_id, row, threshold_pct, retried=True, kind=kind)
         db.add(ItemVersion(item_id=item.id, run_id=run_id, version_no=1, content_text=text,
                            content_hash=content_hash))  # fmt: skip
         return Ingested("new", item.id)

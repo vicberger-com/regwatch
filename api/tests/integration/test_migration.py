@@ -152,3 +152,23 @@ def test_cp11_one_unfinished_run_per_job_and_one_job_per_source(
     ):
         with pytest.raises(RuntimeError, match="duplicate key"):
             postgres.psql(empty_db, sql)
+
+
+def test_0005_treats_existing_items_as_fetched_from_their_host(
+    postgres: Postgres, empty_db: str
+) -> None:
+    """CP-19 backfill (re-verification 3): an unchanged item from before 0005 is not claimable."""
+    upgrade(postgres.url(empty_db), "0004")
+    sid = "'00000000-0000-7000-8000-000000000001'"
+    postgres.psql(empty_db, """
+        INSERT INTO source (id, name, kind) VALUES
+          ('00000000-0000-7000-8000-000000000001', 's', 'rss');
+        INSERT INTO item (source_id, canonical_url, url_hash, title, content_hash) VALUES
+          (S, 'https://WWW.Reg.example./act?x=1', 'a', 't', 'h'),
+          (S, 'http://u:p@agency.example:8443/r', 'b', 't', 'h'),
+          (S, 'urn:sha256:00', 'c', 't', 'h');
+    """.replace("S,", sid + ","))  # fmt: skip
+    upgrade(postgres.url(empty_db))
+    got = postgres.psql(empty_db, "SELECT url_hash || '=' || coalesce(fetched_host, '-') "
+                                  "FROM item ORDER BY url_hash;")  # fmt: skip
+    assert got.split() == ["a=reg.example", "b=agency.example", "c=-"]

@@ -96,6 +96,17 @@ Fixed: N1, N2 (linear, never below the true difference), no ping-pong between of
 | N4 | high | CP-19 (owner approved): ownership from the row, not the source; `item.fetched_host` is set from a row whose final URL is on the item's host, an unfetched item passes to the first source that fetches it, a fetched item never changes source; `Source.url` is no longer used | pending |
 | unrecorded-run replay | low | BL-107 (h) | deferred |
 
+## Re-verification 3 (c5481da): not signed off
+
+Fixed: the `www.` handling, races on a claim, and R6 and R7. Partly fixed: N4. New: N5 (high) a fetched feed page without text took a Federal Register item, whose rows have no final URL, with the feed's title, for good; N6 (high) a feed listing a EUR-Lex display link first kept it, because EUR-Lex content comes from Cellar on another host; and existing items with a NULL `fetched_host` stayed claimable.
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| N5 | high | a fetched page claims only with extracted text; an `api_feed` row from a known provider speaks for that provider's host (`ingest.PROVIDER_HOSTS`), so its items are fetched and never taken | pending |
+| N6 | high | the same: EUR-Lex's row speaks for `eur-lex.europa.eu` and takes an item a feed only listed | pending |
+| backfill | medium | migration 0005 sets `fetched_host` of existing items to their own host | pending |
+| port ignored; feed full-page title | low | BL-107 (h) | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

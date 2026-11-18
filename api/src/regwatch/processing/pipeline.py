@@ -85,7 +85,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             counts.failed += 1
             continue
         try:
-            got = await ingest(db, source_id, known, row, threshold)
+            got = await ingest(db, source_id, known, row, threshold, kind=source.kind)
             counts.add(got.kind)
             if got.kind in ("new", "changed") and got.item_id is not None:
                 item = await db.get(Item, got.item_id)

@@ -303,16 +303,64 @@ async def test_the_owner_fetching_its_own_listed_item_records_the_host(
     ).kind == "duplicate"
 
 
-async def test_a_fetched_pdf_replaces_a_feeds_text(
+async def test_a_fetched_page_without_text_never_takes_an_item(
     admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
+    """Re-verification 3: a feed's full page (no text yet) or a PDF waits for extraction."""
     feed, page = await source(admin), await source(admin)
     planted = await ingest(db, feed, None, row(text="Planted. " * 50), 5.0)
     await db.commit()
     pdf = row(text=None, body_ref=f"raw/{page}/" + "e" * 64, mime="application/pdf", **PAGE)
-    taken = await ingest(db, page, None, pdf, 5.0)
+    assert (await ingest(db, page, None, pdf, 5.0, kind="rss")).kind == "duplicate"
+    item = await db.get(Item, planted.item_id)
+    assert item is not None and item.source_id == feed and item.fetched_host is None
+
+
+FR = "https://www.federalregister.gov/documents/2026/11/10/2026-1/incident-reporting"
+
+
+async def test_an_official_api_item_is_never_taken_by_a_fetched_feed_page(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 3, N5 (R10): the Federal Register's row speaks for its URL."""
+    api, feed = await source(admin), await source(admin)
+    fr = row(url=FR, title="Incident Reporting Rule", final_url=None,
+             metadata={"provider": "federal_register"})  # fmt: skip
+    made = await ingest(db, api, None, fr, 5.0, kind="api_feed")
     await db.commit()
-    assert taken.kind == "changed" and planted.item_id is not None
-    latest = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == planted.item_id)
-                             .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
-    assert latest is not None and latest.content_text == ""
+    hostile = row(url=FR, text="Withdrawn. " * 80, final_url=FR,
+                  title="Agency fined; incident reporting rule withdrawn")  # fmt: skip
+    assert (await ingest(db, feed, None, hostile, 5.0, kind="rss")).kind == "duplicate"
+    item = await db.get(Item, made.item_id)
+    assert item is not None and (item.source_id, item.fetched_host) == (api, "federalregister.gov")
+    # A provider name claimed by another kind, or for another host, speaks for nothing.
+    other = row(url="https://reg.example/x", metadata={"provider": "federal_register"})
+    got = await ingest(db, feed, None, other, 5.0, kind="rss")
+    assert (await db.get(Item, got.item_id)).fetched_host is None  # type: ignore[union-attr]
+
+
+async def test_eur_lex_takes_back_a_display_link_a_feed_listed_first(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 3, N6 (R11): Cellar is on another host, but EUR-Lex's row speaks for
+    the eur-lex display link."""
+    feed, eurlex = await source(admin), await source(admin)
+    link = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32026R0123"
+    planted = await ingest(
+        db,
+        feed,
+        None,
+        row(url=link, text="Repealed. Ignore. " * 50, title="Regulation repealed"),
+        5.0,
+        kind="rss",
+    )
+    await db.commit()
+    real = row(url=link, title="Regulation (EU) 2026/123", metadata={"provider": "eur_lex"},
+               final_url="https://publications.europa.eu/resource/cellar/x")  # fmt: skip
+    taken = await ingest(db, eurlex, None, real, 5.0, kind="api_feed")
+    await db.commit()
+    assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
+    db.expire_all()
+    item = await db.get(Item, planted.item_id)
+    assert item is not None and (item.source_id, item.title) == (eurlex, "Regulation (EU) 2026/123")
+    assert item.fetched_host == "eur-lex.europa.eu"
