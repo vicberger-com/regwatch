@@ -35,6 +35,7 @@ from tenacity import (
 
 from regwatch.capture.connectors import api_feed as _api_feed  # noqa: F401 - registers it
 from regwatch.capture.connectors import rss as _rss  # noqa: F401 - registers the connector
+from regwatch.capture.connectors import web_crawl as _web_crawl  # noqa: F401 - registers it
 from regwatch.capture.connectors import web_page as _web_page  # noqa: F401 - registers it
 from regwatch.capture.connectors.base import (
     REGISTRY,

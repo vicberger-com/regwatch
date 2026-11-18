@@ -1,6 +1,6 @@
 # ADR-0009: Own HTML extraction on html5lib, instead of trafilatura and readability-lxml
 
-**Status:** accepted by the owner on 2026-11-17; amendment 1 on 2026-11-17 (security review finding 1) · **Date:** 2026-11-17 · **Requirements:** REQ-04, REQ-05, REQ-20
+**Status:** accepted by the owner on 2026-11-17; amendment 1 on 2026-11-17 (security review finding 1); amendment 2 accepted by the owner on 2026-11-18 (the crawl) · **Date:** 2026-11-17 · **Requirements:** REQ-04, REQ-05, REQ-20
 **Research:** R-01 C19 and C20; `docs/03-architecture.md` 3.4, 3.5 and 3.6; `docs/modules/M3-capture-framework.md`; ADR-0003; CP-15
 
 ## Context
@@ -32,6 +32,15 @@ Each document is therefore extracted by `python -I -m regwatch.capture.extract.c
 - It gets an empty environment, apart from `PATH` and the C locale.
 - A child that runs over, dies, or answers anything but the expected JSON is a typed `ParseError` for that document, never an internal error of the run.
 - Each document costs about 0.3 s of process start-up.
+
+## Amendment 2 (2026-11-18): the crawl is the project's own, not Scrapy
+
+3.4 and M3 name Scrapy for crawl rules and link extraction. Resolved for Python 3.12 on 2026-11-18, Scrapy 2.20.0 installs 49 packages. They include lxml 6.1.3, whose binary wheels bundle LGPL-2.1 libiconv (this ADR's Context), and Twisted, Scrapy's own HTTP client. That client would fetch outside SafeFetcher, against CLAUDE.md and 8.1. The owner chose to build the crawl on the project's own pieces:
+- SafeFetcher with robots.txt and per-host rates;
+- the extraction child, which returns a page's text and links in one pass;
+- listing mode's per-URL change state (CP-16).
+
+The crawl is breadth first, bounded by `max_depth`, `max_pages_per_run` and the job's item limit. Links and every redirect hop stay on `allowed_domains`. The robots.txt override applies only to the seeds' origins. There is no new dependency, and Scrapy's register row is marked not used.
 
 ## Alternatives considered
 

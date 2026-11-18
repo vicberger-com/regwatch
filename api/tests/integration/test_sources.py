@@ -85,6 +85,22 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
 
 
 @pytest.mark.parametrize(
+    ("domains", "field"),
+    [(["other.example"], "config.seed_urls"), (["*.example"], "config.allowed_domains")],
+)
+async def test_crawl_seeds_and_domains_are_checked(admin: httpx.AsyncClient, domains: list[str],
+                                                   field: str) -> None:  # fmt: skip
+    body = {
+        "name": "Crawl",
+        "kind": "web_crawl",
+        "config": {"seed_urls": ["https://feeds.example/"], "allowed_domains": domains},
+    }
+    got = await admin.post(_api("/sources"), json=body)
+    assert got.status_code == 422
+    assert [e["field"] for e in got.json()["errors"]] == [field]
+
+
+@pytest.mark.parametrize(
     ("body", "field"),
     [
         (rss(config={"feed_url": "http://127.0.0.1/rss"}), "config.feed_url"),

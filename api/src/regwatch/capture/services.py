@@ -24,7 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.api_feed import check_params
 from regwatch.capture.connectors.base import ConnectorError
-from regwatch.capture.connectors.config import ApiFeedConfig, validate_config, validate_rules
+from regwatch.capture.connectors.config import (
+    ApiFeedConfig,
+    WebCrawlConfig,
+    validate_config,
+    validate_rules,
+)
+from regwatch.capture.connectors.web_crawl import check as crawl_check
 from regwatch.capture.execution import RUN_DEADLINE_S
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.capture.safe_fetch.policy import (
@@ -135,6 +141,13 @@ async def check_urls(kind: str, values: dict[str, Any]) -> None:
             raise result
     if errors:
         raise invalid_all(errors)
+    crawl = values.get("config") if kind == "web_crawl" else None
+    if crawl is not None:  # after the addresses: domains are host names, seeds on them
+        try:
+            crawl_check(WebCrawlConfig.model_validate(crawl))
+        except ConnectorError as exc:
+            field = "config.seed_urls" if "seed" in exc.detail else "config.allowed_domains"
+            raise invalid(field, exc.detail) from None
 
 
 def _text(values: dict[str, Any], key: str) -> None:

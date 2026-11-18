@@ -21,13 +21,13 @@ Out: authenticated or paywalled sources (backlog), browser automation beyond pag
 `source`, `capture_job`, `capture_run`, object store keys `snapshots/{item_id}/{version}.html`.
 
 ## Open-source components
-feedparser (BSD-2), httpx (BSD-3), Scrapy (BSD-3) for crawl rules and link extraction, html5lib (MIT) with the project's own selectors and main-text heuristic (ADR-0009; trafilatura and readability-lxml dropped), Playwright Python (Apache-2.0) for `render_js`, changedetection.io (Apache-2.0, pattern), SearXNG (AGPL, service), protego (BSD-3, robots parser), tenacity (Apache-2.0) retries.
+feedparser (BSD-2), httpx (BSD-3), html5lib (MIT) with the project's own selectors and main-text heuristic (ADR-0009; trafilatura and readability-lxml dropped), Playwright Python (Apache-2.0) for `render_js`, changedetection.io (Apache-2.0, pattern), SearXNG (AGPL, service), protego (BSD-3, robots parser), tenacity (Apache-2.0) retries.
 
 ## Design notes
 - All outbound HTTP goes through one `SafeFetcher` that resolves DNS, rejects private and link-local ranges, limits redirects to 5, enforces per-host rate limits in Valkey, sets a descriptive User-Agent with contact address from settings, honours robots.txt via protego unless `robots_policy=override` with a recorded reason, caps body size (default 10 MB) and timeouts (connect 10 s, read 30 s).
 - Scheduling: Beat runs `schedule_tick` every minute; it enqueues jobs whose `next_run_at` has passed, with jitter and a per-source concurrency of 1.
 - Single-page change detection: fetch, extract with rules or the built-in main-text heuristic (ADR-0009), normalize whitespace and strip volatile elements (dates, counters by selector), hash; unchanged hash short-circuits before M4.
-- Crawl connector: seed URL, allowed domains, include and exclude regex, max depth 3, max pages 200 per run, politeness delay from job config.
+- Crawl connector: seed URL, allowed domains, include and exclude regex, max depth 3, max pages 200 per run, politeness delay from job config; the project's own breadth-first crawl on SafeFetcher and the extraction child (ADR-0009 amendment 2; Scrapy dropped).
 - Search connector: query string plus optional site filters and language; dedupes against known `url_hash`; results become candidates with `credibility=secondary` unless the domain is in an official-domains list.
 - API feed connectors are thin adapters mapping provider JSON to `Candidate` and `RawDocument`; each documents the provider's terms in `config.terms_url`.
 - Failures never retry more than 3 times per run; a source with 5 consecutive failed runs is flagged `unhealthy` and surfaces in the admin dashboard and daily digest.

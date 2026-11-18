@@ -160,6 +160,62 @@ async def _previous_listing(job: JobSettings, ctx: ConnectorContext) -> dict[str
             and all(isinstance(x, str) for x in v)}  # fmt: skip
 
 
+async def document(candidate: Candidate, got: Any, found: Any, job: JobSettings,  # noqa: ANN401
+                   ctx: ConnectorContext) -> RawDocument:  # fmt: skip
+    """The fetched, extracted page as a document, compared with its previous hash (CP-16):
+    used by both web page modes and by the crawl."""
+    listing = ctx.scratch.get("listing")
+    before_hash, before_ref = (candidate.hints.get("previous") or [None, None])[:2]
+    text_ref = f"text/{job.source_id}/{found.content_hash}.txt"
+    if before_hash == found.content_hash:
+        change = "unchanged"  # counted only: nothing stored, nothing for M4
+    else:
+        change = "changed" if before_hash else "new"
+        await ctx.store(text_ref, found.text.encode())
+    if listing is not None:
+        listing["pages"][candidate.url] = [found.content_hash, text_ref,
+                                           ctx.now().isoformat()]  # fmt: skip
+    elif change != "unchanged":
+        ctx.state = {"content_hash": found.content_hash, "text_ref": text_ref}
+    key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
+    if change != "unchanged":
+        await ctx.store(key, got.body)
+    previous = _own_text_ref(before_ref, job.source_id) if change == "changed" else None
+    metadata: dict[str, Any] = {"title": found.title, "method": found.method,
+                                "warnings": found.warnings, "content_hash": found.content_hash,
+                                # For M4's diff; its own key checks apply when it reads it.
+                                "previous_text_ref": previous,
+                                "published_at": found.published_at.isoformat()
+                                if found.published_at else None}  # fmt: skip
+    return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=got.status,
+                       body_ref=key, mime=got.mime or "text/html", final_url=got.url,
+                       text=found.text, metadata=metadata, change=change,
+                       headers={k: v for k, v in got.headers.items()
+                                if k in ("content-type", "last-modified", "etag")})  # fmt: skip
+
+
+async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
+    """After every candidate was handled: listing mode writes the pages' hashes, for the
+    pages still listed, as one content-addressed object the cursor points to (CP-16)."""
+    listing = ctx.scratch.get("listing")
+    if listing is None:
+        return
+    # Fetched pages get their new entry; pages tried and failed keep their previous hash
+    # with the attempt's time, so they rotate to the back too (re-verification R1).
+    pages: dict[str, list[str] | None] = {}
+    for u in listing["listed"]:
+        entry = listing["pages"].get(u)
+        if entry is None and u in listing["tried"]:
+            old = listing["previous"].get(u) or ["", "", ""]
+            entry = [old[0], old[1], listing["tried"][u]]
+        pages[u] = entry or listing["previous"].get(u)
+    body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()
+    current = _own_listing_ref((job.cursor or {}).get("listing_ref"), job.source_id)
+    key = _listing_key(job.source_id, "b" if current == _listing_key(job.source_id, "a") else "a")
+    await ctx.store(key, body)
+    ctx.state = {"listing_ref": key}
+
+
 class WebPageConnector:
     kind = "web_page"
     config_schema: type[BaseModel] = WebPageConfig
@@ -218,56 +274,10 @@ class WebPageConnector:
                     stop = f"{MAX_UNREADABLE} pages could not be read within the limits"
                     raise ConnectorError("unreadable-pages", stop) from None
             raise
-        before_hash, before_ref = (candidate.hints.get("previous") or [None, None])[:2]
-        text_ref = f"text/{job.source_id}/{found.content_hash}.txt"
-        if before_hash == found.content_hash:
-            change = "unchanged"  # counted only: nothing stored, nothing for M4
-        else:
-            change = "changed" if before_hash else "new"
-            await ctx.store(text_ref, found.text.encode())
-        if listing is not None:
-            listing["pages"][candidate.url] = [found.content_hash, text_ref,
-                                               ctx.now().isoformat()]  # fmt: skip
-        elif change != "unchanged":
-            ctx.state = {"content_hash": found.content_hash, "text_ref": text_ref}
-        key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
-        if change != "unchanged":
-            await ctx.store(key, got.body)
-        previous = _own_text_ref(before_ref, job.source_id) if change == "changed" else None
-        metadata: dict[str, Any] = {"title": found.title, "method": found.method,
-                                    "warnings": found.warnings, "content_hash": found.content_hash,
-                                    # For M4's diff; its own key checks apply when it reads it.
-                                    "previous_text_ref": previous,
-                                    "published_at": found.published_at.isoformat()
-                                    if found.published_at else None}  # fmt: skip
-        return RawDocument(url=candidate.url, fetched_at=ctx.now(), status=got.status,
-                           body_ref=key, mime=got.mime or "text/html", final_url=got.url,
-                           text=found.text, metadata=metadata, change=change,
-                           headers={k: v for k, v in got.headers.items()
-                                    if k in ("content-type", "last-modified", "etag")})  # fmt: skip
+        return await document(candidate, got, found, job, ctx)
 
     async def finish(self, job: JobSettings, ctx: ConnectorContext) -> None:
-        """After every candidate was handled: listing mode writes the pages' hashes, for the
-        pages still listed, as one content-addressed object the cursor points to (CP-16)."""
-        listing = ctx.scratch.get("listing")
-        if listing is None:
-            return
-        # Fetched pages get their new entry; pages tried and failed keep their previous hash
-        # with the attempt's time, so they rotate to the back too (re-verification R1).
-        pages: dict[str, list[str] | None] = {}
-        for u in listing["listed"]:
-            entry = listing["pages"].get(u)
-            if entry is None and u in listing["tried"]:
-                old = listing["previous"].get(u) or ["", "", ""]
-                entry = [old[0], old[1], listing["tried"][u]]
-            pages[u] = entry or listing["previous"].get(u)
-        body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()
-        current = _own_listing_ref((job.cursor or {}).get("listing_ref"), job.source_id)
-        key = _listing_key(
-            job.source_id, "b" if current == _listing_key(job.source_id, "a") else "a"
-        )
-        await ctx.store(key, body)
-        ctx.state = {"listing_ref": key}
+        await finish_state(job, ctx)
 
     def health(self, job: JobSettings) -> HealthReport:
         return HealthReport("unknown", "health comes from the job's runs")
