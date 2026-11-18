@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -42,7 +42,9 @@ MAX_TEXT = 1_000_000
 RANK = {"official": 3, "secondary": 2, "news": 1}  # source credibility, for N8
 MAX_TITLE = 500
 MAX_SUMMARY = 4000
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# Control characters, and the invisible and bidirectional marks M3's ``identifier`` also drops
+# (BL-107 (h)): an id must read as it is.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
 _LANGUAGE = re.compile(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}")
 Kind = Literal["new", "changed", "unchanged", "duplicate", "skipped"]
 
@@ -74,7 +76,8 @@ def _language(value: Any) -> str | None:  # noqa: ANN401 - a manifest field
 
 
 def _when(value: Any) -> datetime | None:  # noqa: ANN401 - a manifest field
-    """A date the database can hold, between 1900 and 2100 (finding 6), else None."""
+    """A date from 1900 to a day from now, else None (finding 6; BL-107 (h): a document
+    published in 2099 would sort before everything)."""
     if not isinstance(value, str):
         return None
     try:
@@ -83,7 +86,7 @@ def _when(value: Any) -> datetime | None:  # noqa: ANN401 - a manifest field
         got = got.astimezone(UTC)
     except (ValueError, OverflowError):
         return None
-    return got if 1900 <= got.year <= 2100 else None
+    return got if got.year >= 1900 and got <= datetime.now(UTC) + timedelta(days=1) else None
 
 
 def _content(row: dict[str, Any], source_id: uuid.UUID) -> tuple[str, str]:

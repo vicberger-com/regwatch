@@ -52,6 +52,14 @@ def marker_key(manifest: str) -> str:
     return manifest.removesuffix(".json") + ".processed"
 
 
+def handed_key(manifest: str) -> str:
+    """When the sweep last handed a manifest over (BL-107 (g), N3)."""
+    return manifest.removesuffix(".json") + ".handed"
+
+
+HANDED_GRACE = timedelta(hours=6)  # a handed manifest is left alone this long (queued, running)
+
+
 async def process_manifest(db: AsyncSession, key: str, load: Load,
                            store: Store | None = None) -> Counts:  # fmt: skip
     """Every document of the run whose manifest is ``key``."""
@@ -66,6 +74,8 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     source = await db.scalar(select(Source).where(Source.id == source_id))
     job = await db.scalar(select(CaptureJob).where(CaptureJob.source_id == source_id))
     if not isinstance(rows, list) or source is None:
+        if store is not None:  # nothing to do, ever: never handed over again (BL-107 (g))
+            await store(marker_key(key), b'{"failed": 0}')
         return counts
     threshold = float(job.change_threshold_pct) if job is not None else 5.0
     # The version names the run that brought it, if that run is still recorded.
@@ -121,7 +131,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 else:
                     await raise_events(db, item, event, ids, got.changed_pct)
             await db.commit()
-        except SoftTimeLimitExceeded:  # the worker's limit: stop, the sweep hands it over again
+        except (SoftTimeLimitExceeded, MemoryError):  # stop; the sweep hands it over again
             await db.rollback()
             raise
         except Exception as exc:  # noqa: BLE001 - one row never stops the run's others
@@ -135,7 +145,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
 
 
 async def sweep(db: AsyncSession, load: Load, hand_over: Callable[[str], Awaitable[None]],
-                hours: int = 48) -> int:  # fmt: skip
+                hours: int = 48, store: Store | None = None) -> int:  # fmt: skip
     """Hand over again every run of the last ``hours`` that stored documents and whose
     manifest has no processed marker: a broker that was down, a worker that died, a task that
     was killed (M4 pipeline review finding 3). Processing is idempotent, so a repeat is safe."""
@@ -148,9 +158,13 @@ async def sweep(db: AsyncSession, load: Load, hand_over: Callable[[str], Awaitab
     handed = 0
     for run_id, source_id in rows.tuples().all():
         key = f"raw/{source_id}/runs/{run_id}.json"
-        if await load(marker_key(key)) is None and await load(key) is not None:
+        if await load(marker_key(key)) is not None or await _recently_handed(load, key):
+            continue
+        if await load(key) is not None:
             await hand_over(key)
             handed += 1
+            if store is not None:
+                await store(handed_key(key), datetime.now(UTC).isoformat().encode())
     return handed
 
 
@@ -188,3 +202,14 @@ async def _by_model(db: AsyncSession, item: Item, text: str, provider: ModelProv
     kept = set((await db.scalars(select(ItemTerm.term_id)
                                  .where(ItemTerm.item_id == item.id))).all())  # fmt: skip
     await classify_by_model(db, item, text, provider, kept, min_confidence)
+
+
+async def _recently_handed(load: Load, key: str) -> bool:
+    raw = await load(handed_key(key))
+    try:
+        when = datetime.fromisoformat(raw.decode()) if raw else None
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if when is None or when.tzinfo is None:
+        return False
+    return datetime.now(UTC) - when < HANDED_GRACE

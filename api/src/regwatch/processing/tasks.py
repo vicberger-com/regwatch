@@ -74,7 +74,7 @@ async def _sweep() -> int:
             async def hand_over(key: str) -> None:
                 await anyio.to_thread.run_sync(enqueue, key)
 
-            return await sweep(db, objectstore.get, hand_over)
+            return await sweep(db, objectstore.get, hand_over, store=objectstore.put)
     finally:
         await engine.dispose()
 

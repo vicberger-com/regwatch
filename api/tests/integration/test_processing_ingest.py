@@ -452,3 +452,24 @@ async def test_a_less_credible_source_never_takes_even_an_unfetched_item(
     assert hit.kind == "duplicate"
     item = await db.get(Item, made.item_id)
     assert item is not None and (item.source_id, item.title) == (feed, "Rule 60 on reporting")
+
+
+async def test_bidi_marks_and_future_dates_are_dropped(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """BL-107 (h): an id reads as it is; a document published in 2099 does not sort first."""
+    sid = await source(admin)
+    got = await ingest(
+        db,
+        sid,
+        None,
+        row(
+            url="https://reg.example/bidi",
+            external_id="act‮1-txt​.exe",
+            published_at="2099-01-01T00:00:00+00:00",
+        ),
+        5.0,
+    )
+    item = await db.get(Item, got.item_id)
+    assert item is not None and item.external_id == "act1-txt.exe"
+    assert item.published_at is None
