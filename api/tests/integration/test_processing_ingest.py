@@ -420,3 +420,15 @@ async def test_an_official_source_takes_a_page_a_search_hit_fetched_first(
         again = await ingest(db, other, None, row(url=url, final_url=url, text="Other. " * 80),
                              5.0, kind="web_page", credibility=standing)  # fmt: skip
         assert again.kind == "duplicate", standing
+
+
+async def test_a_row_without_a_language_gets_the_detected_one(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 Q6: a German page with no language field is German and waits for translation."""
+    sid = await source(admin)
+    text = "Das Bundesamt veröffentlicht neue Regeln für Betreiber kritischer Anlagen.\n" * 5
+    got = await ingest(db, sid, None, row(url="https://reg.example/de", text=text,
+                                          language=None, title="Neue Regeln"), 5.0)  # fmt: skip
+    item = await db.get(Item, got.item_id)
+    assert item is not None and (item.language, item.translation_pending) == ("de", True)

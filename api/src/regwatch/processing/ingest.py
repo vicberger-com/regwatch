@@ -13,8 +13,9 @@ must canonicalise, text and titles are bounded, dates must parse. For each row:
    latest version; below the job's ``change_threshold_pct`` the item is ``unchanged`` and no
    version is made, else version n+1 with its diff.
 
-Fuzzy title near-duplicates (rapidfuzz) and language detection wait for their dependencies
-(M4 Q6); a non-English item is flagged ``translation_pending`` (no provider at launch, Q5).
+Fuzzy title near-duplicates (rapidfuzz) wait for their slice; a row without a language gets
+the detected one (``processing.language``, M4 Q6); a non-English item is flagged
+``translation_pending`` (no provider at launch, Q5).
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from regwatch.capture.connectors.rss import plain_text
 from regwatch.capture.models import CaptureRun, Source
 from regwatch.processing import versioning
+from regwatch.processing.language import detect as detect_language
 from regwatch.processing.models import Item, ItemVersion
 
 MAX_TEXT = 1_000_000
@@ -212,7 +214,8 @@ async def ingest(
         same = next((i for i, u in candidates if _host(u) == _host(canonical)), None)
         if same is not None:
             return Ingested("duplicate", same)
-        language = _language(row.get("language"))
+        # The row's own language, else detected from the text (M4 Q6)
+        language = _language(row.get("language")) or detect_language(title, text)
         item = Item(source_id=source_id, canonical_url=canonical, url_hash=url_hash,
                     external_id=_field(row.get("external_id"), 500), title=title,
                     summary=plain_text(_text(row.get("summary"), MAX_SUMMARY * 4), MAX_SUMMARY),

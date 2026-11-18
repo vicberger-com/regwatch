@@ -102,7 +102,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | protego 0.7.0 | robots.txt parser for SafeFetcher (M3 design notes; acceptance 4) | BSD-3-Clause | V `06ccad4` (0.7.0) | dependency | M3 |
 | tenacity 9.2.1 | bounded retries for capture fetches (at most 3 per run, M3 design notes) | Apache-2.0 | V `4410996` (9.2.1) | dependency | M3 |
 | redis-py 8.1.0 | Valkey client: SafeFetcher's per-host rate limits, and the broker client Celery's Redis transport uses | MIT | V `e013126` (v8.1.0) | dependency | M3 |
-| lingua-language-detector 2.2.0 | language detection (M4 Q6; owner approved 2026-11-18) | Apache-2.0 | V `d0c8e85`, `754ce21` | dependency | M4 |
+| lingua-language-detector 2.2.0 | language detection (M4 Q6; owner approved 2026-11-18; `processing/language.py`). The wheel is about 290 MB (models included, offline); its CycloneDX SBOM lists 131 Rust crates, all Apache-2.0, MIT, Unlicense-or-MIT or Unicode-3.0 | Apache-2.0 | V `d0c8e85`, `754ce21`; wheel 2.2.0 LICENSE and SBOM checked | dependency | M4 |
 | spaCy (optional) | entity extraction | MIT | V `4331199` | dependency | M4 |
 | rapidfuzz 3.14.6 | fuzzy title near-duplicates (M4 Q6; owner approved 2026-11-18) | MIT | V `377d0c0` | dependency | M4 |
 | React, React DOM | UI | MIT | V `61aa00d` | dependency | M6 |

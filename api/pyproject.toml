@@ -30,6 +30,7 @@ dependencies = [
     "html5lib>=1.1,<2",  # web page parsing (M3, ADR-0009, CP-15), register 3.6, R-01 C19
     # html5lib's one new dependency; 0.6.1 on PyPI has no tag in its repository (R-01 C20)
     "webencodings>=0.5.1,<0.6",
+    "lingua-language-detector==2.2.0",
 ]
 
 [project.scripts]
