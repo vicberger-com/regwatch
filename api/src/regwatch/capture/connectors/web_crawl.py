@@ -41,6 +41,7 @@ from regwatch.capture.connectors.config import WebCrawlConfig
 from regwatch.capture.connectors.rss import entry_link
 from regwatch.capture.connectors.web_page import (
     HTML,
+    MAX_STATE,
     MAX_UNREADABLE,
     UNREADABLE,
     _extract,
@@ -57,7 +58,7 @@ MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's ty
 # The last label: letters, or an internationalised one in punycode (R5).
 _DOMAIN = re.compile(
     r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+"
-    r"([a-z]{2,63}|xn--[a-z0-9-]{1,59})"
+    r"([a-z]{2,63}|xn--[a-z0-9]([a-z0-9-]{0,57}[a-z0-9])?)"  # no trailing hyphen (R9)
 )
 
 
@@ -125,10 +126,11 @@ class WebCrawlConnector:
         for seed in config.seed_urls:
             push(str(seed), 0)
         seen = {str(s) for s in config.seed_urls}
+        known = set(previous) | seen  # pages the state remembers, or will after this run
         requests = 0
         while frontier:
             if requests >= limit:  # every request counts, pages or not (finding 4)
-                ctx.notes.add("truncated")
+                ctx.notes.update({"truncated", "crawl-limit"})
                 return
             _seed, _checked, depth, _n, url = heapq.heappop(frontier)
             requests += 1
@@ -178,8 +180,14 @@ class WebCrawlConnector:
                         or not keep(link)):  # fmt: skip
                     continue
                 if len(frontier) >= MAX_FRONTIER:  # memory stays bounded (finding 5 (a))
-                    ctx.notes.add("truncated")
+                    ctx.notes.update({"truncated", "crawl-limit"})
                     break
+                if link not in known and len(known) >= MAX_STATE:
+                    # The state remembers MAX_STATE pages; a page past that would lose its
+                    # baseline and be new on every run (re-verification R6): not admitted.
+                    ctx.notes.update({"truncated", "state-full"})
+                    continue
+                known.add(link)
                 seen.add(link)
                 push(link, depth + 1)
             hints = {"got": got, "found": found, "previous": previous.get(url, [None, None])[:2]}

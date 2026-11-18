@@ -45,6 +45,17 @@ class Site:
                               stream=httpx.ByteStream(body))  # fmt: skip
 
 
+CLOCK = [NOW]
+
+
+def tick() -> datetime:
+    """A clock that moves a second on every reading, so checked times never tie (R9)."""
+    from datetime import timedelta
+
+    CLOCK[0] += timedelta(seconds=1)
+    return CLOCK[0]
+
+
 async def crawl(site: Site, objects: dict[str, bytes], cursor: Any = None, *,
                 override: str | None = None, max_items: int = 100,
                 **config: Any) -> execution.Outcome:  # fmt: skip
@@ -64,7 +75,7 @@ async def crawl(site: Site, objects: dict[str, bytes], cursor: Any = None, *,
         fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
                               transport=httpx.MockTransport(site))  # fmt: skip
         capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000, sleep=no_wait)
-        return ConnectorContext(fetcher=capture, store=store, now=lambda: NOW, load=load)
+        return ConnectorContext(fetcher=capture, store=store, now=tick, load=load)
 
     settings = {"seed_urls": [SEED], "allowed_domains": ["reg.example"],
                 "politeness_delay_seconds": 0.5, **config}  # fmt: skip
@@ -383,7 +394,7 @@ async def test_a_seed_redirect_under_the_override_says_why() -> None:
     site = Site({"reg.example/": (301, {"location": "https://www.reg.example/"}),
                  "www.reg.example/": ("Home", [])})  # fmt: skip
     got = await crawl(site, {}, override="The regulator agreed in writing")
-    assert got.status == "failed" and got.error_class == "fetch-failed"
+    assert (got.status, got.error_class) == ("failed", "override-redirect")  # R8: shown
     config = WebCrawlConfig(seed_urls=[SEED], allowed_domains=["reg.example"])  # type: ignore[list-item]
 
     class Redirected:
@@ -431,3 +442,34 @@ async def test_the_dry_run_says_partly_disallowed() -> None:
                      extraction_rules={})  # fmt: skip
     got = await dryrun.preview(job, source, make)
     assert got["robots_decision"] == "partly-disallowed" and len(got["candidates"]) == 2
+
+
+async def test_pages_past_the_state_cap_are_not_admitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification R6: scaled down, cap 10 and 15 unchanged pages; nothing is new twice."""
+    from regwatch.capture.connectors import web_page
+
+    monkeypatch.setattr(web_crawl, "MAX_STATE", 10)
+    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(15)]),
+                 **{f"reg.example/p{n}": (f"P{n}", []) for n in range(15)}})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    cursor = None
+    new = 0
+    for _ in range(12):
+        got = await crawl(site, objects, cursor, max_pages_per_run=6)
+        cursor = got.cursor or cursor
+        new += got.items_new
+    assert new == 10 and "remembers" in (got.error_message or "")
+
+
+async def test_a_crawl_limit_says_to_raise_it() -> None:
+    """R7: the message no longer promises that the next run continues."""
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(5)]),
+                 **{f"reg.example/p{n}": (f"P{n}", []) for n in range(5)}})  # fmt: skip
+    got = await crawl(site, {}, max_pages_per_run=2)
+    assert "raise max_pages_per_run" in (got.error_message or "")
+
+
+def test_a_punycode_label_ends_in_a_letter_or_digit() -> None:
+    assert not web_crawl._DOMAIN.fullmatch("a.xn---")
+    assert web_crawl._DOMAIN.fullmatch("reg.xn--p1ai")
