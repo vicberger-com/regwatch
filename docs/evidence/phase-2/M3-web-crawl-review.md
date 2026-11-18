@@ -496,7 +496,7 @@ The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3
 
 | # | Severity | Description | Fix PR | Verified |
 | --- | --- | --- | --- | --- |
-| R27 | medium | **A 404 or 410 forgets a page at once, and an off-site redirect counts as hard, both without R24's "the host served other pages" guard. One run of a site-wide 404 (a bad deploy, a content backend down behind a static home page), or three runs of a site-wide maintenance or sign-in redirect, forgets every page, and the next good run sends the whole site to M4 as `new`.** 404 and 410 go to `gone` in `discover`, and `refused-host` goes to `hard_failed`, before `finish` applies the guard. **Failure cases** (`q21_site_wide.py`, see the table above): (a) a whole-site 404 or 410 for one run leaves an empty state, and the next run is `new` 7; (b) inner pages answering 404 for one run while the home page serves leave only the seed, and the next run is `new` 6; (c) a whole-site redirect to an off-site status page for three runs leaves an empty state, and the next run is `new` 7. The 404 run is also shown as `skipped` / `unavailable`, which does not count against the source's health, so nothing flags it. I accepted a single page's transient 404 as info in R15 (a); I missed the site-wide case until now. **Fix:** (a) treat 404 and 410 as client errors under R24's guard, counted only when the host served other pages that run; (b) count them towards forgetting, but with a threshold of two runs rather than at once, so that one bad deploy behind a working home page does not forget the site; (c) apply the same guard to `refused-host`; (d) optionally, when every page of the run answered 404 or 410, report the run as failed rather than skipped. Test the whole-site 404 for one run, inner-page 404 for one run with the seed serving, and the whole-site off-site redirect for three runs. | follow-up commit: a 404, a 410, a redirect off the allowed addresses and a redirect to another page all go through the served guard: each counts towards the 3 runs in a row only when its site served other pages that run, and nothing is forgotten at once; tests for the site-wide 404, the site-wide 410, inner pages 404 for a run while the home page serves, and an off-site status page for three runs (recovery run 0 new each); a run where every page answered 404 still shows as skipped, recorded BL-101 (k) | |
+| R27 | medium | **A 404 or 410 forgets a page at once, and an off-site redirect counts as hard, both without R24's "the host served other pages" guard. One run of a site-wide 404 (a bad deploy, a content backend down behind a static home page), or three runs of a site-wide maintenance or sign-in redirect, forgets every page, and the next good run sends the whole site to M4 as `new`.** 404 and 410 go to `gone` in `discover`, and `refused-host` goes to `hard_failed`, before `finish` applies the guard. **Failure cases** (`q21_site_wide.py`, see the table above): (a) a whole-site 404 or 410 for one run leaves an empty state, and the next run is `new` 7; (b) inner pages answering 404 for one run while the home page serves leave only the seed, and the next run is `new` 6; (c) a whole-site redirect to an off-site status page for three runs leaves an empty state, and the next run is `new` 7. The 404 run is also shown as `skipped` / `unavailable`, which does not count against the source's health, so nothing flags it. I accepted a single page's transient 404 as info in R15 (a); I missed the site-wide case until now. **Fix:** (a) treat 404 and 410 as client errors under R24's guard, counted only when the host served other pages that run; (b) count them towards forgetting, but with a threshold of two runs rather than at once, so that one bad deploy behind a working home page does not forget the site; (c) apply the same guard to `refused-host`; (d) optionally, when every page of the run answered 404 or 410, report the run as failed rather than skipped. Test the whole-site 404 for one run, inner-page 404 for one run with the seed serving, and the whole-site off-site redirect for three runs. | follow-up commit: a 404, a 410, a redirect off the allowed addresses and a redirect to another page all go through the served guard: each counts towards the 3 runs in a row only when its site served other pages that run, and nothing is forgotten at once; tests for the site-wide 404, the site-wide 410, inner pages 404 for a run while the home page serves, and an off-site status page for three runs (recovery run 0 new each); a run where every page answered 404 still shows as skipped, recorded BL-101 (k) | yes (re-verification 9, `q21_site_wide.py`: a whole-site 404 or 410 for one run, inner pages 404 for one run while the home page serves, and a whole-site off-site redirect for three runs all keep 7 entries, and the recovery run is `new` 0; the 403, 401, 503 and 400 cases are unchanged). Pages really gone still leave: after three counted runs (`q9`, `q14` (B), `q22_churn_near_cap.py`) |
 
 **Sign-off at re-verification 8:** **not signed off** for the crawl slice (`c209055` to `cc14551`).
 - **Fixed and verified since re-verification 7:**
@@ -511,3 +511,56 @@ The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3
 With R27 fixed and tested, I expect to sign off.
 
 · M3 web crawl independent review · 2026-11-18
+
+## Re-verification 9
+**Scope:** branch `sec/M3-web-crawl-followups`, commit `7d46de5`, on top of `099fd89` (this record). In `connectors/web_crawl.py`, a 404 or 410, a `refused-host`, and a page at depth above 0 that redirects elsewhere all go to `client_errors` with their origin, never straight to `gone`. A redirecting page is now recorded as tried. The commit also has the new and updated tests. The checkout was on this branch with a clean tree. · **Date:** 2026-11-18 · M3 web crawl independent review
+
+**Method:**
+- **Reading:** I read the diff, and every path that can now forget a page. There is one: `client_errors` whose origin served HTML that run, moved to `hard_failed` in `finish`, then three counted runs in a row in `finish_state`. Extraction errors other than `too-slow` count directly.
+- **Tests:** `uv run pytest -q tests/unit/test_connector_web_crawl.py tests/unit/test_connector_web_page.py tests/unit/test_capture_dryrun.py tests/unit/test_capture_execution.py` gave 136 passed. I did not rerun `make lint` or `make test-api`; the coordinator reports both passing.
+- **Probes:** I reran `q21_site_wide.py`, `q14_patterns_and_soft_gone.py`, `q9_dead_urls_fill_state.py`, `q17_cosmetic_redirects.py`, `q18_raw_final_url.py` and `q13_eviction_deeper.py`, and added these in `/tmp/web-crawl-review/rv9/`:
+  - `q22_churn_near_cap.py`: `MAX_STATE` 10, five live pages, two replaced each run, with removed pages answering 404 (A) or redirecting to the home page (B). Also (C): inner pages answering 404 for three runs while the home page serves.
+  - `q22b_debug.py`: the state, with each entry's failure count, run by run for (A).
+- **Limits:** as before.
+
+**Results:**
+- **R27 is fixed and verified** (see the Verified column). Every site-wide case now forgets nothing: a whole-site 404 or 410 for a run, an inner-page 404 for a run behind a working home page, and three runs of an off-site status redirect.
+- **Pages that are really gone still leave**, after three counted runs:
+  - `q9`: the state settles at 8, and each run's two new pages are `new` once;
+  - `q14` (B): removed pages that redirect to the home page leave;
+  - `q14` (A): narrowing the patterns frees the state.
+- **No regression** in rotation (`q13`: 10 `new`, none twice) or in one key per page (`q18`). A trailing-slash link is now remembered as tried, so it rotates instead of coming first every run (`q17`: `/doc` stays in the state until its third counted run).
+- **Two residual behaviours** come from the three-run rule. I record them below and do not hold sign-off on them.
+
+**New findings:**
+
+| # | Severity | Description | Fix PR | Verified |
+| --- | --- | --- | --- | --- |
+| R28 | low | **Near the cap on a site whose pages change, gone pages hold their slots for three counted runs, so new pages are admitted late, and the run says the site is too large when it is not.** `q22b_debug.py` (cap 10, five live pages, two replaced each run): from run 4, each run refuses that run's two new pages with `state-full`, and admits them on the next run as gone pages leave. Each such run is `partial` / `truncated`, with "the site has more pages than a crawl remembers (10)", while the site has five pages. At full scale this matters only for a site already near 5,000 remembered pages. There, a gone page needs three rotations to leave, so a new page can wait up to that long. **Fix (BL-101):** when the cap is reached, admit a new link in place of an entry that has at least one counted failure, the most-failed first. Or keep a small reserve (for example 5% of `MAX_STATE`) for new links. Make the message say "near the cap" when entries with failures exist. | | |
+| R29 | info | **Inner pages that answer 404 for three counted runs while the home page serves are forgotten, and are `new` if they come back** (`q22_churn_near_cap.py`, C: `new` 6 on the recovery run). This is the agreed rule: three counted runs with the site otherwise up is the best evidence of "gone" the crawl has. A content backend down for three runs behind a cached home page looks the same. If that proves common, require the counted failures to span a minimum time as well, for example 24 hours (BL-101). | | |
+
+**Sign-off at re-verification 9:** **signed off** for the crawl slice: commits `c209055`, `8ee0c7e`, `3d58c2e`, `a63d20c`, `457809b`, `36a2987`, `23f9b91`, `2b53773`, `cc14551` and `7d46de5`.
+
+Every medium finding of this record is fixed and verified by probes as well as by the unit tests:
+- **1:** the robots.txt override stays on the seed's origin, and redirects never carry it to another host.
+- **2, R6, R13, R14, R20, R24, R27:** no live page loses its baseline. None was found going to M4 as `new` twice under any of these:
+  - truncation, deadlines or a failed seed;
+  - a site larger than the cap;
+  - long rotations;
+  - outages of every class probed: 5xx, 408, 429, 401 and 403; transport and TLS failures; an unreadable robots.txt; `too-slow`;
+  - site-wide 404, 410 or off-site redirects.
+- **4, R1:** every request counts against the budget, and pages that are not HTML rotate.
+- **5:** the frontier and the held bodies are bounded, and memory stays about 110 MiB at the real cap.
+- **R10, R16:** pages that are gone, excluded by the patterns, or removed by a redirect leave the state, so new pages are admitted.
+- **R11:** an inner page's off-origin redirect is one failed document.
+
+Deferred to BL-101, accepted:
+- findings 9 and 10, and the rest of 12: CPs for the politeness bound, `allowed_domains` limits and `max_depth`;
+- R7: remembering deferred links, BL-101 (h);
+- R21, and R22 (b) and (c): canonical moves and reuse of the redirect's body, BL-101 (i);
+- R26 (a): a long time-based fallback for pages failing transiently for ever, BL-101 (j);
+- the all-404 run shown as `skipped`, BL-101 (k);
+- R4's compact state format, BL-101 (g);
+- R28 and R29, above.
+
+Info items are recorded in R5, R9, R12, R15, R19, R23 and R26 (b). · M3 web crawl independent review · 2026-11-18
