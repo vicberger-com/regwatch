@@ -54,7 +54,7 @@ from regwatch.capture.connectors.web_page import (
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
 GONE = frozenset({404, 410})
-TRANSIENT_STATUSES = frozenset({408, 429})
+TRANSIENT_STATUSES = frozenset({401, 403, 408, 429})  # never count towards forgetting
 MAX_FAILURES = 3  # runs in a row a remembered page failed before it is forgotten (R16 (C))
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
@@ -115,7 +115,8 @@ class WebCrawlConnector:
                                   "origin": None, "unreadable": 0, "tried": {},
                                   "keep_unlisted": True, "gone": set(),
                                   "depths": {}, "max_failures": MAX_FAILURES,
-                                  "passed": set(), "hard_failed": set()}  # fmt: skip
+                                  "passed": set(), "hard_failed": set(),
+                                  "client_errors": [], "served": set()}  # fmt: skip
         # Seeds first (their links are the crawl); then pages never checked, at any depth;
         # then the longest unchecked, shallower first among equals. A crawl cut short by its
         # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
@@ -212,9 +213,10 @@ class WebCrawlConnector:
                 continue
             if not 200 <= got.status < 300:
                 if 400 <= got.status < 500 and got.status not in TRANSIENT_STATUSES:
-                    # A client error says the page is not there for us; a 5xx, 408 or 429 is an
-                    # outage, which never makes a page forgotten (re-verification R20).
-                    ctx.scratch["listing"]["hard_failed"].add(url)
+                    # A client error says the page is not there for us, but only if the same
+                    # host served other pages this run: a site-wide 4xx is a block or upkeep,
+                    # never a reason to forget (R20, R24). 401 and 403 never count.
+                    ctx.scratch["listing"]["client_errors"].append((url, _origin(url)))
                 failed = ConnectorError("http-status", f"the page answered HTTP {got.status}")
                 yield Candidate(url=url, hints={"error": failed})
                 continue
@@ -227,7 +229,8 @@ class WebCrawlConnector:
             try:
                 found = await _extract(got, job, "a" if depth < config.max_depth else None)
             except ConnectorError as exc:
-                ctx.scratch["listing"]["hard_failed"].add(url)  # unreadable, whatever the hour
+                if exc.reason != "too-slow":  # too-slow can be a busy worker host (R25)
+                    ctx.scratch["listing"]["hard_failed"].add(url)
                 yield Candidate(url=url, hints={"error": exc})
                 continue
             for href in found.links:
@@ -251,6 +254,7 @@ class WebCrawlConnector:
                 known.add(link)
                 seen.add(link)
                 push(link, depth + 1)
+            ctx.scratch["listing"]["served"].add(_origin(url))
             hints = {"got": got, "found": found, "previous": previous.get(url, [None, None])[:2]}
             yield Candidate(url=url, title=found.title, hints=hints)
 
@@ -281,6 +285,10 @@ class WebCrawlConnector:
             candidate.hints.pop("found", None)
 
     async def finish(self, job: JobSettings, ctx: ConnectorContext) -> None:
+        listing = ctx.scratch.get("listing")
+        if listing is not None:  # client errors from hosts that served other pages (R24)
+            listing["hard_failed"].update(u for u, origin in listing["client_errors"]
+                                          if origin in listing["served"])  # fmt: skip
         await finish_state(job, ctx)
 
     def health(self, job: JobSettings) -> HealthReport:

@@ -603,8 +603,8 @@ async def test_a_page_failing_three_runs_in_a_row_is_forgotten() -> None:
     site = Site({"reg.example/": ("Home", ["/flaky"]), "reg.example/flaky": ("F", [])})
     objects: dict[str, bytes] = {}
     cursor = (await crawl(site, objects)).cursor
-    site.pages["reg.example/"] = ("Home", [])  # no longer linked, and now refused
-    site.pages["reg.example/flaky"] = (403, {})
+    site.pages["reg.example/"] = ("Home", [])  # no longer linked, and now refused, while the
+    site.pages["reg.example/flaky"] = (400, {})  # same host serves the seed (R24)
     for _ in range(3):
         cursor = (await crawl(site, objects, cursor)).cursor or cursor
     assert "https://reg.example/flaky" not in json.loads(objects[cursor["listing_ref"]])
@@ -623,7 +623,7 @@ async def test_a_shallower_link_lowers_a_pages_depth() -> None:
     assert "reg.example/y" in site.asked
 
 
-@pytest.mark.parametrize("status", [503, 429, 408])
+@pytest.mark.parametrize("status", [503, 429, 408, 403, 401])
 async def test_an_outage_never_makes_pages_new_again(status: int) -> None:
     """Re-verification R20: three hours of 5xx or 429 forget nothing."""
     pages = {"reg.example/": ("Home", [f"/p{n}" for n in range(6)]),
