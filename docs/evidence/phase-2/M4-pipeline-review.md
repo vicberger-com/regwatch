@@ -107,6 +107,16 @@ Fixed: the `www.` handling, races on a claim, and R6 and R7. Partly fixed: N4. N
 | backfill | medium | migration 0005 sets `fetched_host` of existing items to their own host | pending |
 | port ignored; feed full-page title | low | BL-107 (h) | deferred |
 
+## Re-verification 4 (a4d9bad): not signed off
+
+Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` from the source row), the backfill (IPv6 hosts come out malformed but only NULL or not is read). Partly fixed: N5. New: N7 (high) a feed's full-page row (no text, the feed's title) that made the item first marked it fetched, so the publisher could never take it. R15 (medium): a publisher's PDF cannot take back a planted summary until text extraction.
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| N7 | high | the same test on every path: a row is fetched only with extracted text or from its official API, so creation no longer marks a textless full page fetched | pending |
+| provider guard | info | the row's provider must equal the source's configured provider (`api_feed:<provider>` from the source row), so a later `generic_json` adapter can never speak for a provider's host | pending |
+| R15 | medium | open first-claim risk for PDFs, recorded in BL-107 (b) for the extraction slice | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

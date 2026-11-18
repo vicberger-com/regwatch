@@ -326,7 +326,7 @@ async def test_an_official_api_item_is_never_taken_by_a_fetched_feed_page(
     api, feed = await source(admin), await source(admin)
     fr = row(url=FR, title="Incident Reporting Rule", final_url=None,
              metadata={"provider": "federal_register"})  # fmt: skip
-    made = await ingest(db, api, None, fr, 5.0, kind="api_feed")
+    made = await ingest(db, api, None, fr, 5.0, kind="api_feed:federal_register")
     await db.commit()
     hostile = row(url=FR, text="Withdrawn. " * 80, final_url=FR,
                   title="Agency fined; incident reporting rule withdrawn")  # fmt: skip
@@ -336,6 +336,11 @@ async def test_an_official_api_item_is_never_taken_by_a_fetched_feed_page(
     # A provider name claimed by another kind, or for another host, speaks for nothing.
     other = row(url="https://reg.example/x", metadata={"provider": "federal_register"})
     got = await ingest(db, feed, None, other, 5.0, kind="rss")
+    assert (await db.get(Item, got.item_id)).fetched_host is None  # type: ignore[union-attr]
+    # A row naming another provider than the source's own speaks for nothing either.
+    link = "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32026R0999"
+    named = row(url=link, metadata={"provider": "eur_lex"}, final_url=None)
+    got = await ingest(db, api, None, named, 5.0, kind="api_feed:federal_register")
     assert (await db.get(Item, got.item_id)).fetched_host is None  # type: ignore[union-attr]
 
 
@@ -357,10 +362,33 @@ async def test_eur_lex_takes_back_a_display_link_a_feed_listed_first(
     await db.commit()
     real = row(url=link, title="Regulation (EU) 2026/123", metadata={"provider": "eur_lex"},
                final_url="https://publications.europa.eu/resource/cellar/x")  # fmt: skip
-    taken = await ingest(db, eurlex, None, real, 5.0, kind="api_feed")
+    taken = await ingest(db, eurlex, None, real, 5.0, kind="api_feed:eur_lex")
     await db.commit()
     assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
     db.expire_all()
     item = await db.get(Item, planted.item_id)
     assert item is not None and (item.source_id, item.title) == (eurlex, "Regulation (EU) 2026/123")
     assert item.fetched_host == "eur-lex.europa.eu"
+
+
+async def test_a_feeds_full_page_first_never_locks_an_item(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 4, N7 (R14): the feed's fetched page without text makes the item, but
+    not as fetched; the publisher's page with text takes it, with its own title."""
+    feed, page = await source(admin), await source(admin)
+    url = "https://reg.example/rules/48"
+    made = await ingest(db, feed, None, row(url=url, final_url=url, text=None,
+                                            title="Rule 48 withdrawn; firm fined"), 5.0,
+                        kind="rss")  # fmt: skip
+    await db.commit()
+    item = await db.get(Item, made.item_id)
+    assert made.kind == "new" and item is not None and item.fetched_host is None
+    taken = await ingest(db, page, None, row(url=url, final_url=url, title="Rule 48"), 5.0,
+                         kind="web_page")  # fmt: skip
+    await db.commit()
+    assert (taken.kind, taken.item_id) == ("changed", made.item_id)
+    db.expire_all()
+    item = await db.get(Item, made.item_id)
+    assert item is not None and (item.source_id, item.title) == (page, "Rule 48")
+    assert item.fetched_host == "reg.example"

@@ -117,7 +117,10 @@ def _fetched_host(row: dict[str, Any], canonical: str, kind: str = "") -> str | 
     want = _bare(canonical)
     found = row.get("metadata")
     provider = found.get("provider") if isinstance(found, dict) else None
-    if kind == "api_feed" and want and want in PROVIDER_HOSTS.get(str(provider), ()):
+    configured = kind.removeprefix("api_feed:") if kind.startswith("api_feed:") else None
+    # The row's provider must be the one the source is configured for (a later adapter such as
+    # ``generic_json`` can never speak for a provider's host by naming it; re-verification 4).
+    if configured and provider == configured and want in PROVIDER_HOSTS.get(configured, ()):
         return want
     final = row.get("final_url")
     got = versioning.canonical_url(final) if isinstance(final, str) else None
@@ -168,7 +171,12 @@ async def ingest(
                        MAX_TITLE) or canonical[:MAX_TITLE]  # fmt: skip
     now = datetime.now(UTC)
     item = await db.scalar(select(Item).where(Item.url_hash == url_hash).with_for_update())
-    fetched_host = _fetched_host(row, canonical, kind)
+    # The row speaks for the URL only when fetched from its host with extracted text, or from
+    # its official API, on every path: a feed's full page (no text, the feed's title) never
+    # marks an item fetched, so the publisher can still take it (re-verification 4, N7).
+    fetched_host = (
+        _fetched_host(row, canonical, kind) if text or kind.startswith("api_feed:") else None
+    )
     claimed = False
     if item is not None and item.source_id != source_id:
         # Another source's item: a row from this source never changes it (M4 pipeline review
@@ -178,8 +186,7 @@ async def ingest(
         # whatever the change share (CP-19, findings N4 to N6). A fetched item is never taken,
         # so two sources fetching one page never take it in turn. A fetched page without text
         # (a feed's full page, a PDF) waits for M4's extraction: no empty version over text.
-        speaks = fetched_host is not None and (bool(text) or kind == "api_feed")
-        if item.fetched_host is not None or not speaks:
+        if item.fetched_host is not None or fetched_host is None:
             return Ingested("duplicate", item.id)
         item.source_id = source_id
         claimed = True

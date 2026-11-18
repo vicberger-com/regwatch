@@ -69,6 +69,9 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     threshold = float(job.change_threshold_pct) if job is not None else 5.0
     # The version names the run that brought it, if that run is still recorded.
     known: uuid.UUID | None = await db.scalar(select(CaptureRun.id).where(CaptureRun.id == run_id))
+    # ``api_feed:<provider>`` for an official API source, from the source row (never the manifest)
+    provider = (source.config or {}).get("provider") if source.kind == "api_feed" else None
+    kind = f"api_feed:{provider}" if isinstance(provider, str) else source.kind
     wanted = list(source.default_jurisdiction_ids or [])
     found = await db.scalars(select(Jurisdiction.code).where(Jurisdiction.id.in_(wanted)))
     defaults = list(found.all())
@@ -85,7 +88,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             counts.failed += 1
             continue
         try:
-            got = await ingest(db, source_id, known, row, threshold, kind=source.kind)
+            got = await ingest(db, source_id, known, row, threshold, kind=kind)
             counts.add(got.kind)
             if got.kind in ("new", "changed") and got.item_id is not None:
                 item = await db.get(Item, got.item_id)
