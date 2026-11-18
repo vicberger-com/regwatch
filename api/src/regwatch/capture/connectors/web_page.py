@@ -212,8 +212,12 @@ async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
             old = listing["previous"].get(u) or ["", "", ""]
             entry = [old[0], old[1], listing["tried"][u]]
         pages[u] = entry or listing["previous"].get(u)
+    for u in listing.get("gone", ()):  # 404 or 410 this run: the page is gone (crawl R10)
+        pages.pop(u, None)
     if listing.get("keep_unlisted"):  # a crawl: pages not reached this run keep their baseline
-        rest = sorted(((u, v) for u, v in listing["previous"].items() if u not in pages),
+        gone = listing.get("gone", set())
+        rest = sorted(((u, v) for u, v in listing["previous"].items()
+                       if u not in pages and u not in gone),
                       key=lambda item: item[1][2], reverse=True)  # fmt: skip
         pages.update(rest[: max(0, MAX_STATE - len(pages))])  # the most recently checked
     body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()

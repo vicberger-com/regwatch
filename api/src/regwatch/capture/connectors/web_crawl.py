@@ -23,11 +23,14 @@ from __future__ import annotations
 
 import heapq
 import re
+from collections import deque
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 from pydantic import BaseModel
 
+from regwatch.capture.connectors import web_page
 from regwatch.capture.connectors.base import (
     Candidate,
     ConnectorContext,
@@ -41,7 +44,6 @@ from regwatch.capture.connectors.config import WebCrawlConfig
 from regwatch.capture.connectors.rss import entry_link
 from regwatch.capture.connectors.web_page import (
     HTML,
-    MAX_STATE,
     MAX_UNREADABLE,
     UNREADABLE,
     _extract,
@@ -53,6 +55,8 @@ from regwatch.capture.connectors.web_page import (
 )
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
+GONE = frozenset({404, 410})
+STATE_HORIZON = timedelta(days=30)
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
 # The last label: letters, or an internationalised one in punycode (R5).
@@ -105,12 +109,16 @@ class WebCrawlConnector:
         keep = _url_filter(job.rules)
         strip = getattr(job.rules, "strip_query_params", True)
         limit = min(config.max_pages_per_run, job.max_items)
-        previous = await _previous_listing(job, ctx)
+        # Pages not seen for STATE_HORIZON are forgotten, so a site whose pages come and go
+        # never fills the state with pages that are gone (re-verification R10).
+        horizon = (ctx.now() - STATE_HORIZON).isoformat()
+        previous = {u: v for u, v in (await _previous_listing(job, ctx)).items()
+                    if v[2] >= horizon}  # fmt: skip
         listed: list[str] = []
         ctx.notes.add("state-per-document")
         ctx.scratch["listing"] = {"listed": listed, "pages": {}, "previous": previous,
                                   "origin": None, "unreadable": 0, "tried": {},
-                                  "keep_unlisted": True}  # fmt: skip
+                                  "keep_unlisted": True, "gone": set()}  # fmt: skip
         # Seeds first (their links are the crawl); then pages never checked, at any depth;
         # then the longest unchecked, shallower first among equals. A crawl cut short by its
         # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
@@ -127,6 +135,7 @@ class WebCrawlConnector:
             push(str(seed), 0)
         seen = {str(s) for s in config.seed_urls}
         known = set(previous) | seen  # pages the state remembers, or will after this run
+        stale = deque(sorted(previous, key=lambda u: previous[u][2]))  # longest unchecked first
         requests = 0
         while frontier:
             if requests >= limit:  # every request counts, pages or not (finding 4)
@@ -149,15 +158,20 @@ class WebCrawlConnector:
                 got = await ctx.fetcher.fetch(url, rate_per_minute=rate, robots_override=override,
                                               allow_hop=hop)  # fmt: skip
             except FetchRefusedError as exc:
-                error: Exception = exc
-                if override is not None and exc.reason == "refused-host":
-                    # The seed redirects (to https, to www): say so, rather than a bare failure
-                    # (R3); the override never follows a hop off its address (8.3).
-                    error = ConnectorError("override-redirect", "under the robots.txt override "
-                                           "a seed may not redirect off its own address; save "
-                                           "the address it redirects to as the seed")  # fmt: skip
-                yield Candidate(url=url, hints={"error": error})
+                if override is not None and exc.reason == "refused-host" and depth == 0:
+                    # A seed that redirects (to https, to www) under the override: the crawl
+                    # cannot start, so it stops and says why (R3, R8). An inner page that
+                    # redirects is one failed document (R11); the override never follows a
+                    # hop off its address (8.3).
+                    why = (
+                        "under the robots.txt override a seed may not redirect off its own "
+                        "address; save the address it redirects to as the seed"
+                    )
+                    raise ConnectorError("override-redirect", why) from None
+                yield Candidate(url=url, hints={"error": exc})
                 continue
+            if got.status in GONE:  # no longer on the site: dropped from the state (R10)
+                ctx.scratch["listing"]["gone"].add(url)
             if not 200 <= got.status < 300:
                 failed = ConnectorError("http-status", f"the page answered HTTP {got.status}")
                 yield Candidate(url=url, hints={"error": failed})
@@ -182,11 +196,18 @@ class WebCrawlConnector:
                 if len(frontier) >= MAX_FRONTIER:  # memory stays bounded (finding 5 (a))
                     ctx.notes.update({"truncated", "crawl-limit"})
                     break
-                if link not in known and len(known) >= MAX_STATE:
-                    # The state remembers MAX_STATE pages; a page past that would lose its
-                    # baseline and be new on every run (re-verification R6): not admitted.
-                    ctx.notes.update({"truncated", "state-full"})
-                    continue
+                if link not in known and len(known) >= web_page.MAX_STATE:
+                    # The state remembers MAX_STATE pages (R6). A page found now takes the
+                    # place of the longest unchecked one not seen this run, most likely gone
+                    # (R10); only when every remembered page was seen this run is it refused.
+                    while stale and stale[0] in seen:
+                        stale.popleft()
+                    if not stale:
+                        ctx.notes.update({"truncated", "state-full"})
+                        continue
+                    evicted = stale.popleft()
+                    previous.pop(evicted, None)
+                    known.discard(evicted)
                 known.add(link)
                 seen.add(link)
                 push(link, depth + 1)

@@ -61,7 +61,7 @@ SKIPPING = frozenset({"robots", "rate-limited"})
 # A document the provider does not have in the asked form (EUR-Lex review finding 1): skipped,
 # not failed, so the cursor still moves past it.
 UNAVAILABLE = frozenset({"unavailable"})
-STOPPING = frozenset({"blocked-by-provider", "unreadable-pages", "override-redirect"})
+STOPPING = frozenset({"blocked-by-provider", "unreadable-pages"})
 REFUSALS = {
     "robots": "robots.txt does not allow it",
     "rate-limited": "the host is busy; tried again next run",
@@ -262,11 +262,12 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         # ask for the same window again (API feed re-verification R1), so the admin must act.
         moved = cursor is not None
         if "state-full" in ctx.notes:  # web crawl re-verification R6
-            message = ("the site has more pages than a crawl remembers (5,000); narrow "
-                       "allowed_domains or the URL patterns")  # fmt: skip
+            message = (f"the site has more pages than a crawl remembers ({_web_page.MAX_STATE:,});"
+                       " narrow allowed_domains or the URL patterns")  # fmt: skip
         elif "crawl-limit" in ctx.notes:  # R7: deeper pages may never be reached; say so
-            message = ("the crawl found more pages than one run takes; raise max_pages_per_run "
-                       "or narrow allowed_domains or the URL patterns")  # fmt: skip
+            message = ("the crawl found more pages than one run takes; it covers them over "
+                       "several runs, and a higher max_pages_per_run reaches deeper pages "
+                       "sooner")  # fmt: skip
         elif moved:
             message = ("more documents were offered than one run takes; the next run continues "
                        "where this one stopped")  # fmt: skip

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -406,8 +407,9 @@ async def test_a_seed_redirect_under_the_override_says_why() -> None:
     job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules(),
                       robots_override="The regulator agreed in writing")  # fmt: skip
     ctx = ConnectorContext(fetcher=Redirected(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
-    [candidate] = [c async for c in web_crawl.WebCrawlConnector().discover(job, ctx)]
-    assert candidate.hints["error"].reason == "override-redirect"
+    with pytest.raises(ConnectorError) as exc:
+        [c async for c in web_crawl.WebCrawlConnector().discover(job, ctx)]
+    assert exc.value.reason == "override-redirect"
 
 
 def test_internationalised_top_level_domains_are_host_names() -> None:
@@ -448,8 +450,7 @@ async def test_pages_past_the_state_cap_are_not_admitted(monkeypatch: pytest.Mon
     """Re-verification R6: scaled down, cap 10 and 15 unchanged pages; nothing is new twice."""
     from regwatch.capture.connectors import web_page
 
-    monkeypatch.setattr(web_crawl, "MAX_STATE", 10)
-    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    monkeypatch.setattr(web_page, "MAX_STATE", 10)  # the one definition (R12)
     site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(15)]),
                  **{f"reg.example/p{n}": (f"P{n}", []) for n in range(15)}})  # fmt: skip
     objects: dict[str, bytes] = {}
@@ -459,7 +460,7 @@ async def test_pages_past_the_state_cap_are_not_admitted(monkeypatch: pytest.Mon
         got = await crawl(site, objects, cursor, max_pages_per_run=6)
         cursor = got.cursor or cursor
         new += got.items_new
-    assert new == 10 and "remembers" in (got.error_message or "")
+    assert new == 10 and "remembers (10)" in (got.error_message or "")
 
 
 async def test_a_crawl_limit_says_to_raise_it() -> None:
@@ -467,9 +468,56 @@ async def test_a_crawl_limit_says_to_raise_it() -> None:
     site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(5)]),
                  **{f"reg.example/p{n}": (f"P{n}", []) for n in range(5)}})  # fmt: skip
     got = await crawl(site, {}, max_pages_per_run=2)
-    assert "raise max_pages_per_run" in (got.error_message or "")
+    assert "covers them over several runs" in (got.error_message or "")
 
 
 def test_a_punycode_label_ends_in_a_letter_or_digit() -> None:
     assert not web_crawl._DOMAIN.fullmatch("a.xn---")
     assert web_crawl._DOMAIN.fullmatch("reg.xn--p1ai")
+
+
+async def test_pages_that_are_gone_leave_the_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-verification R10: a site that replaces pages never fills the state for good."""
+    from regwatch.capture.connectors import web_page
+
+    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    objects: dict[str, bytes] = {}
+    cursor = None
+    live = [f"/d{n}" for n in range(6)]
+    for run in range(8):
+        site = Site({"reg.example/": ("Home", live),
+                     **{f"reg.example{p}": (p, []) for p in live}})  # fmt: skip
+        got = await crawl(site, objects, cursor)
+        cursor = got.cursor or cursor
+        fetched = {a for a in site.asked if a.startswith("reg.example/d")}
+        assert fetched >= {f"reg.example{p}" for p in live[-2:]}, run  # new pages found
+        gone = live[:2]
+        live = live[2:] + [f"/d{6 + 2 * run}", f"/d{7 + 2 * run}"]
+        site.pages.update({f"reg.example{p}": (404, {}) for p in gone})
+    state = json.loads(objects[cursor["listing_ref"]])
+    assert len(state) <= 10
+
+
+async def test_old_entries_age_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R10: pages not seen for STATE_HORIZON are forgotten."""
+    from datetime import timedelta
+
+    monkeypatch.setattr(web_crawl, "STATE_HORIZON", timedelta(seconds=1))
+    site = Site({"reg.example/": ("Home", ["/a"]), "reg.example/a": ("A", [])})
+    objects: dict[str, bytes] = {}
+    first = await crawl(site, objects)
+    site.pages["reg.example/"] = ("Home", [])  # /a is no longer linked
+    CLOCK[0] += timedelta(seconds=60)
+    second = await crawl(site, objects, first.cursor)
+    assert list(json.loads(objects[second.cursor["listing_ref"]])) == [SEED]
+
+
+async def test_an_inner_redirect_under_the_override_is_one_failure() -> None:
+    """R11: sign-in or download links that redirect off the origin do not stop the run."""
+    site = Site({"reg.example/": ("Home", ["/go0", "/go1", "/p0", "/p1"]),
+                 "reg.example/go0": (302, {"location": "https://login.reg.example/"}),
+                 "reg.example/go1": (302, {"location": "https://login.reg.example/"}),
+                 "reg.example/p0": ("P0", []), "reg.example/p1": ("P1", [])})  # fmt: skip
+    got = await crawl(site, {}, override="The regulator agreed in writing")
+    assert got.status == "partial" and got.error_class == "some-failed"
+    assert {"reg.example/p0", "reg.example/p1"} <= {n for n in names(got)}
