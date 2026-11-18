@@ -13,9 +13,11 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +33,7 @@ from regwatch.taxonomy.models import Jurisdiction
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
 MAX_ROWS = 2000
 Load = Callable[[str], Awaitable[bytes | None]]
+Store = Callable[[str, bytes], Awaitable[None]]
 _log = structlog.get_logger("regwatch.processing")
 
 
@@ -43,7 +46,13 @@ class Counts:
         self.by_kind[kind] = self.by_kind.get(kind, 0) + 1
 
 
-async def process_manifest(db: AsyncSession, key: str, load: Load) -> Counts:
+def marker_key(manifest: str) -> str:
+    """Written when a manifest has been processed; the hourly sweep looks for it."""
+    return manifest.removesuffix(".json") + ".processed"
+
+
+async def process_manifest(db: AsyncSession, key: str, load: Load,
+                           store: Store | None = None) -> Counts:  # fmt: skip
     """Every document of the run whose manifest is ``key``."""
     counts = Counts()
     match = MANIFEST.fullmatch(key)
@@ -89,8 +98,34 @@ async def process_manifest(db: AsyncSession, key: str, load: Load) -> Counts:
                 kind = "new_item" if got.kind == "new" else "content_changed"
                 await raise_events(db, item, kind, ids, got.changed_pct)
             await db.commit()
+        except SoftTimeLimitExceeded:  # the worker's limit: stop, the sweep hands it over again
+            await db.rollback()
+            raise
         except Exception as exc:  # noqa: BLE001 - one row never stops the run's others
             await db.rollback()
             counts.failed += 1
             _log.warning("processing_row_failed", run_id=str(run_id), error=type(exc).__name__)
+    if store is not None:
+        await store(marker_key(key), json.dumps({"failed": counts.failed,
+                                                 **counts.by_kind}).encode())  # fmt: skip
     return counts
+
+
+async def sweep(db: AsyncSession, load: Load, hand_over: Callable[[str], Awaitable[None]],
+                hours: int = 48) -> int:  # fmt: skip
+    """Hand over again every run of the last ``hours`` that stored documents and whose
+    manifest has no processed marker: a broker that was down, a worker that died, a task that
+    was killed (M4 pipeline review finding 3). Processing is idempotent, so a repeat is safe."""
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    stored = (CaptureRun.finished_at >= since,
+              (CaptureRun.items_new + CaptureRun.items_changed) > 0)  # fmt: skip
+    joined = select(CaptureRun.id, CaptureJob.source_id).join(
+        CaptureJob, CaptureJob.id == CaptureRun.job_id)  # fmt: skip
+    rows = await db.execute(joined.where(*stored))
+    handed = 0
+    for run_id, source_id in rows.tuples().all():
+        key = f"raw/{source_id}/runs/{run_id}.json"
+        if await load(marker_key(key)) is None and await load(key) is not None:
+            await hand_over(key)
+            handed += 1
+    return handed

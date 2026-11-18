@@ -132,7 +132,7 @@ async def test_source_defaults_win_and_bad_keys_are_refused(
     )
     await process_manifest(db, key, loader(objects))
     tags = (await db.scalars(select(ItemJurisdiction.jurisdiction_id))).all()
-    assert fr in tags and len(set(tags)) >= 1
+    assert set(tags) == {fr}  # the source default alone (review finding 12)
     with pytest.raises(ValueError):
         await process_manifest(db, "raw/../../etc/passwd", loader(objects))
     missing = await process_manifest(db, execution.manifest_key(sid, uuid.uuid4()), loader({}))
@@ -167,3 +167,39 @@ async def test_a_run_with_documents_hands_its_manifest_over(
     assert len(processing_handovers) == 1 and processing_handovers[0].startswith(
         f"raw/{made['id']}/runs/"
     )
+
+
+async def test_the_sweep_hands_over_manifests_never_processed(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 pipeline review finding 3: a marker once processed; the sweep finds the rest."""
+    from datetime import UTC, datetime
+
+    from regwatch.processing.pipeline import marker_key, sweep
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    run = CaptureRun(
+        job_id=uuid.UUID(made["job"]["id"]),
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        status="success",
+        items_new=1,
+    )
+    db.add(run)
+    await db.commit()
+    key, objects = manifest(
+        made["id"], run.id, [{"url": "https://example.org/s", "text": BSI, "title": "Regel"}]
+    )
+    handed: list[str] = []
+
+    async def hand_over(k: str) -> None:
+        handed.append(k)
+
+    assert await sweep(db, loader(objects), hand_over) == 1 and handed == [key]
+
+    async def store(k: str, body: bytes) -> None:
+        objects[k] = body
+
+    await process_manifest(db, key, loader(objects), store)
+    assert marker_key(key) in objects
+    assert await sweep(db, loader(objects), hand_over) == 0  # processed: not again

@@ -36,7 +36,7 @@ JP:
   demonyms: [Japanese, japonais, japonaise, japanische, japonés, japonesa, japonês]
 CN:
   authorities: [国家互联网信息办公室, 全国人民代表大会, Cyberspace Administration of China]
-  demonyms: [Chinese, chinois, chinoise, chinesische, chino, china, chinês]
+  demonyms: [Chinese, chinois, chinoise, chinesische, chinês]
 CA:
   authorities: [Office of the Privacy Commissioner of Canada, Innovation, Science and Economic Development Canada]
   demonyms: [Canadian, canadien, canadienne]
@@ -50,8 +50,8 @@ BR:
   authorities: [Autoridade Nacional de Proteção de Dados, Congresso Nacional]
   demonyms: [Brazilian, brasileiro, brasileira, brésilien, brasileño]
 IN:
+  # No demonym: "Indian" names the Indian Ocean and peoples of the Americas too (finding 8).
   authorities: [Ministry of Electronics and Information Technology, Indian Computer Emergency Response Team]
-  demonyms: [Indian]
 ES:
   authorities: [Agencia Española de Protección de Datos, Boletín Oficial del Estado]
   demonyms: [Spanish, español, española, espagnol]

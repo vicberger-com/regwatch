@@ -26,9 +26,14 @@ from regwatch.taxonomy.models import Jurisdiction
 NOTABLE_PCT = 20.0
 FALLBACK = "INTL"
 MAX_SUMMARY = 500
+# Enforcement, or an act's entry into force (M4 Q4); ordinary words such as "fine", "adopted"
+# or "sanctions" alone are not enough (M4 pipeline review finding 4). CJK terms match as
+# written: a word boundary never falls between two ideographs.
 _MAJOR = re.compile(
-    r"\b(enforcement action|fined?|penalt(y|ies)|sanctions?|in force|adopted"
-    r"|entr(e|a)(r|da) en vigor|entre en vigueur|in kraft|bußgeld|amende|multa|施行|罰金)\b",
+    r"\b(enforcement action|fined|penalty notice|monetary penalt(y|ies)"
+    r"|(enters|entered|entry) into force|tritt in kraft|in kraft getreten|bußgeldbescheid"
+    r"|entre en vigueur|entra en vigor|entrou em vigor|sanction pécuniaire)\b"
+    r"|施行される|施行された|罰金|課徴金",
     re.IGNORECASE,
 )
 

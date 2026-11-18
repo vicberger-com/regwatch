@@ -116,3 +116,91 @@ async def test_hostile_fields_are_bounded_and_a_pdf_is_matched_by_its_body(
     assert item.summary is None
     twin = await ingest(db, sid, None, {**pdf, "url": "https://reg.example/copy.pdf"}, 5.0)
     assert twin.kind == "duplicate"
+
+
+async def test_another_source_never_changes_an_item(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 pipeline review finding 1: source B sends source A's URL with other text."""
+    a, b = await source(admin), await source(admin)
+    first = await ingest(db, a, None, row(), 5.0)
+    await db.commit()
+    taken = await ingest(
+        db,
+        b,
+        None,
+        row(url="https://reg.example/act#x", text="Repealed. " * 50, title="Regulator fined"),
+        5.0,
+    )
+    await db.commit()
+    assert (taken.kind, taken.item_id) == ("duplicate", first.item_id)
+    assert first.item_id is not None and await versions(db, first.item_id) == 1
+    db.expire_all()
+    item = await db.get(Item, first.item_id)
+    assert item is not None and item.title == "The Act" and item.source_id == a
+
+
+async def test_a_row_without_text_never_wipes_an_items_text(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    sid = await source(admin)
+    first = await ingest(db, sid, None, row(), 5.0)
+    await db.commit()
+    bare = await ingest(db, sid, None, row(text=None, body_ref=f"raw/{sid}/" + "c" * 64), 5.0)
+    assert bare.kind == "unchanged"
+    assert first.item_id is not None and await versions(db, first.item_id) == 1
+
+
+async def test_a_copy_on_another_host_never_hides_the_original(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Finding 5: a mirror first, the real page second; and a body hash from another source."""
+    sid = await source(admin)
+    mirror = await ingest(db, sid, None, row(url="https://mirror.example/act"), 5.0)
+    await db.commit()
+    real = await ingest(db, sid, None, row(), 5.0)
+    assert mirror.kind == "new" and real.kind == "new" and real.item_id != mirror.item_id
+    other = uuid.uuid4()
+    pdf = row(url="https://reg.example/a.pdf", text=None, body_ref=f"raw/{other}/" + "d" * 64)
+    got = await ingest(db, sid, None, pdf, 5.0)
+    await db.commit()
+    item = await db.get(Item, got.item_id)
+    assert item is not None and item.content_hash != "d" * 64  # not trusted from another source
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"text": "Article\x00 one. " * 50},
+        {"text": "Article \ud800 one. " * 50},
+        {"published_at": "9999-12-31T23:59:59-14:00"},
+        {"published_at": "1066-10-14T00:00:00"},
+        {"external_id": "id\nwith\x07controls", "language": "en\nfr"},
+    ],
+)
+async def test_rows_that_once_failed_every_run_are_stored_cleaned(
+    admin: httpx.AsyncClient, db: AsyncSession, extra: dict[str, Any]
+) -> None:
+    """Finding 6 and 9."""
+    sid = await source(admin)
+    got = await ingest(db, sid, None, row(url=f"https://reg.example/{uuid.uuid4()}", **extra), 5.0)
+    await db.commit()
+    item = await db.get(Item, got.item_id)
+    assert got.kind == "new" and item is not None
+    assert item.published_at is None or 1900 <= item.published_at.year <= 2100
+    assert item.external_id is None or "\n" not in item.external_id
+    assert item.language in (None, "en")
+
+
+async def test_an_older_capture_never_versions_over_newer_content(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Finding 7: a replayed manifest."""
+    sid = await source(admin)
+    await ingest(db, sid, None, row(), 5.0)
+    await db.commit()
+    newer = TEXT.replace("Providers shall report incidents", "Operators must notify everyone")
+    assert (await ingest(db, sid, None, row(text=newer), 5.0)).kind == "changed"
+    await db.commit()
+    old = await ingest(db, sid, None, row(fetched_at="2020-01-01T00:00:00+00:00"), 5.0)
+    assert old.kind == "unchanged"

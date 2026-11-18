@@ -16,7 +16,9 @@ from regwatch.processing import versioning as v
     [("HTTPS://Reg.Example:443/a?b=1#frag", "https://reg.example/a?b=1"),
      ("http://reg.example:80/", "http://reg.example/"), ("https://reg.example:8443/x", "https://reg.example:8443/x"),
      ("urn:sha256:" + "a" * 64, "urn:sha256:" + "a" * 64), ("javascript:alert(1)", None),
-     ("urn:sha256:short", None)],
+     ("urn:sha256:short", None), ("urn:sha256:<script>" + "a" * 56, None),
+     ("http://[2001:db8::1]:8080/a", "http://[2001:db8::1]:8080/a"),
+     ("http://[2001:db8::1:8080]/a", "http://[2001:db8::1:8080]/a")],
 )  # fmt: skip
 def test_canonical_urls(url: str, canonical: str | None) -> None:
     assert v.canonical_url(url) == canonical
@@ -63,4 +65,19 @@ def test_the_share_is_bounded_and_zero_only_when_equal(old: str, new: str) -> No
 
 def test_hashes_are_sha256_hex() -> None:
     assert v.sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    assert v._chars("same", "same") == 0
+    assert v._chars("same", "same", [0]) == 0
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [("ab" * 1000, "ba" * 1000),
+     ("\n".join("x" * 2000 + str(n) for n in range(499)),
+      "\n".join("y" * 2000 + str(n) for n in range(499))),
+     ("\n".join("a b " * 120 + str(n) for n in range(2000)),
+      "\n".join("b a " * 120 + str(n) for n in range(2000)))],
+)  # fmt: skip
+def test_hostile_texts_cost_a_bounded_time(old: str, new: str) -> None:
+    """M4 pipeline review finding 2: these took 141 s and 303 s before the budget."""
+    started = time.monotonic()
+    assert v.changed_pct(old, new) > 90
+    assert time.monotonic() - started < 2

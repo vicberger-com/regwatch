@@ -33,11 +33,15 @@ EXTRA_CUE = 0.05
 MAX_CONFIDENCE = 0.95
 DOMAIN_CONFIDENCE = 0.6
 # Country names that are also everyday words or other places; they never count on their own.
-STOPWORDS = frozenset({"chad", "jersey", "georgia", "jordan", "turkey", "guinea", "dominica"})
+STOPWORDS = frozenset(
+    {"chad", "jersey", "georgia", "jordan", "turkey", "guinea", "dominica", "gana"}
+)  # "gana" is Ghana in Portuguese and "wins" in Spanish (finding 8)
+MAX_HITS = 10  # jurisdictions from the gazetteer: a text naming every country tags ten (4)
 # Second-level domains under which the country code says who publishes (gov.uk, gouv.fr ...).
 TLD_ALIASES = {"uk": "GB", "eu": "EU"}
 _HERE = Path(__file__).parent
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
+_KANA = re.compile(r"[ァ-ヿ]+")
 
 
 @dataclass(frozen=True)
@@ -62,7 +66,12 @@ def _cues() -> tuple[list[tuple[re.Pattern[str], str, str, str]], frozenset[str]
     out: list[tuple[re.Pattern[str], str, str, str]] = []
     for code, kind, cue in entries:
         body = re.escape(cue)
-        pattern = body if _CJK.search(cue) else rf"(?<![\w.]){body}(?!\w)"
+        if _KANA.fullmatch(cue):  # katakana names stand alone: マリ is not in サマリー (8)
+            pattern = rf"(?<![ァ-ヿ]){body}(?![ァ-ヿ])"
+        elif _CJK.search(cue):
+            pattern = body
+        else:
+            pattern = rf"(?<![\w.]){body}(?!\w)"
         out.append((re.compile(pattern, 0 if _CJK.search(cue) else re.IGNORECASE), code, kind,
                     cue))  # fmt: skip
     return out, frozenset(names) | frozenset(extra)
@@ -90,4 +99,4 @@ def detect(title: str, text: str, url: str, defaults: list[str]) -> list[Hit]:
         code = TLD_ALIASES.get(tld.lower(), tld)
         if code in codes:
             hits.append(Hit(code, DOMAIN_CONFIDENCE, f"domain: .{tld.lower()}"))
-    return sorted(hits, key=lambda h: (-h.confidence, h.code))
+    return sorted(hits, key=lambda h: (-h.confidence, h.code))[:MAX_HITS]

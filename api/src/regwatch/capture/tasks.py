@@ -245,4 +245,8 @@ def run_job(job_id: str) -> str | None:
 
 @shared_task(name="capture.health_check")
 def health_check() -> int:
-    return asyncio.run(_with_session(runs.sweep))
+    ended = asyncio.run(_with_session(runs.sweep))
+    from regwatch.processing.tasks import sweep_unprocessed  # M4: manifests never processed
+
+    sweep_unprocessed()
+    return ended

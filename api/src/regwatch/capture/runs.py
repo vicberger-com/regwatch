@@ -25,6 +25,7 @@ are ours rather than the source's (``abandoned``, ``queue-unavailable``), change
 
 from __future__ import annotations
 
+import asyncio
 import random
 import re
 import uuid
@@ -343,7 +344,10 @@ async def execute(db: AsyncSession, job_id: uuid.UUID, make_context: ContextFact
     await db.commit()
     if outcome.documents:  # M4 makes items from the manifest the run stored
         try:
-            (hand_over or _to_processing)(manifest_key(str(source.id), run.id))
+            # The broker call blocks for up to its timeouts: never on the event loop (info).
+            await asyncio.to_thread(
+                hand_over or _to_processing, manifest_key(str(source.id), run.id)
+            )
         except Exception:  # noqa: BLE001 - the run is done; it is logged, never undone
             _log.exception("processing_handover_failed", run_id=str(run.id))
     return outcome.status

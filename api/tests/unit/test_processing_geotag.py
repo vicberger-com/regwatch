@@ -55,3 +55,33 @@ def test_only_the_first_2000_characters_are_read() -> None:
 def test_several_jurisdictions_are_all_returned_most_confident_first() -> None:
     hits = detect("x", "The Information Commissioner's Office and France", "https://e.org/", [])
     assert codes(hits) == [("GB", 0.9), ("FR", 0.8)]
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("サマリーです", []),
+        ("インドネシアの規則", [("ID", 0.8)]),
+        ("インドの規則", [("IN", 0.8)]),
+        ("パプアニューギニア", [("PG", 0.8)]),
+        ("El equipo gana", []),
+        ("Indian Ocean rules", []),
+    ],
+)
+def test_false_positives_from_the_review_are_gone(
+    title: str, expected: list[tuple[str, float]]
+) -> None:
+    """M4 pipeline review finding 8."""
+    assert codes(detect(title, "", "https://example.org/", [])) == expected
+
+
+def test_a_text_naming_every_country_tags_ten() -> None:
+    """Finding 4: no flood of jurisdictions (and events) from one text."""
+    import json
+    import pathlib
+
+    from regwatch.processing import geotag
+
+    names = json.loads((pathlib.Path(geotag.__file__).parent / "gazetteer.json").read_text())
+    text = ", ".join(n[0] for n in names["names"].values())
+    assert len(detect("x", text, "https://example.org/", [])) == geotag.MAX_HITS
