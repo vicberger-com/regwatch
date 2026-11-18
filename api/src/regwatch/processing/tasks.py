@@ -52,6 +52,20 @@ def enqueue_reprocess(item_id: str) -> None:
     celery_app().send_task("process.reprocess_item", args=[item_id], queue="process")
 
 
+_PUBLISHERS = anyio.CapacityLimiter(4)
+
+
+async def publish_reprocess(item_id: uuid.UUID) -> None:
+    """``enqueue_reprocess`` off the event loop, as ``capture.tasks.enqueue_run`` publishes: its
+    own threads and a deadline, so a hanging broker never holds the threads object store reads
+    and diffs share (routes review finding 4)."""
+    from regwatch.capture.tasks import PUBLISH_DEADLINE_S
+
+    with anyio.fail_after(PUBLISH_DEADLINE_S):
+        await anyio.to_thread.run_sync(enqueue_reprocess, str(item_id), limiter=_PUBLISHERS,
+                                       abandon_on_cancel=True)  # fmt: skip
+
+
 async def _sweep() -> int:
     engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
     try:

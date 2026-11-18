@@ -41,9 +41,10 @@ async def item_diff(
     id: UUID,
     from_: Annotated[int, Query(alias="from")],
     to: Annotated[int, Query()],
+    principal: CurrentPrincipal,
     db: DbSession,
 ) -> ItemDiff:
-    return await services.item_diff(db, id, from_, to)
+    return await services.item_diff(db, id, from_, to, principal.user.id)
 
 
 @router.post(
