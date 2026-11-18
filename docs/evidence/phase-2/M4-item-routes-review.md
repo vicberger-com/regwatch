@@ -36,7 +36,11 @@ Fixed: 1, 4, 5, 6, 7, 8, 9, 11. Partly fixed: 2 (a jurisdiction's change of orig
 
 | # | Severity | Description | Fix | Verified |
 | --- | --- | --- | --- | --- |
-| N1 | medium | Queued computed diffs held pooled database connections while waiting on their two threads; 30 concurrent calls from one viewer took 15 of 15 connections and delayed every other route by seconds. | the rate is checked before any database work; at most `DIFF_PENDING` (4) computed diffs wait or run at once (503 beyond); the texts are read and the transaction ended before waiting | pending |
-| N2 | low | `with_for_update(key_share=True)` renders `FOR NO KEY UPDATE`, and locking the item before the term could still deadlock with `merge_term`. | `FOR KEY SHARE` (`read=True`), taken on the added terms before the item | pending |
-| 2 (gap) | low | Jurisdictions were audited as codes only. | audited as `{code: assigned_by}` | pending |
+| N1 | medium | Queued computed diffs held pooled database connections while waiting on their two threads; 30 concurrent calls from one viewer took 15 of 15 connections and delayed every other route by seconds. | the rate is checked before any database work; at most `DIFF_PENDING` (4) computed diffs wait or run at once (503 beyond); the texts are read and the transaction ended before waiting | verified (re-verification 2) |
+| N2 | low | `with_for_update(key_share=True)` renders `FOR NO KEY UPDATE`, and locking the item before the term could still deadlock with `merge_term`. | `FOR KEY SHARE` (`read=True`), taken on the added terms before the item | verified (re-verification 2) |
+| 2 (gap) | low | Jurisdictions were audited as codes only. | audited as `{code: assigned_by}` | verified (re-verification 2) |
 
+
+## Re-verification 2 (915947f): signed off
+
+**Signed off.** N1, N2 and finding 2's gap are fixed; all eleven findings fixed; nothing new. Sixty concurrent computed diffs from two viewers: 4 answered, 56 a 503 in 2.75 s, while other routes answered in 0.38 s; 15 concurrent tag changes against a term merge gave no deadlock or 500. Residual (low, BL-110 (d)): the cap of four computed diffs is shared, so one viewer's burst can make others' distant diffs a 503 for about a second.
