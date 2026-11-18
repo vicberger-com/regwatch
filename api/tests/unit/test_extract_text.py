@@ -179,3 +179,13 @@ def test_links_a_reader_cannot_see_are_not_taken() -> None:
     )
     got = text.extract(tree.parse(body), ExtractionRules(exclude_selectors=[".x"]), "ul.d")
     assert got.links == ["/ok"]
+
+
+def test_links_under_hidden_or_excluded_ancestors_are_not_taken() -> None:
+    """Re-verification R2: a selector that matches the links themselves."""
+    body = (
+        b'<a href="/ok">ok</a><div hidden><a href="/h">h</a></div>'
+        b'<nav class=x><a href="/n">n</a></nav>'
+    )
+    got = text.extract(tree.parse(body), ExtractionRules(exclude_selectors=[".x"]), "a")
+    assert got.links == ["/ok"]

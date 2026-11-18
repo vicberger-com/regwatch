@@ -198,7 +198,15 @@ def links(page: Page, selector: str, walk: Walk, skip: set[int] | None = None) -
     ``a`` element's own, else those of the visible ``a`` elements inside it. As written,
     unresolved; the connector resolves and checks them as any captured link."""
     out: dict[str, None] = {}
+    # Inside a hidden or excluded element counts as hidden too, whatever the selector matched
+    # (re-verification R2); template contents are never in the walk.
+    hidden: dict[int, bool] = {}
+    for el, parent, *_rest in walk:
+        hidden[id(el)] = ((parent is not None and hidden[id(parent)]) or id(el) in (skip or set())
+                          or el.get("hidden") is not None)  # fmt: skip
     for el in compile_selector(selector).select(page.root, walk):
+        if hidden[id(el)]:
+            continue
         for a in _anchors(el, skip or set()):
             href = (a.get("href") or "").strip()
             if href and len(href) <= MAX_HREF:

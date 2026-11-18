@@ -227,7 +227,9 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         else:
             return Outcome("failed", exc.reason, _refusal(exc), bytes_fetched=counter.fetched)
     except ConnectorError as exc:  # raised after the start was fetched: robots.txt allowed it
-        if entries:
+        # A stop after documents were handled (fetched, unchanged or failed) keeps what the run
+        # learned, the connector's state included (web listing re-verification R1).
+        if entries or unchanged or (exc.reason in STOPPING and failures):
             stopped = (exc.reason, exc.detail)
         else:
             return Outcome("failed", exc.reason, exc.detail, robots_decision=allowed,
@@ -249,7 +251,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     if ctx.state is not None and (per_document or (failures == 0 and not cut_short)):
         cursor = ctx.state if ctx.state != settings.cursor else None
     if stopped is not None:  # some documents, then discovery failed: partial, with its reason
-        status, (error_class, message) = "partial", stopped
+        status, (error_class, message) = ("partial" if entries or unchanged else "failed"), stopped
     elif status == "success" and (truncated or "truncated" in ctx.notes):
         status, error_class = "partial", "truncated"
         # The next run continues only where a cursor moved forward (CP-14); otherwise it would

@@ -72,31 +72,37 @@ def _own_text_ref(value: Any, source_id: str) -> str | None:
     return None
 
 
+def _listing_key(source_id: str) -> str:
+    """One state object per source, overwritten each run (re-verification R5): a run is the
+    only writer, as a job has at most one unfinished run (CP-11)."""
+    return f"state/{source_id}/listing.json"
+
+
 def _own_listing_ref(value: Any, source_id: str) -> str | None:
-    if isinstance(value, str) and re.fullmatch(
-            rf"state/{re.escape(source_id)}/[0-9a-f]{{64}}\.json", value):  # fmt: skip
-        return value
-    return None
+    return value if value == _listing_key(source_id) else None
 
 
-def _host(url: str) -> str | None:
+def _origin(url: str) -> tuple[str, str, int] | None:
+    """Scheme, host and port: the unit robots.txt and an override apply to (R3)."""
     try:
-        return urlsplit(url).hostname
+        parts = urlsplit(url)
+        port = parts.port or {"http": 80, "https": 443}.get(parts.scheme, 0)
     except ValueError:
         return None
+    return (parts.scheme, parts.hostname, port) if parts.hostname else None
 
 
 async def _get_html(url: str, job: JobSettings, ctx: ConnectorContext,
-                    host: str | None = None) -> Any:  # noqa: ANN401  # fmt: skip
-    """``host``, for a page a listing links to: every hop must stay on it, and the robots.txt
-    override applies only if it is ``page_url``'s own host, the site the override's reason was
-    written about (web listing review finding 1, 8.3)."""
+                    origin: tuple[str, str, int] | None = None) -> Any:  # noqa: ANN401  # fmt: skip
+    """``origin``, for a page a listing links to: every hop must stay on it, and the robots.txt
+    override applies only if it is ``page_url``'s own origin, the site the override's reason
+    was written about (web listing review finding 1 and R3, 8.3)."""
     override = job.robots_override
     allow = None
-    if host is not None:
-        allow = lambda hop: _host(hop) == host  # noqa: E731
+    if origin is not None:
+        allow = lambda hop: _origin(hop) == origin  # noqa: E731
         config = job.config
-        if not isinstance(config, WebPageConfig) or _host(str(config.page_url)) != host:
+        if not isinstance(config, WebPageConfig) or _origin(str(config.page_url)) != origin:
             override = None
     got = await ctx.fetcher.fetch(url, rate_per_minute=job.rate_per_minute,
                                   robots_override=override, allow_hop=allow)  # fmt: skip
@@ -171,14 +177,14 @@ class WebPageConnector:
         listing = await _extract(got, job, config.listing_link_selector)
         keep = _url_filter(job.rules)
         strip = getattr(job.rules, "strip_query_params", True)
-        host = _host(got.url)  # links stay on the listing's own host (finding 1)
+        origin = _origin(got.url)  # links stay on the listing's own origin (finding 1, R3)
         previous = await _previous_listing(job, ctx)
         seen: dict[str, None] = {}
         for href in listing.links:
             url = entry_link({"link": href}, got.url)
             if url is not None and strip:
                 url = url.split("?", 1)[0]  # one document, not one per query (finding 5)
-            if url is None or url in seen or _host(url) != host or not keep(url):
+            if url is None or url in seen or _origin(url) != origin or not keep(url):
                 continue
             if len(seen) >= config.max_links:
                 ctx.notes.add("truncated")  # more links than max_links
@@ -186,7 +192,7 @@ class WebPageConnector:
             seen[url] = None
         ctx.notes.add("state-per-document")
         ctx.scratch["listing"] = {"listed": list(seen), "pages": {}, "previous": previous,
-                                  "host": host, "unreadable": 0}  # fmt: skip
+                                  "origin": origin, "unreadable": 0, "tried": {}}  # fmt: skip
         # Pages never checked first, then the longest unchecked, so a run that stops at its
         # item limit is followed by one that reaches the rest (finding 4).
         order = sorted(seen, key=lambda u: (u in previous, previous.get(u, ["", "", ""])[2]))
@@ -196,7 +202,9 @@ class WebPageConnector:
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
         listing = ctx.scratch.get("listing")
-        got = await _get_html(candidate.url, job, ctx, listing["host"] if listing else None)
+        if listing is not None:
+            listing["tried"][candidate.url] = ctx.now().isoformat()
+        got = await _get_html(candidate.url, job, ctx, listing["origin"] if listing else None)
         try:
             found = await _extract(got, job)
         except ConnectorError as exc:
@@ -240,10 +248,17 @@ class WebPageConnector:
         listing = ctx.scratch.get("listing")
         if listing is None:
             return
-        pages = {u: listing["pages"].get(u) or listing["previous"].get(u)
-                 for u in listing["listed"]}  # fmt: skip
+        # Fetched pages get their new entry; pages tried and failed keep their previous hash
+        # with the attempt's time, so they rotate to the back too (re-verification R1).
+        pages: dict[str, list[str] | None] = {}
+        for u in listing["listed"]:
+            entry = listing["pages"].get(u)
+            if entry is None and u in listing["tried"]:
+                old = listing["previous"].get(u) or ["", "", ""]
+                entry = [old[0], old[1], listing["tried"][u]]
+            pages[u] = entry or listing["previous"].get(u)
         body = json.dumps({u: v for u, v in pages.items() if v}, sort_keys=True).encode()
-        key = f"state/{job.source_id}/{hashlib.sha256(body).hexdigest()}.json"
+        key = _listing_key(job.source_id)
         await ctx.store(key, body)
         ctx.state = {"listing_ref": key}
 
