@@ -603,8 +603,8 @@ async def test_a_page_failing_three_runs_in_a_row_is_forgotten() -> None:
     site = Site({"reg.example/": ("Home", ["/flaky"]), "reg.example/flaky": ("F", [])})
     objects: dict[str, bytes] = {}
     cursor = (await crawl(site, objects)).cursor
-    site.pages["reg.example/"] = ("Home", [])  # no longer linked, and now failing
-    site.pages["reg.example/flaky"] = (503, {})
+    site.pages["reg.example/"] = ("Home", [])  # no longer linked, and now refused
+    site.pages["reg.example/flaky"] = (403, {})
     for _ in range(3):
         cursor = (await crawl(site, objects, cursor)).cursor or cursor
     assert "https://reg.example/flaky" not in json.loads(objects[cursor["listing_ref"]])
@@ -621,3 +621,29 @@ async def test_a_shallower_link_lowers_a_pages_depth() -> None:
     site.asked.clear()
     await crawl(site, objects, first.cursor, max_depth=2)
     assert "reg.example/y" in site.asked
+
+
+@pytest.mark.parametrize("status", [503, 429, 408])
+async def test_an_outage_never_makes_pages_new_again(status: int) -> None:
+    """Re-verification R20: three hours of 5xx or 429 forget nothing."""
+    pages = {"reg.example/": ("Home", [f"/p{n}" for n in range(6)]),
+             **{f"reg.example/p{n}": (f"P{n}", []) for n in range(6)}}  # fmt: skip
+    site = Site(dict(pages))
+    objects: dict[str, bytes] = {}
+    cursor = (await crawl(site, objects)).cursor
+    site.pages.update({f"reg.example/p{n}": (status, {}) for n in range(6)})
+    for _ in range(4):
+        cursor = (await crawl(site, objects, cursor)).cursor or cursor
+    site.pages = dict(pages)
+    after = await crawl(site, objects, cursor)
+    assert (after.items_new, after.items_unchanged) == (0, 7)
+
+
+async def test_a_redirect_target_is_normalised_like_a_link() -> None:
+    """R22 (a): https://REG.example:443/doc/ and /doc/ are one page."""
+    site = Site({"reg.example/": ("Home", ["/doc/", "/old"]),
+                 "reg.example/doc/": ("Doc", []),
+                 "reg.example/old": (301, {"location": "https://REG.example:443/doc/"})},
+                )  # fmt: skip
+    got = await crawl(site, {})
+    assert [d.url for d in got.documents].count("https://reg.example/doc/") == 1

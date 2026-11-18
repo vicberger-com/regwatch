@@ -54,6 +54,7 @@ from regwatch.capture.connectors.web_page import (
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
 GONE = frozenset({404, 410})
+TRANSIENT_STATUSES = frozenset({408, 429})
 MAX_FAILURES = 3  # runs in a row a remembered page failed before it is forgotten (R16 (C))
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
@@ -114,7 +115,7 @@ class WebCrawlConnector:
                                   "origin": None, "unreadable": 0, "tried": {},
                                   "keep_unlisted": True, "gone": set(),
                                   "depths": {}, "max_failures": MAX_FAILURES,
-                                  "passed": set()}  # fmt: skip
+                                  "passed": set(), "hard_failed": set()}  # fmt: skip
         # Seeds first (their links are the crawl); then pages never checked, at any depth;
         # then the longest unchecked, shallower first among equals. A crawl cut short by its
         # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
@@ -188,6 +189,8 @@ class WebCrawlConnector:
                     failed_seed = ConnectorError("override-redirect", why)
                     yield Candidate(url=url, hints={"error": failed_seed})
                     continue
+                if exc.reason == "refused-host":  # it redirects off the allowed addresses
+                    ctx.scratch["listing"]["hard_failed"].add(url)
                 yield Candidate(url=url, hints={"error": exc})
                 continue
             if got.status in GONE:  # no longer on the site: dropped, and a skip (R10, R18)
@@ -195,7 +198,9 @@ class WebCrawlConnector:
                 gone = ConnectorError("unavailable", f"the page is gone (HTTP {got.status})")
                 yield Candidate(url=url, hints={"error": gone})
                 continue
-            final = got.url.split("?", 1)[0] if strip else got.url
+            # As links are: rebuilt from SafeFetcher's parse, query stripped (R22 (a)).
+            final = entry_link({"link": got.url}, got.url) or got.url
+            final = final.split("?", 1)[0] if strip else final
             if depth > 0 and final != url:
                 # A page that redirects to another page is gone under this address; the page it
                 # leads to is crawled under its own, if allowed (R16 (B)).
@@ -206,6 +211,10 @@ class WebCrawlConnector:
                     push(final, depth)
                 continue
             if not 200 <= got.status < 300:
+                if 400 <= got.status < 500 and got.status not in TRANSIENT_STATUSES:
+                    # A client error says the page is not there for us; a 5xx, 408 or 429 is an
+                    # outage, which never makes a page forgotten (re-verification R20).
+                    ctx.scratch["listing"]["hard_failed"].add(url)
                 failed = ConnectorError("http-status", f"the page answered HTTP {got.status}")
                 yield Candidate(url=url, hints={"error": failed})
                 continue
@@ -218,6 +227,7 @@ class WebCrawlConnector:
             try:
                 found = await _extract(got, job, "a" if depth < config.max_depth else None)
             except ConnectorError as exc:
+                ctx.scratch["listing"]["hard_failed"].add(url)  # unreadable, whatever the hour
                 yield Candidate(url=url, hints={"error": exc})
                 continue
             for href in found.links:

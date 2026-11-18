@@ -214,7 +214,11 @@ async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
             old = (listing["previous"].get(u) or []) + ["", "", "", "", ""]
             depth = listing.get("depths", {}).get(u, old[3])
             passed = u in listing.get("passed", ())  # answered, but not a page: no failure
-            failures = "0" if passed else str(int(old[4]) + 1 if old[4].isdigit() else 1)
+            count = int(old[4]) if old[4].isdigit() else 0
+            if "hard_failed" in listing and u not in listing["hard_failed"]:
+                failures = str(count)  # an outage or a timeout: neither counted nor reset (R20)
+            else:
+                failures = "0" if passed else str(count + 1)
             entry = [old[0], old[1], listing["tried"][u], depth, failures]
             limit = listing.get("max_failures")
             if limit and int(failures) >= limit:  # failed this often in a row: forgotten
