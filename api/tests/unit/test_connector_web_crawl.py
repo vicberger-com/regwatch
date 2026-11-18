@@ -231,7 +231,8 @@ async def test_pages_not_reached_keep_their_baseline() -> None:
     first = await crawl(site, objects)
     site.pages["reg.example/"] = (503, {})
     down = await crawl(site, objects, first.cursor)
-    assert down.status == "failed"
+    # The remembered pages are still asked (R13): the seed alone failed.
+    assert (down.status, down.items_unchanged) == ("partial", 4)
     site.pages = dict(pages)
     after = await crawl(site, objects, down.cursor)
     assert (after.items_new, after.items_unchanged) == (0, 5)
@@ -498,18 +499,54 @@ async def test_pages_that_are_gone_leave_the_state(monkeypatch: pytest.MonkeyPat
     assert len(state) <= 10
 
 
-async def test_old_entries_age_out(monkeypatch: pytest.MonkeyPatch) -> None:
-    """R10: pages not seen for STATE_HORIZON are forgotten."""
+async def test_no_live_page_is_new_twice_behind_a_deep_site(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Re-verification R13: cap 10, a seed, 4 sections of 3 unchanged leaves, 6 a run."""
+    from regwatch.capture.connectors import web_page
+
+    monkeypatch.setattr(web_page, "MAX_STATE", 10)
+    pages: dict[str, Any] = {"reg.example/": ("Home", [f"/s{n}" for n in range(4)])}
+    for n in range(4):
+        pages[f"reg.example/s{n}"] = (f"S{n}", [f"/s{n}/l{m}" for m in range(3)])
+        pages.update({f"reg.example/s{n}/l{m}": (f"L{n}{m}", []) for m in range(3)})
+    site = Site(pages)
+    objects: dict[str, bytes] = {}
+    cursor = None
+    counts: dict[str, int] = {}
+    for _ in range(16):
+        got = await crawl(site, objects, cursor, max_pages_per_run=6)
+        cursor = got.cursor or cursor
+        for d in got.documents:
+            if d.change == "new":
+                counts[d.url] = counts.get(d.url, 0) + 1
+    assert counts and max(counts.values()) == 1
+
+
+async def test_a_long_rotation_keeps_every_baseline() -> None:
+    """R14: 15 unchanged pages, 6 a run, runs 11 days apart: 15 new in all."""
     from datetime import timedelta
 
-    monkeypatch.setattr(web_crawl, "STATE_HORIZON", timedelta(seconds=1))
-    site = Site({"reg.example/": ("Home", ["/a"]), "reg.example/a": ("A", [])})
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(14)]),
+                 **{f"reg.example/p{n}": (f"P{n}", []) for n in range(14)}})  # fmt: skip
     objects: dict[str, bytes] = {}
-    first = await crawl(site, objects)
-    site.pages["reg.example/"] = ("Home", [])  # /a is no longer linked
-    CLOCK[0] += timedelta(seconds=60)
-    second = await crawl(site, objects, first.cursor)
-    assert list(json.loads(objects[second.cursor["listing_ref"]])) == [SEED]
+    cursor = None
+    new = 0
+    for _ in range(9):
+        CLOCK[0] += timedelta(days=11)
+        got = await crawl(site, objects, cursor, max_pages_per_run=6)
+        cursor = got.cursor or cursor
+        new += got.items_new
+    assert new == 15
+
+
+async def test_several_seeds_go_on_past_one_that_redirects() -> None:
+    """R15: with several seeds, one redirecting under the override is one failure."""
+    site = Site({"reg.example/": (301, {"location": "https://www.reg.example/"}),
+                 "docs.reg.example/": ("Docs", [])})  # fmt: skip
+    got = await crawl(site, {}, override="The regulator agreed in writing",
+                      seed_urls=[SEED, "https://docs.reg.example/"])  # fmt: skip
+    assert names(got) == ["docs.reg.example/"] and got.status == "partial"
 
 
 async def test_an_inner_redirect_under_the_override_is_one_failure() -> None:

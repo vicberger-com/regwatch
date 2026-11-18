@@ -23,9 +23,7 @@ from __future__ import annotations
 
 import heapq
 import re
-from collections import deque
 from collections.abc import AsyncIterator
-from datetime import timedelta
 from typing import Any
 
 from pydantic import BaseModel
@@ -56,7 +54,6 @@ from regwatch.capture.connectors.web_page import (
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
 GONE = frozenset({404, 410})
-STATE_HORIZON = timedelta(days=30)
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
 # The last label: letters, or an internationalised one in punycode (R5).
@@ -109,16 +106,13 @@ class WebCrawlConnector:
         keep = _url_filter(job.rules)
         strip = getattr(job.rules, "strip_query_params", True)
         limit = min(config.max_pages_per_run, job.max_items)
-        # Pages not seen for STATE_HORIZON are forgotten, so a site whose pages come and go
-        # never fills the state with pages that are gone (re-verification R10).
-        horizon = (ctx.now() - STATE_HORIZON).isoformat()
-        previous = {u: v for u, v in (await _previous_listing(job, ctx)).items()
-                    if v[2] >= horizon}  # fmt: skip
+        previous = await _previous_listing(job, ctx)
         listed: list[str] = []
         ctx.notes.add("state-per-document")
         ctx.scratch["listing"] = {"listed": listed, "pages": {}, "previous": previous,
                                   "origin": None, "unreadable": 0, "tried": {},
-                                  "keep_unlisted": True, "gone": set()}  # fmt: skip
+                                  "keep_unlisted": True, "gone": set(),
+                                  "depths": {}}  # fmt: skip
         # Seeds first (their links are the crawl); then pages never checked, at any depth;
         # then the longest unchecked, shallower first among equals. A crawl cut short by its
         # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
@@ -134,14 +128,22 @@ class WebCrawlConnector:
         for seed in config.seed_urls:
             push(str(seed), 0)
         seen = {str(s) for s in config.seed_urls}
+        # Every remembered page is asked again in its turn, at the depth it was found at, so a
+        # page that has gone answers 404 or 410 and leaves the state, and one still there keeps
+        # its baseline. Nothing is forgotten by age or evicted (re-verification R13, R14).
+        for url, entry in previous.items():
+            if url not in seen and _allowed(url, domains) and keep(url):
+                depth = int(entry[3]) if entry[3].isdigit() else config.max_depth
+                seen.add(url)
+                push(url, min(max(depth, 1), config.max_depth))
         known = set(previous) | seen  # pages the state remembers, or will after this run
-        stale = deque(sorted(previous, key=lambda u: previous[u][2]))  # longest unchecked first
         requests = 0
         while frontier:
             if requests >= limit:  # every request counts, pages or not (finding 4)
                 ctx.notes.update({"truncated", "crawl-limit"})
                 return
             _seed, _checked, depth, _n, url = heapq.heappop(frontier)
+            ctx.scratch["listing"]["depths"][url] = str(depth)
             requests += 1
             listed.append(url)
             origin = _origin(url)
@@ -167,7 +169,12 @@ class WebCrawlConnector:
                         "under the robots.txt override a seed may not redirect off its own "
                         "address; save the address it redirects to as the seed"
                     )
-                    raise ConnectorError("override-redirect", why) from None
+                    if len(config.seed_urls) == 1:
+                        raise ConnectorError("override-redirect", why) from None
+                    # Other seeds still run (R15): this one is a failed document with the reason.
+                    failed_seed = ConnectorError("override-redirect", why)
+                    yield Candidate(url=url, hints={"error": failed_seed})
+                    continue
                 yield Candidate(url=url, hints={"error": exc})
                 continue
             if got.status in GONE:  # no longer on the site: dropped from the state (R10)
@@ -197,17 +204,10 @@ class WebCrawlConnector:
                     ctx.notes.update({"truncated", "crawl-limit"})
                     break
                 if link not in known and len(known) >= web_page.MAX_STATE:
-                    # The state remembers MAX_STATE pages (R6). A page found now takes the
-                    # place of the longest unchecked one not seen this run, most likely gone
-                    # (R10); only when every remembered page was seen this run is it refused.
-                    while stale and stale[0] in seen:
-                        stale.popleft()
-                    if not stale:
-                        ctx.notes.update({"truncated", "state-full"})
-                        continue
-                    evicted = stale.popleft()
-                    previous.pop(evicted, None)
-                    known.discard(evicted)
+                    # The state remembers MAX_STATE pages (R6); a new page past that would
+                    # lose its baseline, so it is refused until gone pages make room (R13).
+                    ctx.notes.update({"truncated", "state-full"})
+                    continue
                 known.add(link)
                 seen.add(link)
                 push(link, depth + 1)

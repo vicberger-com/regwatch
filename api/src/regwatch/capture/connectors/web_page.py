@@ -157,9 +157,10 @@ async def _previous_listing(job: JobSettings, ctx: ConnectorContext) -> dict[str
         return {}
     if not isinstance(data, dict):
         return {}
-    # [content_hash, text_ref, checked_at]; two items from before checked_at was kept.
-    return {u: (v + [""])[:3] for u, v in data.items()
-            if isinstance(u, str) and isinstance(v, list) and len(v) in (2, 3)
+    # [content_hash, text_ref, checked_at, depth]; older entries have fewer items. The depth
+    # is the crawl's, as text, "" in listing mode.
+    return {u: (v + ["", ""])[:4] for u, v in data.items()
+            if isinstance(u, str) and isinstance(v, list) and 2 <= len(v) <= 4
             and all(isinstance(x, str) for x in v)}  # fmt: skip
 
 
@@ -176,8 +177,9 @@ async def document(candidate: Candidate, got: Any, found: Any, job: JobSettings,
         change = "changed" if before_hash else "new"
         await ctx.store(text_ref, found.text.encode())
     if listing is not None:
-        listing["pages"][candidate.url] = [found.content_hash, text_ref,
-                                           ctx.now().isoformat()]  # fmt: skip
+        depth = listing.get("depths", {}).get(candidate.url, "")
+        listing["pages"][candidate.url] = [found.content_hash, text_ref, ctx.now().isoformat(),
+                                           depth]  # fmt: skip
     elif change != "unchanged":
         ctx.state = {"content_hash": found.content_hash, "text_ref": text_ref}
     key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"
@@ -209,8 +211,9 @@ async def finish_state(job: JobSettings, ctx: ConnectorContext) -> None:
     for u in listing["listed"]:
         entry = listing["pages"].get(u)
         if entry is None and u in listing["tried"]:
-            old = listing["previous"].get(u) or ["", "", ""]
-            entry = [old[0], old[1], listing["tried"][u]]
+            old = listing["previous"].get(u) or ["", "", "", ""]
+            depth = listing.get("depths", {}).get(u, old[3] if len(old) > 3 else "")
+            entry = [old[0], old[1], listing["tried"][u], depth]
         pages[u] = entry or listing["previous"].get(u)
     for u in listing.get("gone", ()):  # 404 or 410 this run: the page is gone (crawl R10)
         pages.pop(u, None)
