@@ -25,12 +25,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.rss import plain_text
+from regwatch.capture.models import CaptureRun, Source
 from regwatch.processing import versioning
 from regwatch.processing.models import Item, ItemVersion
 
@@ -98,6 +100,32 @@ def _host(url: str) -> str:
     return url.split("://", 1)[1].split("/", 1)[0] if "://" in url else url
 
 
+async def _owns(db: AsyncSession, source_id: uuid.UUID, canonical: str) -> bool:
+    """Whether the source publishes at the URL's host: an official source whose own URL is on
+    that host (M4 re-verification of finding 1: the first source to list a URL does not keep
+    it from the publisher)."""
+    row = (await db.execute(select(Source.credibility, Source.url)
+                            .where(Source.id == source_id))).first()  # fmt: skip
+    if row is None or row[0] != "official" or not row[1]:
+        return False
+    try:
+        own = (urlsplit(row[1]).hostname or "").lower()
+    except ValueError:
+        return False
+    return bool(own) and own == (urlsplit(canonical).hostname or "").lower()
+
+
+async def _captured(db: AsyncSession, item_id: uuid.UUID) -> datetime | None:
+    """When the content of the item's latest version was captured: its run's start (a fetch
+    is never before its run started), or None when the run is not recorded (finding N1)."""
+    started: datetime | None = await db.scalar(
+        select(CaptureRun.started_at).select_from(ItemVersion)
+        .outerjoin(CaptureRun, ItemVersion.run_id == CaptureRun.id)
+        .where(ItemVersion.item_id == item_id)
+        .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
+    return started
+
+
 async def ingest(
     db: AsyncSession,
     source_id: uuid.UUID,
@@ -120,10 +148,17 @@ async def ingest(
                        MAX_TITLE) or canonical[:MAX_TITLE]  # fmt: skip
     now = datetime.now(UTC)
     item = await db.scalar(select(Item).where(Item.url_hash == url_hash).with_for_update())
+    claimed = False
     if item is not None and item.source_id != source_id:
         # Another source's item: a row from this source never changes it, whatever its URL
-        # (M4 pipeline review finding 1).
-        return Ingested("duplicate", item.id)
+        # (M4 pipeline review finding 1), unless this source publishes at the URL's host and
+        # the item's source does not; then the item passes to the publisher, and its content
+        # replaces what the other source said, whatever the change share (re-verification).
+        if not (await _owns(db, source_id, canonical)
+                and not await _owns(db, item.source_id, canonical)):  # fmt: skip
+            return Ingested("duplicate", item.id)
+        item.source_id = source_id
+        claimed = True
     if item is None:
         # The same content at another address of the same host and source is a duplicate; a
         # copy on another host never hides the original (finding 5).
@@ -154,10 +189,13 @@ async def ingest(
                            content_hash=content_hash))  # fmt: skip
         return Ingested("new", item.id)
     if item.content_hash == content_hash:  # the same document again: no version (idempotent)
+        if claimed:
+            item.title = title
         return Ingested("unchanged", item.id, 0.0)
-    if fetched is not None and fetched < item.last_changed_at:
-        # An older capture than the item's last change (a replayed manifest): never a new
-        # version over newer content (finding 7).
+    captured = await _captured(db, item.id)
+    if not claimed and fetched is not None and captured is not None and fetched < captured:
+        # Captured before the run of the item's latest version (a replayed manifest): never a
+        # new version over newer content (finding 7). Processing time does not count (N1).
         return Ingested("unchanged", item.id)
     if not text:
         # No extracted text (a PDF, or a body-only row): never versions over text the item
@@ -167,7 +205,7 @@ async def ingest(
                              .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
     previous = latest.content_text if latest is not None else ""
     pct = versioning.changed_pct(previous, text)
-    if pct < threshold_pct:  # below the job's threshold: no version, no event (M4 design)
+    if pct < threshold_pct and not claimed:  # below the threshold: no version, no event (M4)
         item.status = "unchanged"
         return Ingested("unchanged", item.id, pct)
     number = item.current_version_no + 1

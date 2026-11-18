@@ -45,7 +45,9 @@ def test_a_long_text_stays_fast() -> None:
     pct = v.changed_pct(old, new)
     assert 0 < pct < 15 and time.monotonic() - started < 10
     huge = "y" * 5000
-    assert v.changed_pct(huge, huge + "z") == pytest.approx(100.0, abs=0.1)  # one long line
+    # One long line past MAX_PAIR: only what lies between the common ends counts (N2).
+    assert v.changed_pct(huge, huge + "z") == pytest.approx(0.02, abs=0.01)
+    assert v.changed_pct(huge, "z" * 5000) == 100.0
 
 
 def test_the_diff_is_unified_and_cut_at_64_kb() -> None:
@@ -81,3 +83,10 @@ def test_hostile_texts_cost_a_bounded_time(old: str, new: str) -> None:
     started = time.monotonic()
     assert v.changed_pct(old, new) > 90
     assert time.monotonic() - started < 2
+
+
+def test_small_edits_on_every_line_stay_small_past_the_budget() -> None:
+    """Re-verification N2: renumbered articles, one character on each of 5,000 lines."""
+    old = "\n".join(f"Article {n % 10} " + "x" * 90 for n in range(5000))
+    new = "\n".join(f"Article {(n + 1) % 10} " + "x" * 90 for n in range(5000))
+    assert v.changed_pct(old, new) < 2.0

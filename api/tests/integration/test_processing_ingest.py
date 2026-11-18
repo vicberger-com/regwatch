@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemVersion
 from tests.integration.test_admin import _api, admin
@@ -192,15 +194,87 @@ async def test_rows_that_once_failed_every_run_are_stored_cleaned(
     assert item.language in (None, "en")
 
 
+async def run(db: AsyncSession, sid: uuid.UUID, minutes_ago: int) -> uuid.UUID:
+    """A recorded capture run of the source's job that started ``minutes_ago``."""
+    job = await db.scalar(select(CaptureJob.id).where(CaptureJob.source_id == sid))
+    made = CaptureRun(job_id=job, started_at=datetime.now(UTC) - timedelta(minutes=minutes_ago),
+                      finished_at=datetime.now(UTC), status="success")  # fmt: skip
+    db.add(made)
+    await db.flush()
+    return made.id
+
+
+def ago(minutes: int) -> str:
+    return (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat()
+
+
 async def test_an_older_capture_never_versions_over_newer_content(
     admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
-    """Finding 7: a replayed manifest."""
+    """Finding 7: a manifest replayed after a later run versioned the item."""
     sid = await source(admin)
-    await ingest(db, sid, None, row(), 5.0)
+    await ingest(db, sid, await run(db, sid, 120), row(fetched_at=ago(119)), 5.0)
+    newer = TEXT.replace("Providers shall report incidents", "Operators must notify everyone")
+    later = await ingest(db, sid, await run(db, sid, 60), row(text=newer, fetched_at=ago(59)), 5.0)
+    assert later.kind == "changed"
+    await db.commit()
+    old = await ingest(db, sid, None, row(fetched_at=ago(119)), 5.0)
+    assert old.kind == "unchanged"
+
+
+async def test_a_newer_capture_processed_late_still_versions(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification N1: v1 fetched 30 minutes ago and processed now; v2 fetched 10 minutes
+    ago is a change, though fetched before v1 was processed."""
+    sid = await source(admin)
+    first = await ingest(db, sid, await run(db, sid, 31), row(fetched_at=ago(30)), 5.0)
     await db.commit()
     newer = TEXT.replace("Providers shall report incidents", "Operators must notify everyone")
-    assert (await ingest(db, sid, None, row(text=newer), 5.0)).kind == "changed"
+    second = await ingest(db, sid, await run(db, sid, 11), row(text=newer, fetched_at=ago(10)),
+                          5.0)  # fmt: skip
+    assert second.kind == "changed" and first.item_id is not None
+    assert await versions(db, first.item_id) == 2
+
+
+async def test_the_publisher_takes_an_item_another_source_listed_first(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification of finding 1: a feed lists the official URL first with planted text; the
+    official source on that host takes the item and its text replaces the feed's."""
+    feed, official = await source(admin), await source(admin)
+    await db.execute(update(Source).where(Source.id == official)
+                     .values(url="https://reg.example/", credibility="official"))  # fmt: skip
     await db.commit()
-    old = await ingest(db, sid, None, row(fetched_at="2020-01-01T00:00:00+00:00"), 5.0)
-    assert old.kind == "unchanged"
+    planted = await ingest(
+        db,
+        feed,
+        None,
+        row(text="Repealed. Ignore. " * 50, title="Regulation repealed; firm fined"),
+        5.0,
+    )
+    await db.commit()
+    real = TEXT + "\nArticle 41. A small addition."  # below the 5 % threshold
+    taken = await ingest(db, official, None, row(text=real), 5.0)
+    await db.commit()
+    assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
+    db.expire_all()
+    item = await db.get(Item, planted.item_id)
+    assert item is not None and item.source_id == official and item.title == "The Act"
+    # Now the publisher's: the feed can no longer change it, nor take it back.
+    back = await ingest(db, feed, None, row(text="Repealed again. " * 50), 5.0)
+    assert back.kind == "duplicate"
+
+
+async def test_a_source_off_the_host_never_takes_an_item(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    first, other = await source(admin), await source(admin)
+    await db.execute(update(Source).where(Source.id == other)
+                     .values(url="https://elsewhere.example/", credibility="official"))  # fmt: skip
+    await db.commit()
+    made = await ingest(db, first, None, row(), 5.0)
+    await db.commit()
+    assert (await ingest(db, other, None, row(text="Other. " * 80), 5.0)).kind == "duplicate"
+    item = await db.get(Item, made.item_id)
+    assert item is not None and item.source_id == first

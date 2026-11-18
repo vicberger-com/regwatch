@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import os
 import re
 
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
@@ -46,14 +47,23 @@ def sha256(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def _between(a: str, b: str) -> int:
+    """The longer line's characters between the common prefix and suffix."""
+    prefix = len(os.path.commonprefix([a, b]))
+    rest_a, rest_b = a[prefix:], b[prefix:]
+    suffix = len(os.path.commonprefix([rest_a[::-1], rest_b[::-1]]))
+    return max(len(rest_a), len(rest_b)) - suffix
+
+
 def _chars(a: str, b: str, budget: list[int]) -> int:
     """Characters that differ between two lines; a pair past ``MAX_PAIR`` or the text's
-    remaining ``budget`` counts as wholly different, so no text costs more than the budget."""
+    remaining ``budget`` counts what lies between the common prefix and suffix, which is
+    linear, so no text costs more than the budget and a one-character edit stays small (N2)."""
     if a == b:
         return 0
     cost = len(a) * len(b)
     if len(a) > MAX_PAIR or len(b) > MAX_PAIR or cost > budget[0]:
-        return max(len(a), len(b))
+        return _between(a, b)
     budget[0] -= cost
     same = sum(block.size for block in difflib.SequenceMatcher(None, a, b, autojunk=False)
                .get_matching_blocks())  # fmt: skip

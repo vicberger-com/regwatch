@@ -76,6 +76,17 @@
 | 12 | low | **Test gaps.** No test covers: another source's URL (finding 1), a body-only row against a text item (1), CPU time or a large text (2), a lost or repeated hand-over (3), the severity negatives and CJK (4), a mirror, a crafted `body_ref` or a placeholder body (5), NUL, surrogates or date ranges (6), concurrent pipelines or a replay after a newer run (7), the CJK substrings (8), or IPv6 (9). `test_source_defaults_win_and_bad_keys_are_refused` asserts only `len(set(tags)) >= 1`, which is always true. Acceptance 5's "preserves user-assigned tags" has no M4 test (P6 shows it holds for jurisdictions). | fix commit on feat/M4-items; remainder BL-107 (f) | pending re-verification |
 | 13 | info | (a) A body-only item (EUR-Lex, legislation, RSS full page) never versions: both texts are empty, so `changed_pct` is 0, below the threshold (P7: `unchanged` for a new body). This waits for M4's PDF and XHTML text, but until then such sources raise no `content_changed`. (b) Changes past line 5,000 count in `changed_pct` but give an empty `unified_diff`. (c) `enqueue` is a blocking broker call inside the async `execute`, with up to about 15 s of retries. (d) Each change of a 1,000,000-character text stores a full copy, with no retention. (e) A repeat `urn:sha256:` upload into a second manual source finds the first source's item and makes none of its own. | (c) fixed; rest BL-107 (b)-(e) | pending re-verification |
 
+## Re-verification 1 (b606afc): not signed off
+
+Fixed: 2, 3, 4, 6, 10; 11 deferral accepted. Partly fixed: 1 (first claim: a feed listing an official URL first kept the item, high), 5, 7, 8, 9, 12. New: N1 (medium) the replay check compared the fetch time with the item's processing time, so a newer capture processed late was dropped; N2 (low) small edits on every line counted as whole lines past the budget; N3 (low) the sweep re-hands queued manifests and never marks early returns.
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| 1 (first claim) | high | an official source whose own URL is on the page's host takes the item, and its text replaces the other's (`ingest._owns`) | pending |
+| N1 | medium | the replay check compares with the start of the latest version's run (`ingest._captured`) | pending |
+| N2 | low | past the budget a pair counts only what lies between the common prefix and suffix (`versioning._between`) | pending |
+| N3 and residuals of 4, 5, 8, 9, 10, 12 | low | BL-107 (f) to (h) | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.
