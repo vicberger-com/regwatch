@@ -52,7 +52,9 @@ HTML = frozenset({"text/html", "application/xhtml+xml"})
 # Pages that cannot be read within the extraction limits cost up to 20 s each; after this many
 # in one run the run stops (HTML extraction review R4, BL-98 (a); web listing review 3).
 MAX_UNREADABLE = 3
-MAX_STATE = 10_000  # URLs a crawl's state remembers, the most recently checked kept
+# URLs a crawl's state remembers, the most recently checked kept: about 10 MiB at the
+# longest URLs, written and read once a run (re-verification R4).
+MAX_STATE = 5_000
 UNREADABLE = frozenset({"too-slow", "too-large", "too-deep", "parse-failed"})
 
 

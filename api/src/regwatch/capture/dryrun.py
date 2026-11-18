@@ -103,6 +103,8 @@ async def preview(job: CaptureJob, source: Source, make_context: ContextFactory)
         warnings.append(f"the fetch was refused ({exc.reason})")  # the reason, never the detail
     except ConnectorError as exc:
         warnings.append(f"{exc.reason}: {exc.detail}")
+    if decision == "disallowed" and found:  # some pages refused, others offered (R5)
+        decision = "partly-disallowed"
     if not found and not warnings:
         warnings.append("the source offered no candidates")
     return {"candidates": found, "robots_decision": decision, "warnings": warnings}

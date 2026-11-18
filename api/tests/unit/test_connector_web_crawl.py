@@ -343,3 +343,91 @@ async def test_the_dry_run_shows_refused_pages_as_warnings() -> None:
     got = await dryrun.preview(job, source, make)
     assert got["candidates"] == [] and got["robots_decision"] == "disallowed"
     assert got["warnings"] == ["a page was refused or failed (robots)"]
+
+
+async def test_files_that_are_not_pages_rotate_back_too() -> None:
+    """Re-verification R1: PDFs no longer take the budget on every run."""
+    site = Site({"reg.example/": ("Home", [f"/r{n}.pdf" for n in range(10)] + ["/page"]),
+                 "reg.example/page": ("Page", []),
+                 **{f"reg.example/r{n}.pdf": (200, {"content-type": "application/pdf"})
+                    for n in range(10)}})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    cursor = None
+    reached = False
+    for _ in range(3):
+        site.asked.clear()
+        got = await crawl(site, objects, cursor, max_pages_per_run=8)
+        cursor = got.cursor or cursor
+        reached = reached or "reg.example/page" in site.asked
+    assert reached
+
+
+async def test_deeper_pages_get_their_turn() -> None:
+    """R2: six level-1 pages and a limit of 4 still reach level 2 within a few runs."""
+    site = Site({"reg.example/": ("Home", [f"/p{n}" for n in range(6)]),
+                 **{f"reg.example/p{n}": (f"P{n}", [f"/p{n}/child"]) for n in range(6)},
+                 **{f"reg.example/p{n}/child": (f"C{n}", []) for n in range(6)}})  # fmt: skip
+    objects: dict[str, bytes] = {}
+    cursor = None
+    asked: set[str] = set()
+    for _ in range(5):
+        site.asked.clear()
+        got = await crawl(site, objects, cursor, max_pages_per_run=4)
+        cursor = got.cursor or cursor
+        asked.update(site.asked)
+    assert any(a.endswith("/child") for a in asked)
+
+
+async def test_a_seed_redirect_under_the_override_says_why() -> None:
+    """R3."""
+    site = Site({"reg.example/": (301, {"location": "https://www.reg.example/"}),
+                 "www.reg.example/": ("Home", [])})  # fmt: skip
+    got = await crawl(site, {}, override="The regulator agreed in writing")
+    assert got.status == "failed" and got.error_class == "fetch-failed"
+    config = WebCrawlConfig(seed_urls=[SEED], allowed_domains=["reg.example"])  # type: ignore[list-item]
+
+    class Redirected:
+        async def fetch(self, url: str, **kwargs: Any) -> FetchResult:
+            from regwatch.capture.safe_fetch import FetchRefusedError
+
+            raise FetchRefusedError("refused-host", "the redirect left the address")
+
+    job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules(),
+                      robots_override="The regulator agreed in writing")  # fmt: skip
+    ctx = ConnectorContext(fetcher=Redirected(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    [candidate] = [c async for c in web_crawl.WebCrawlConnector().discover(job, ctx)]
+    assert candidate.hints["error"].reason == "override-redirect"
+
+
+def test_internationalised_top_level_domains_are_host_names() -> None:
+    """R5."""
+    parsed = WebCrawlConfig.model_validate({"seed_urls": ["https://reg.xn--p1ai/"],
+                                            "allowed_domains": ["reg.xn--p1ai"]})  # fmt: skip
+    web_crawl.check(parsed)
+    assert web_crawl._allowed("https://docs.reg.xn--p1ai/", ["reg.xn--p1ai"])
+
+
+async def test_the_dry_run_says_partly_disallowed() -> None:
+    """R5: some pages refused by robots.txt, others offered."""
+    from regwatch.capture import dryrun
+
+    site = Site({"reg.example/robots.txt": "User-agent: *\nDisallow: /private\n",
+                 "reg.example/": ("Home", ["/private", "/a"]),
+                 "reg.example/a": ("A", [])})  # fmt: skip
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        async def public(host: str, port: int) -> list[str]:
+            return ["93.184.215.14"]
+
+        fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
+                              transport=httpx.MockTransport(site))  # fmt: skip
+        capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000)
+        return ConnectorContext(fetcher=capture, store=None, now=lambda: NOW)  # type: ignore[arg-type]
+
+    source = Source(id=uuid.UUID(int=9), kind="web_crawl", robots_policy="respect",
+                    config={"seed_urls": [SEED], "allowed_domains": ["reg.example"]},
+                    override_reason=None)  # fmt: skip
+    job = CaptureJob(max_items_per_run=10, rate_limit_per_minute=6000, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    got = await dryrun.preview(job, source, make)
+    assert got["robots_decision"] == "partly-disallowed" and len(got["candidates"]) == 2

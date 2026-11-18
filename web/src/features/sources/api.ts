@@ -46,6 +46,8 @@ export const REASONS: Record<string, string> = {
   "too-deep": "The page is nested too deeply to read safely.",
   "too-slow": "The page took too long to read safely.",
   "parse-failed": "The page could not be read.",
+  "override-redirect":
+    "Under the robots.txt override a seed may not redirect to another address. Save the address it redirects to as the seed.",
   "unreadable-pages":
     "Several linked pages could not be read within the safety limits, so the run stopped.",
   "needs-contact":

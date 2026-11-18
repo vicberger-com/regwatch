@@ -54,7 +54,11 @@ from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 
 TRANSIENT = frozenset({"timeout", "connect"})  # as execution.TRANSIENT, which imports this module
 MAX_FRONTIER = 5000  # URLs waiting; about 1 MB of strings at the URL limit's typical length
-_DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
+# The last label: letters, or an internationalised one in punycode (R5).
+_DOMAIN = re.compile(
+    r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"([a-z]{2,63}|xn--[a-z0-9-]{1,59})"
+)
 
 
 def check(config: WebCrawlConfig) -> None:
@@ -106,15 +110,17 @@ class WebCrawlConnector:
         ctx.scratch["listing"] = {"listed": listed, "pages": {}, "previous": previous,
                                   "origin": None, "unreadable": 0, "tried": {},
                                   "keep_unlisted": True}  # fmt: skip
-        # By depth, then pages never checked, then the longest unchecked: a crawl cut short
-        # by its limits reaches other pages next time (review finding 3).
-        frontier: list[tuple[int, str, int, str]] = []
+        # Seeds first (their links are the crawl); then pages never checked, at any depth;
+        # then the longest unchecked, shallower first among equals. A crawl cut short by its
+        # limits reaches other pages, deeper ones too, next time (finding 3, R1, R2).
+        frontier: list[tuple[int, str, int, int, str]] = []
         order = 0
 
         def push(url: str, depth: int) -> None:
             nonlocal order
             order += 1
-            heapq.heappush(frontier, (depth, previous.get(url, ["", "", ""])[2], order, url))
+            checked = previous.get(url, ["", "", ""])[2]
+            heapq.heappush(frontier, (0 if depth == 0 else 1, checked, depth, order, url))
 
         for seed in config.seed_urls:
             push(str(seed), 0)
@@ -124,7 +130,7 @@ class WebCrawlConnector:
             if requests >= limit:  # every request counts, pages or not (finding 4)
                 ctx.notes.add("truncated")
                 return
-            depth, _checked, _n, url = heapq.heappop(frontier)
+            _seed, _checked, depth, _n, url = heapq.heappop(frontier)
             requests += 1
             listed.append(url)
             origin = _origin(url)
@@ -141,14 +147,23 @@ class WebCrawlConnector:
                 got = await ctx.fetcher.fetch(url, rate_per_minute=rate, robots_override=override,
                                               allow_hop=hop)  # fmt: skip
             except FetchRefusedError as exc:
-                yield Candidate(url=url, hints={"error": exc})
+                error: Exception = exc
+                if override is not None and exc.reason == "refused-host":
+                    # The seed redirects (to https, to www): say so, rather than a bare failure
+                    # (R3); the override never follows a hop off its address (8.3).
+                    error = ConnectorError("override-redirect", "under the robots.txt override "
+                                           "a seed may not redirect off its own address; save "
+                                           "the address it redirects to as the seed")  # fmt: skip
+                yield Candidate(url=url, hints={"error": error})
                 continue
             if not 200 <= got.status < 300:
                 failed = ConnectorError("http-status", f"the page answered HTTP {got.status}")
                 yield Candidate(url=url, hints={"error": failed})
                 continue
             if (got.mime or "") not in HTML:
-                listed.pop()  # not a page of the site's text: passed over, not a document
+                # Not a page of the site's text: no document, but tried, so it rotates to the
+                # back like a failed page instead of taking the budget every run (R1).
+                ctx.scratch["listing"]["tried"][url] = ctx.now().isoformat()
                 continue
             try:
                 found = await _extract(got, job, "a" if depth < config.max_depth else None)
