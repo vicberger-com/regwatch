@@ -191,6 +191,8 @@ export function SourceEditor({
           onChange={(e) => {
             const next = e.target.value;
             setKind(next);
+            // A search source is secondary (ADR-0010); the API refuses official for it.
+            if (next === "search_query") setCredibility("secondary");
             const nextSchema = kindSchema(next);
             setConfig(nextSchema ? toForm(nextSchema, {}) : {});
           }}

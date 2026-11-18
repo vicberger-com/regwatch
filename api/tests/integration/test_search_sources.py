@@ -62,6 +62,8 @@ async def test_search_sources_are_secondary_and_never_name_official_hosts(
     assert made.status_code == 201, made.text
     assert made.json()["credibility"] == "secondary"  # never official by default
     loud = {**body, "name": "S2", "credibility": "official"}
-    assert (await admin.post(_api("/sources"), json=loud)).status_code == 201
+    refused = await admin.post(_api("/sources"), json=loud)  # re-verification R2
+    assert refused.status_code == 422
+    assert [e["field"] for e in refused.json()["errors"]] == ["credibility"]
     _, official = await tasks._search_context(db)  # type: ignore[arg-type]
     assert "feeds.example" not in official and "junk.example" not in official

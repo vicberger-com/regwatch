@@ -245,3 +245,26 @@ async def test_engines_of_the_wrong_type_are_not_usable_engines(engines: Any) ->
 
 def test_a_url_that_does_not_parse_has_no_host() -> None:
     assert search_query._host("ftp://reg.example/") is None
+
+
+async def test_a_busy_search_slot_is_a_skip_not_a_failure() -> None:
+    """Search re-verification R1: a refused pace is FetchRefusedError("rate-limited")."""
+    from regwatch.capture.safe_fetch import FetchRefusedError
+
+    searx = Searx([{"results": [result("https://reg.example/a")]}])
+    ctx = context(searx)
+
+    async def busy(key: str, interval_s: float) -> None:
+        raise FetchRefusedError("rate-limited", "busy")
+
+    ctx.pace = busy
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        return ctx
+
+    source = Source(id=uuid.UUID(int=4), kind="search_query", robots_policy="respect",
+                    config={"query": "AI act"}, override_reason=None)  # fmt: skip
+    row = CaptureJob(max_items_per_run=10, rate_limit_per_minute=6000, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    got = await execution.run_connector(uuid.uuid4(), row, source, make)
+    assert (got.status, got.error_class) == ("skipped", "rate-limited")

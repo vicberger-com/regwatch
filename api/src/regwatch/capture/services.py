@@ -206,6 +206,12 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     policy = values.get("robots_policy", source.robots_policy if source else "respect")
     config = values.get("config", source.config if source else {}) or {}
     kind = values.get("kind", source.kind if source else None)
+    credibility = values.get("credibility", source.credibility if source else None)
+    if kind == "search_query" and credibility == "official":
+        # Search finds pages anywhere; each result is judged on its own host (ADR-0010
+        # decision 2; search re-verification R2).
+        raise invalid("credibility", "a search source is secondary; its results on official "
+                      "hosts are marked official one by one")  # fmt: skip
     if policy == "override" and kind in ("manual", "search_query"):
         # A manual source takes any URL its editors submit, so no override reason can be about
         # the sites it will reach (8.3; manual upload review finding 1).

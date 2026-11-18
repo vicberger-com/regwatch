@@ -22,6 +22,7 @@ from __future__ import annotations
 import random
 import re
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 
 from pydantic import BaseModel
@@ -175,15 +176,8 @@ class SearchQueryConnector:
                                    allow_hop=allowed)  # fmt: skip
         final = _host(doc.final_url or candidate.url)
         official = final is not None and _on(final, ctx.official_hosts)
-        return RawDocument(
-            **{
-                **doc.__dict__,
-                "metadata": {
-                    **doc.metadata,
-                    "credibility": "official" if official else "secondary",
-                },
-            }
-        )
+        credibility = "official" if official else "secondary"
+        return replace(doc, metadata={**doc.metadata, "credibility": credibility})
 
     def health(self, job: JobSettings) -> HealthReport:
         return HealthReport("unknown", "health comes from the job's runs")

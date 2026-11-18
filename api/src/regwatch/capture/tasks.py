@@ -17,11 +17,12 @@ from celery import shared_task
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture import runs
-from regwatch.capture.connectors.base import ConnectorContext, ConnectorError, JobSettings
+from regwatch.capture.connectors.base import ConnectorContext, JobSettings
 from regwatch.capture.execution import ContextFactory
 from regwatch.capture.safe_fetch import (
     CaptureFetcher,
     FetchLimits,
+    FetchRefusedError,
     RobotsPolicy,
     SafeFetcher,
     ValkeyRateLimiter,
@@ -157,8 +158,9 @@ async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
         """One slot at a time per key across every worker, through the Valkey limiter; no slot
         is reserved when the wait would be longer than ``max_wait_s``."""
         wait = await limiter.take(f"internal:{key}", interval_s, max_wait_s)
-        if wait is None:
-            raise ConnectorError("rate-limited", "the search queue is busy; the next run tries")
+        if wait is None:  # a skip, not a failure: it never counts against health (search R1)
+            busy = "the search queue is busy; the next run tries"
+            raise FetchRefusedError("rate-limited", busy)
         await asyncio.sleep(wait)
 
     async def make(job: JobSettings) -> ConnectorContext:
