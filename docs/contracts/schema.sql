@@ -158,6 +158,9 @@ CREATE UNIQUE INDEX uq_capture_run_unfinished ON capture_run(job_id) WHERE finis
 CREATE INDEX ix_capture_run_open ON capture_run(created_at) WHERE finished_at IS NULL;
 -- CP-14: where an incremental job got to (api_feed: the newest publication date stored), so a
 -- truncated run continues; written by the worker only, and cleared when the source's settings change.
+-- CP-16: web_page keeps its change-detection state here too: the last content hash and the object
+-- store key of the text it was computed from ({"content_hash", "text_ref"}; listing mode: a key of
+-- a per-URL manifest), so an unchanged page is counted and never handed to M4.
 ALTER TABLE capture_job ADD COLUMN cursor jsonb;
 
 CREATE TABLE item ( -- std

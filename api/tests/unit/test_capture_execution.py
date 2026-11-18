@@ -446,3 +446,41 @@ async def test_a_block_on_one_document_stops_the_run(h: Harness) -> None:
     assert [u for u, _ in h.fetcher.calls] == ["https://e.org/feed", "https://e.org/0"]
     first = await h.run(Raises(urls, {"https://e.org/0": block}))
     assert (first.status, first.error_class) == ("failed", "blocked-by-provider")
+
+
+class Compares(Fake):
+    """Marks documents as the test says, and keeps its own state in the cursor (CP-16)."""
+
+    def __init__(self, urls: list[str], changes: dict[str, str]) -> None:
+        super().__init__(urls)
+        self.changes = changes
+
+    async def fetch(self, candidate: Candidate, job: JobSettings,
+                    ctx: ConnectorContext) -> RawDocument:  # fmt: skip
+        doc = await super().fetch(candidate, job, ctx)
+        ctx.state = {"content_hash": "h2"}
+        return RawDocument(**{**doc.__dict__, "change": self.changes.get(candidate.url)})
+
+
+async def test_unchanged_documents_are_counted_not_handed_on(h: Harness) -> None:
+    urls = ["https://e.org/a", "https://e.org/b", "https://e.org/c"]
+    got = await h.run(Compares(urls, {"https://e.org/a": "unchanged", "https://e.org/b": "changed",
+                                      "https://e.org/c": "new"}))  # fmt: skip
+    assert (got.status, got.items_new, got.items_changed, got.items_unchanged) == (
+        "success",
+        1,
+        1,
+        1,
+    )
+    assert [d["url"] for d in h.manifest()["documents"]] == urls[1:]
+    assert got.cursor == {"content_hash": "h2"}
+    h.stored.clear()
+    same = await h.run(Compares(urls[:1], {"https://e.org/a": "unchanged"}))
+    assert (same.status, same.items_unchanged, same.documents) == ("success", 1, [])
+    assert execution.manifest_key(str(SOURCE), RUN) not in h.stored  # nothing for M4
+
+
+async def test_connector_state_is_kept_only_when_every_document_was_fetched(h: Harness) -> None:
+    h.fetcher.fail = {"https://e.org/b": [FetchRefusedError("too-large", "big")]}
+    got = await h.run(Compares(["https://e.org/a", "https://e.org/b"], {}))
+    assert got.status == "partial" and got.cursor is None

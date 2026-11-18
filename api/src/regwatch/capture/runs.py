@@ -130,6 +130,8 @@ async def _close(db: AsyncSession, run: CaptureRun, status: str, error_class: st
     run.error_message = clean_error(error_message)
     if outcome is not None:
         run.items_new = outcome.items_new
+        run.items_changed = outcome.items_changed
+        run.items_unchanged = outcome.items_unchanged
         run.bytes_fetched = outcome.bytes_fetched
         run.robots_decision = outcome.robots_decision
     cursor = outcome.cursor if outcome is not None else None

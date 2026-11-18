@@ -40,7 +40,12 @@ export const REASONS: Record<string, string> = {
     "The provider's firewall refused the request. It is not retried or worked around; ask the provider to allow the address.",
   "malformed-answer":
     "The API's answer could not be read. Check the provider settings.",
-  "not-implemented": "This provider's adapter is not built yet.",
+  "not-implemented":
+    "This kind of source, provider or setting is not built yet.",
+  "not-html": "The page is not HTML.",
+  "too-deep": "The page is nested too deeply to read safely.",
+  "too-slow": "The page took too long to read safely.",
+  "parse-failed": "The page could not be read.",
   "needs-contact":
     "This provider refuses anonymous requests. Set the contact email in Settings (general.contact_email) first.",
   "http-status": "The site answered with an error status.",

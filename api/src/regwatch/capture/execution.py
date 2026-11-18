@@ -35,6 +35,7 @@ from tenacity import (
 
 from regwatch.capture.connectors import api_feed as _api_feed  # noqa: F401 - registers it
 from regwatch.capture.connectors import rss as _rss  # noqa: F401 - registers the connector
+from regwatch.capture.connectors import web_page as _web_page  # noqa: F401 - registers it
 from regwatch.capture.connectors.base import (
     REGISTRY,
     Candidate,
@@ -87,6 +88,8 @@ class Outcome:
     error_message: str | None = None
     robots_decision: str | None = None
     items_new: int = 0
+    items_changed: int = 0
+    items_unchanged: int = 0
     bytes_fetched: int = 0
     cursor: dict[str, Any] | None = None  # the job's new cursor (CP-14), or None to keep it
     cursor_from: dict[str, Any] | None = None  # the cursor the run started from
@@ -106,7 +109,9 @@ def job_settings(job: CaptureJob, source: Source,
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
                        render_js=job.render_js, robots_override=override,
-                       last_success_at=last_success_at, cursor=job.cursor)  # fmt: skip
+                       last_success_at=last_success_at, cursor=job.cursor,
+                       change_threshold_pct=float(5 if job.change_threshold_pct is None
+                                                  else job.change_threshold_pct))  # fmt: skip
 
 
 def _transient(exc: BaseException) -> bool:
@@ -130,7 +135,10 @@ def _manifest(run_id: uuid.UUID, entries: list[tuple[Candidate, RawDocument]]) -
          "mime": d.mime, "fetched_at": d.fetched_at.isoformat(), "text": d.text,
          "title": c.title, "summary": c.summary, "external_id": c.external_id,
          "language": c.language,
-         "published_at": c.published_at.isoformat() if c.published_at else None}
+         "published_at": c.published_at.isoformat() if c.published_at else None,
+         # What the connector learned from the document itself (a page's title, date and
+         # change share), and whether it is new or changed (CP-16).
+         "change": d.change, "metadata": d.metadata}
         for c, d in entries
     ]  # fmt: skip
     return json.dumps({"run_id": str(run_id), "documents": rows}).encode("utf-8")
@@ -170,9 +178,10 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     base = await make_context(settings)
     counter = _CountingFetcher(base.fetcher)
     ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
-                           notes=base.notes)  # fmt: skip
+                           notes=base.notes, load=base.load)  # fmt: skip
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
+    unchanged = 0  # fetched and compared: the same as last time, so not for M4 (CP-16)
     failures = 0
     refused: dict[str, int] = {}  # robots.txt or a busy host refused these pages: not failures
     cut_short = False
@@ -181,14 +190,18 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     try:
         async with asyncio.timeout(RUN_DEADLINE_S) as deadline:  # end inside the worker's limit
             async for candidate in connector.discover(settings, ctx):
-                if len(entries) + failures + sum(refused.values()) >= settings.max_items:
+                taken = len(entries) + unchanged + failures + sum(refused.values())
+                if taken >= settings.max_items:
                     truncated = True  # a candidate arrived past the limit: there is more
                     break
                 try:
                     async for attempt in _retrying():
                         with attempt:
                             document = await connector.fetch(candidate, settings, ctx)
-                    entries.append((candidate, document))
+                    if document.change == "unchanged":
+                        unchanged += 1
+                    else:
+                        entries.append((candidate, document))
                 except FetchRefusedError as exc:
                     if exc.reason in SKIPPING:
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
@@ -223,11 +236,13 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                            bytes_fetched=counter.fetched)  # fmt: skip
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
-    status, error_class, message = _verdict(len(entries), failures, refused, cut_short)
+    status, error_class, message = _verdict(len(entries) + unchanged, failures, refused, cut_short)
     # Only a connector that resumes from the cursor gets one, and not past failed documents
     # (CP-13/14 review finding 1, low findings): otherwise "continues" would not be true.
     resumes = "resumes" in ctx.notes and failures == 0
     cursor = _cursor(settings.cursor, entries, base.now()) if resumes else None
+    if ctx.state is not None and failures == 0 and not cut_short:  # the connector's own (CP-16)
+        cursor = ctx.state if ctx.state != settings.cursor else None
     if stopped is not None:  # some documents, then discovery failed: partial, with its reason
         status, (error_class, message) = "partial", stopped
     elif status == "success" and (truncated or "truncated" in ctx.notes):
@@ -244,7 +259,9 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         )
     return Outcome(status, error_class, message,
                    robots_decision=_decision(allowed, refused, len(entries) + failures),
-                   items_new=len(entries), bytes_fetched=counter.fetched,
+                   items_new=sum(1 for _, d in entries if d.change != "changed"),
+                   items_changed=sum(1 for _, d in entries if d.change == "changed"),
+                   items_unchanged=unchanged, bytes_fetched=counter.fetched,
                    documents=[doc for _, doc in entries], cursor=cursor,
                    cursor_from=settings.cursor)  # fmt: skip
 
