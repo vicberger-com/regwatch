@@ -29,13 +29,13 @@ def clear_diffs() -> None:
     services.diffs._hits.clear()
 
 
-async def three_versions(admin: httpx.AsyncClient, db: AsyncSession) -> str:
+async def three_versions(admin: httpx.AsyncClient, db: AsyncSession, url: str = URL) -> str:
     """An item with versions 1 to 3, each well past the 5 % threshold."""
     sid = await made_source(admin)
     texts = [BSI, BSI.replace("neue Regeln", "geänderte Pflichten"),
              BSI.replace("veröffentlicht neue Regeln", "zieht alles zurück")]  # fmt: skip
     for text in texts:
-        key, objects = manifest(sid, uuid.uuid4(), [{"url": URL, "text": text,
+        key, objects = manifest(sid, uuid.uuid4(), [{"url": url, "text": text,
                                                      "title": "Neue Leitlinie"}])  # fmt: skip
         await process_manifest(db, key, loader(objects))
     found = await admin.get(_api(f"/sources/{sid}"))
@@ -284,3 +284,60 @@ async def test_an_inactive_jurisdiction_cannot_be_added(
     finally:
         await db.execute(update(Jurisdiction).where(Jurisdiction.code == "FR").values(active=True))
         await db.commit()
+
+
+async def test_a_jurisdiction_taken_over_by_a_user_is_audited(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 1, finding 2's gap: the origin of each jurisdiction is audited."""
+    from sqlalchemy import select
+
+    from regwatch.core.models import AuditLog
+
+    item_id = await three_versions(admin, db)  # DE, from the gazetteer
+    assert (
+        await admin.put(_api(f"/items/{item_id}/tags"), json={"add_jurisdiction_codes": ["de"]})
+    ).status_code == 200
+    row = await db.scalar(
+        select(AuditLog).where(AuditLog.entity_id == item_id, AuditLog.action == "item.tags")
+    )
+    assert row is not None
+    assert (row.before["jurisdictions"], row.after["jurisdictions"]) == (
+        {"DE": "rule"}, {"DE": "user"})  # fmt: skip
+
+
+async def test_computed_diffs_are_bounded_across_users(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-verification N1: past DIFF_PENDING waiting or running, a computed diff is a 503; the
+    per-user rate is checked before the database (even an unknown item counts)."""
+    from regwatch.processing import services
+
+    item_id = await three_versions(admin, db)
+    monkeypatch.setattr(services, "_pending", services.DIFF_PENDING)
+    busy = await admin.get(_api(f"/items/{item_id}/diff?from=1&to=3"))
+    assert busy.status_code == 503 and busy.headers["retry-after"]
+    assert (await admin.get(_api(f"/items/{item_id}/diff?from=2&to=3"))).status_code == 200
+    monkeypatch.setattr(services, "_pending", 0)
+    for _ in range(services.DIFF_RATE):
+        await admin.get(_api(f"/items/{uuid.uuid4()}/diff?from=1&to=3"))
+    assert (await admin.get(_api(f"/items/{item_id}/diff?from=1&to=3"))).status_code == 429
+    assert services._pending == 0
+
+
+async def test_two_tag_changes_adding_one_term_do_not_block(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification N2: the term is locked FOR KEY SHARE, which two changes can share."""
+    import asyncio
+
+    from tests.integration.test_processing_classify import term
+
+    first = await three_versions(admin, db)
+    second = await three_versions(admin, db, URL + "-2")
+    shared = await term(admin, {"keywords": ["nothing-matches-this"]})
+    body = {"add_term_ids": [str(shared)]}
+    got = await asyncio.wait_for(asyncio.gather(
+        admin.put(_api(f"/items/{first}/tags"), json=body),
+        admin.put(_api(f"/items/{second}/tags"), json=body)), timeout=20)  # fmt: skip
+    assert [r.status_code for r in got] == [200, 200]

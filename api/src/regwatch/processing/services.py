@@ -40,6 +40,8 @@ MAX_VERSION = 2**31 - 1
 DIFF_RATE = 30  # computed diffs per user and minute
 DIFF_THREADS = 2
 _DIFF_THREADS = anyio.CapacityLimiter(DIFF_THREADS)
+DIFF_PENDING = 4  # computed diffs waiting or running, across all users
+_pending = 0
 diffs = SlidingWindow(60.0)
 _RANK = {"info": 0, "notable": 1, "major": 2}
 
@@ -124,29 +126,55 @@ def _invalid(message: str) -> ProblemError:
 
 async def item_diff(db: AsyncSession, item_id: uuid.UUID, start: int, end: int,
                     user_id: uuid.UUID | None = None) -> ItemDiff:  # fmt: skip
-    """The diff from version ``start`` to the later version ``end``. A computed diff (versions
-    that are not consecutive) costs up to about half a second of CPU, so it runs on its own
-    threads, ``DIFF_THREADS`` at a time, and each user may ask for ``DIFF_RATE`` a minute
-    (routes review finding 3)."""
+    """The diff from version ``start`` to the later version ``end``.
+
+    Consecutive versions answer with the stored diff. Any other pair is computed, up to about
+    half a second of CPU (routes review finding 3, re-verification N1): each user may ask for
+    ``DIFF_RATE`` a minute, checked before any database work; at most ``DIFF_PENDING`` wait or
+    run at once across all users (503 beyond); and the texts are read and the transaction
+    ended before waiting, so a queued diff never holds a pooled connection.
+    """
+    global _pending
     if start < 1 or end <= start or end > MAX_VERSION:  # finding 5: past int32 is no version
         raise _invalid("from must be a version before to")
-    await _item(db, item_id)
-    old, new = await _version(db, item_id, start), await _version(db, item_id, end)
-    if end == start + 1 and new.diff_from_previous is not None and new.changed_pct is not None:
-        return ItemDiff(from_version=start, to_version=end, changed_pct=float(new.changed_pct),
-                        unified_diff=new.diff_from_previous)  # fmt: skip
-
-    def compute() -> tuple[float, str]:
-        a, b = old.content_text, new.content_text
-        return versioning.changed_pct(a, b), versioning.unified_diff(a, b)
-
+    if end == start + 1:
+        await _item(db, item_id)
+        stored = (await db.execute(
+            select(ItemVersion.diff_from_previous, ItemVersion.changed_pct)
+            .where(ItemVersion.item_id == item_id,
+                   ItemVersion.version_no == end))).first()  # fmt: skip
+        if stored is None:
+            raise not_found("version")
+        if stored[0] is not None and stored[1] is not None:
+            return ItemDiff(from_version=start, to_version=end, changed_pct=float(stored[1]),
+                            unified_diff=stored[0])  # fmt: skip
     key = str(user_id)
     if diffs.count(key) >= DIFF_RATE:
         raise ProblemError(429, "rate-limited", "Too many diffs between distant versions; "
                            "try again shortly.",
                            headers={"Retry-After": str(diffs.retry_after(key))})  # fmt: skip
+    if _pending >= DIFF_PENDING:
+        raise ProblemError(503, "busy", "Too many diffs are being computed; try again shortly.",
+                           headers={"Retry-After": "5"})  # fmt: skip
     diffs.hit(key)
-    pct, diff = await anyio.to_thread.run_sync(compute, limiter=_DIFF_THREADS)
+    _pending += 1
+    try:
+        await _item(db, item_id)
+        texts = dict((await db.execute(
+            select(ItemVersion.version_no, ItemVersion.content_text)
+            .where(ItemVersion.item_id == item_id,
+                   ItemVersion.version_no.in_((start, end))))).tuples().all())  # fmt: skip
+        await db.commit()  # the connection goes back to the pool before the wait
+        if start not in texts or end not in texts:
+            raise not_found("version")
+        old, new = texts[start], texts[end]
+
+        def compute() -> tuple[float, str]:
+            return versioning.changed_pct(old, new), versioning.unified_diff(old, new)
+
+        pct, diff = await anyio.to_thread.run_sync(compute, limiter=_DIFF_THREADS)
+    finally:
+        _pending -= 1
     return ItemDiff(from_version=start, to_version=end, changed_pct=pct, unified_diff=diff)
 
 
@@ -194,7 +222,10 @@ async def _state(db: AsyncSession, item_id: uuid.UUID) -> dict[str, Any]:
     terms = await db.execute(select(ItemTerm.term_id, ItemTerm.assigned_by, ItemTerm.feedback)
                              .where(ItemTerm.item_id == item_id))  # fmt: skip
     return {"terms": {str(t): [by, fb] for t, by, fb in sorted(terms.tuples().all())},
-            "jurisdictions": sorted(await _codes(db, item_id))}  # fmt: skip
+            "jurisdictions": dict(sorted((await db.execute(
+                select(Jurisdiction.code, ItemJurisdiction.assigned_by)
+                .join(ItemJurisdiction, ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
+                .where(ItemJurisdiction.item_id == item_id))).tuples().all()))}  # fmt: skip
 
 
 async def update_tags(db: AsyncSession, item_id: uuid.UUID, body: TagsUpdate, actor: uuid.UUID,
@@ -224,16 +255,18 @@ async def update_tags(db: AsyncSession, item_id: uuid.UUID, body: TagsUpdate, ac
     if add_places & drop_places:
         raise _field_error("remove_jurisdiction_codes",
                            "a jurisdiction cannot be added and removed at once")  # fmt: skip
+    # The added terms are locked FOR KEY SHARE, in order, before the item: merge_term locks a
+    # term and then the items that use it, so both take the term first and neither can hold
+    # what the other waits for (finding 10, re-verification N2). Two tag changes adding one
+    # term share the lock.
+    known = set((await db.scalars(
+        select(Term.id).where(Term.id.in_(add_terms), Term.active)
+        .order_by(Term.id).with_for_update(read=True, key_share=True))).all())  # fmt: skip
+    if add_terms - known:
+        raise _field_error("add_term_ids", "unknown or inactive term")
     item = await db.scalar(select(Item).where(Item.id == item_id).with_for_update())
     if item is None:
         raise not_found("item")
-    # The added terms are locked before the item's tags, in order, as merge_term locks a term
-    # before its uses, so neither waits on the other's second lock (finding 10).
-    known = set((await db.scalars(
-        select(Term.id).where(Term.id.in_(add_terms), Term.active)
-        .order_by(Term.id).with_for_update(key_share=True))).all())  # fmt: skip
-    if add_terms - known:
-        raise _field_error("add_term_ids", "unknown or inactive term")
     found = await db.execute(select(Jurisdiction.code, Jurisdiction.id, Jurisdiction.active)
                              .where(Jurisdiction.code.in_(add_places | drop_places)))  # fmt: skip
     places = {code: (jid, active) for code, jid, active in found.tuples().all()}
@@ -284,10 +317,3 @@ async def update_tags(db: AsyncSession, item_id: uuid.UUID, body: TagsUpdate, ac
         audit(db, "item.tags", "item", item.id, actor=actor, ip=ip, before=before, after=after)
     await db.commit()
     return await item_detail(db, item.id)
-
-
-async def _codes(db: AsyncSession, item_id: uuid.UUID) -> list[str]:
-    return list((await db.scalars(
-        select(Jurisdiction.code).join(ItemJurisdiction,
-                                       ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
-        .where(ItemJurisdiction.item_id == item_id))).all())  # fmt: skip
