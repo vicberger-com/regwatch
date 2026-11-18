@@ -1,5 +1,5 @@
 """The M4 chain for one capture run's manifest (``process.extract`` with the stages it runs:
-dedupe, version, geotag, events; translate and classify join as they land).
+dedupe, version, geotag, classify, events; translate joins when a provider is chosen).
 
 The manifest is read back from the object store under the exact key the run wrote, and each
 document is processed in its own transaction, so one bad row never loses the others. A row
@@ -19,8 +19,10 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from regwatch.admin.services import values
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.processing import geotag
+from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item
@@ -61,6 +63,13 @@ async def process_manifest(db: AsyncSession, key: str, load: Load) -> Counts:
     wanted = list(source.default_jurisdiction_ids or [])
     found = await db.scalars(select(Jurisdiction.code).where(Jurisdiction.id.in_(wanted)))
     defaults = list(found.all())
+    rules = await load_rules(db)
+    settings = await values(db, ["classification.min_confidence"])
+    try:
+        min_confidence = float(settings["classification.min_confidence"])
+    except (TypeError, ValueError):
+        min_confidence = MIN_CONFIDENCE
+    terms = list(source.default_term_ids or [])
     await db.commit()
     for row in rows[:MAX_ROWS]:
         if not isinstance(row, dict):
@@ -76,6 +85,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load) -> Counts:
                 text = value if isinstance(value, str) else ""
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
+                await classify(db, item, text, rules, terms, min_confidence)
                 kind = "new_item" if got.kind == "new" else "content_changed"
                 await raise_events(db, item, kind, ids, got.changed_pct)
             await db.commit()
