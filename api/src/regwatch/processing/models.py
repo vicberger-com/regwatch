@@ -42,6 +42,7 @@ class Item(Base):
     discovered_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     last_changed_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     content_hash: Mapped[str]
+    fetched_host: Mapped[str | None]  # CP-19: None when only listed, never fetched
     status: Mapped[str] = mapped_column(server_default=text("'new'"))
     needs_review: Mapped[bool] = mapped_column(server_default=text("false"))
     translation_pending: Mapped[bool] = mapped_column(server_default=text("false"))

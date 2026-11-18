@@ -87,6 +87,15 @@ Fixed: 2, 3, 4, 6, 10; 11 deferral accepted. Partly fixed: 1 (first claim: a fee
 | N2 | low | past the budget a pair counts only what lies between the common prefix and suffix (`versioning._between`) | pending |
 | N3 and residuals of 4, 5, 8, 9, 10, 12 | low | BL-107 (f) to (h) | deferred |
 
+## Re-verification 2 (7ea4364): not signed off
+
+Fixed: N1, N2 (linear, never below the true difference), no ping-pong between official sources; N3 and the residuals deferral accepted. Partly fixed: finding 1. New: N4 (high) ownership came from the free-form `Source.url`, so a feed whose URL named the regulator's host took (R6) or held (R7) the page. Residual (low): with the latest version's run unrecorded there is no replay check; only a manifest naming a run that does not exist leads there.
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| N4 | high | CP-19 (owner approved): ownership from the row, not the source; `item.fetched_host` is set from a row whose final URL is on the item's host, an unfetched item passes to the first source that fetches it, a fetched item never changes source; `Source.url` is no longer used | pending |
+| unrecorded-run replay | low | BL-107 (h) | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

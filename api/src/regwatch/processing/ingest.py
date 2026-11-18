@@ -32,7 +32,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.rss import plain_text
-from regwatch.capture.models import CaptureRun, Source
+from regwatch.capture.models import CaptureRun
 from regwatch.processing import versioning
 from regwatch.processing.models import Item, ItemVersion
 
@@ -100,19 +100,24 @@ def _host(url: str) -> str:
     return url.split("://", 1)[1].split("/", 1)[0] if "://" in url else url
 
 
-async def _owns(db: AsyncSession, source_id: uuid.UUID, canonical: str) -> bool:
-    """Whether the source publishes at the URL's host: an official source whose own URL is on
-    that host (M4 re-verification of finding 1: the first source to list a URL does not keep
-    it from the publisher)."""
-    row = (await db.execute(select(Source.credibility, Source.url)
-                            .where(Source.id == source_id))).first()  # fmt: skip
-    if row is None or row[0] != "official" or not row[1]:
-        return False
+def _fetched_host(row: dict[str, Any], canonical: str) -> str | None:
+    """The canonical URL's host when the row's content was fetched from it: its final URL,
+    after redirects, is on that host (``www.`` aside); None for a feed summary, an upload or a
+    page that redirected elsewhere (CP-19, re-verification finding N4)."""
+    final = row.get("final_url")
+    got = versioning.canonical_url(final) if isinstance(final, str) else None
+    if got is None or not got.startswith(("http://", "https://")):
+        return None
+    want = _bare(canonical)
+    return want if want and _bare(got) == want else None
+
+
+def _bare(url: str) -> str:
     try:
-        own = (urlsplit(row[1]).hostname or "").lower()
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
     except ValueError:
-        return False
-    return bool(own) and own == (urlsplit(canonical).hostname or "").lower()
+        return ""
+    return host.removeprefix("www.")
 
 
 async def _captured(db: AsyncSession, item_id: uuid.UUID) -> datetime | None:
@@ -148,17 +153,20 @@ async def ingest(
                        MAX_TITLE) or canonical[:MAX_TITLE]  # fmt: skip
     now = datetime.now(UTC)
     item = await db.scalar(select(Item).where(Item.url_hash == url_hash).with_for_update())
+    fetched_host = _fetched_host(row, canonical)
     claimed = False
     if item is not None and item.source_id != source_id:
-        # Another source's item: a row from this source never changes it, whatever its URL
-        # (M4 pipeline review finding 1), unless this source publishes at the URL's host and
-        # the item's source does not; then the item passes to the publisher, and its content
-        # replaces what the other source said, whatever the change share (re-verification).
-        if not (await _owns(db, source_id, canonical)
-                and not await _owns(db, item.source_id, canonical)):  # fmt: skip
+        # Another source's item: a row from this source never changes it (M4 pipeline review
+        # finding 1), unless the item's content was never fetched (a feed's summary) and this
+        # row was fetched from the URL's host; then the item passes to this source, and its
+        # content replaces the summary whatever the change share (CP-19, finding N4). A fetched
+        # item is never taken, so two sources fetching one page never take it in turn.
+        if item.fetched_host is not None or fetched_host is None:
             return Ingested("duplicate", item.id)
         item.source_id = source_id
         claimed = True
+    if item is not None and item.fetched_host is None and fetched_host is not None:
+        item.fetched_host = fetched_host  # the item's own source fetched it at last
     if item is None:
         # The same content at another address of the same host and source is a duplicate; a
         # copy on another host never hides the original (finding 5).
@@ -174,7 +182,8 @@ async def ingest(
                     external_id=_field(row.get("external_id"), 500), title=title,
                     summary=plain_text(_text(row.get("summary"), MAX_SUMMARY * 4), MAX_SUMMARY),
                     language=language, published_at=_when(row.get("published_at")),
-                    content_hash=content_hash, status="new", current_version_no=1,
+                    content_hash=content_hash, fetched_host=fetched_host, status="new",
+                    current_version_no=1,
                     translation_pending=bool(language) and not str(language).startswith("en"),
                     discovered_at=now, last_changed_at=now)  # fmt: skip
         try:
@@ -197,7 +206,7 @@ async def ingest(
         # Captured before the run of the item's latest version (a replayed manifest): never a
         # new version over newer content (finding 7). Processing time does not count (N1).
         return Ingested("unchanged", item.id)
-    if not text:
+    if not text and not claimed:
         # No extracted text (a PDF, or a body-only row): never versions over text the item
         # has, and a body change waits for M4's text extraction (finding 1, BL-107).
         return Ingested("unchanged", item.id)

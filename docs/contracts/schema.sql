@@ -186,7 +186,8 @@ CREATE TABLE item ( -- std
   attributes jsonb NOT NULL DEFAULT '{}'::jsonb,   -- {facet_key: value | [term_keys]} validated by M2
   search_vector tsvector GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(title_en,'')), 'A') ||
-    setweight(to_tsvector('simple', coalesce(summary,'') || ' ' || coalesce(summary_en,'')), 'B')) STORED
+    setweight(to_tsvector('simple', coalesce(summary,'') || ' ' || coalesce(summary_en,'')), 'B')) STORED,
+  fetched_host text                                -- CP-19 (migration 0005): host the content was fetched from; NULL = never fetched (a feed summary)
   -- Language-specific configurations are applied in a per-language expression index by M5; 'simple' is the baseline.
 );
 CREATE INDEX ix_item_attributes ON item USING gin (attributes jsonb_path_ops);

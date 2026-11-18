@@ -8,10 +8,10 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.capture.models import CaptureJob, CaptureRun
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemVersion
 from tests.integration.test_admin import _api, admin
@@ -237,15 +237,15 @@ async def test_a_newer_capture_processed_late_still_versions(
     assert await versions(db, first.item_id) == 2
 
 
-async def test_the_publisher_takes_an_item_another_source_listed_first(
+PAGE = {"final_url": "https://www.reg.example/act"}  # fetched from the item's own host
+
+
+async def test_a_fetched_page_takes_an_item_a_feed_only_listed(
     admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
-    """Re-verification of finding 1: a feed lists the official URL first with planted text; the
-    official source on that host takes the item and its text replaces the feed's."""
-    feed, official = await source(admin), await source(admin)
-    await db.execute(update(Source).where(Source.id == official)
-                     .values(url="https://reg.example/", credibility="official"))  # fmt: skip
-    await db.commit()
+    """CP-19, re-verification N4 (R6): a feed lists the URL first with planted text; the first
+    source to fetch the page takes the item, and its text replaces the feed's."""
+    feed, page = await source(admin), await source(admin)
     planted = await ingest(
         db,
         feed,
@@ -255,26 +255,64 @@ async def test_the_publisher_takes_an_item_another_source_listed_first(
     )
     await db.commit()
     real = TEXT + "\nArticle 41. A small addition."  # below the 5 % threshold
-    taken = await ingest(db, official, None, row(text=real), 5.0)
+    taken = await ingest(db, page, None, row(text=real, **PAGE), 5.0)
     await db.commit()
     assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
     db.expire_all()
     item = await db.get(Item, planted.item_id)
-    assert item is not None and item.source_id == official and item.title == "The Act"
-    # Now the publisher's: the feed can no longer change it, nor take it back.
-    back = await ingest(db, feed, None, row(text="Repealed again. " * 50), 5.0)
-    assert back.kind == "duplicate"
+    assert item is not None and (item.source_id, item.title) == (page, "The Act")
+    assert item.fetched_host == "reg.example"
+    # Fetched now: neither the feed nor another fetching source takes it back (no ping-pong).
+    assert (
+        await ingest(db, feed, None, row(text="Repealed again. " * 50), 5.0)
+    ).kind == "duplicate"
+    other = await source(admin)
+    assert (
+        await ingest(db, other, None, row(text="Other. " * 80, **PAGE), 5.0)
+    ).kind == "duplicate"
 
 
-async def test_a_source_off_the_host_never_takes_an_item(
+async def test_a_summary_never_takes_an_item_and_redirects_do_not_count(
     admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
+    """R7: the first lister is a feed; later rows that were not fetched from the URL's host
+    (no final URL, a redirect to another host, an upload) never take the item."""
     first, other = await source(admin), await source(admin)
-    await db.execute(update(Source).where(Source.id == other)
-                     .values(url="https://elsewhere.example/", credibility="official"))  # fmt: skip
-    await db.commit()
     made = await ingest(db, first, None, row(), 5.0)
     await db.commit()
-    assert (await ingest(db, other, None, row(text="Other. " * 80), 5.0)).kind == "duplicate"
+    for final in (None, "https://elsewhere.example/act", "urn:sha256:" + "a" * 64,
+                  "https://reg.example.evil.example/act"):  # fmt: skip
+        got = await ingest(db, other, None, row(text="Other. " * 80, final_url=final), 5.0)
+        assert got.kind == "duplicate", final
     item = await db.get(Item, made.item_id)
-    assert item is not None and item.source_id == first
+    assert item is not None and item.source_id == first and item.fetched_host is None
+
+
+async def test_the_owner_fetching_its_own_listed_item_records_the_host(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    sid, other = await source(admin), await source(admin)
+    made = await ingest(db, sid, None, row(), 5.0)
+    await db.commit()
+    await ingest(db, sid, None, row(**PAGE), 5.0)
+    await db.commit()
+    item = await db.get(Item, made.item_id)
+    assert item is not None and item.fetched_host == "reg.example"
+    assert (
+        await ingest(db, other, None, row(text="Other. " * 80, **PAGE), 5.0)
+    ).kind == "duplicate"
+
+
+async def test_a_fetched_pdf_replaces_a_feeds_text(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    feed, page = await source(admin), await source(admin)
+    planted = await ingest(db, feed, None, row(text="Planted. " * 50), 5.0)
+    await db.commit()
+    pdf = row(text=None, body_ref=f"raw/{page}/" + "e" * 64, mime="application/pdf", **PAGE)
+    taken = await ingest(db, page, None, pdf, 5.0)
+    await db.commit()
+    assert taken.kind == "changed" and planted.item_id is not None
+    latest = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == planted.item_id)
+                             .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
+    assert latest is not None and latest.content_text == ""
