@@ -136,6 +136,17 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 | N11 | low | `processing.near_duplicate_ratio` unbounded: 0 silenced everything. | bounded 80 to 100 | pending |
 | N12 | info | candidate flood, admin credibility flips, lingua on random letters | BL-112 | deferred |
 
+## Re-verification 7 (321b381): not signed off
+
+`321b381` (model classifier) yes; `6444692` no. Fixed: N10, N11; N9's containment and credibility cases (R17). New:
+
+| # | Severity | Description | Fix | Verified |
+| --- | --- | --- | --- | --- |
+| N13 | high | Titles differing only in an act number or date scored 98 to 99, so a series of regulations (2026/1234, /1235, /1236) or a guessed title from a feed at default `official` silenced real items. | numbers must match; only items of other sources are candidates | pending |
+| N14 | low | A deeply nested model answer raised `RecursionError` out of `parse` (latent: no provider). | caught | pending |
+| N15 | low | One-letter evidence passed; `.lower()` missed `casefold` and compatibility forms. | at least 15 characters, NFKC and case-folded | pending |
+| N16 | info | CJK titles never compare; rewrites of different length are missed. | BL-112 (e) | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

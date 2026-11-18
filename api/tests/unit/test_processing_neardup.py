@@ -46,3 +46,10 @@ def test_the_ratio_setting_is_bounded(value: int, ok: bool) -> None:
     else:
         with pytest.raises(ProblemError):
             check_value(defn, value)
+
+
+def test_numbers_are_identity() -> None:
+    a = "Commission Implementing Regulation (EU) 2026/1234 of 12 November 2026"
+    assert similar(a, a.replace("1234", "1235")) == 0
+    assert similar(a, a.replace("12 November", "13 November")) == 0
+    assert similar(a, "Commission Implementing Regulation (EU) 2026/1234 of 12 November 2026.") > 92

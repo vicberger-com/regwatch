@@ -231,23 +231,61 @@ async def test_every_row_of_an_official_api_run_speaks_for_its_host(
 async def test_a_near_duplicate_title_is_kept_for_review_without_an_event(
     admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
-    """M4 dedupe order: a reworded copy of a story in the same jurisdiction within 7 days."""
-    sid = await made_source(admin)
+    """M4 dedupe order: a reworded copy of a story, from another source, in the same jurisdiction
+    within 7 days; a different story, and the same source's own documents, are not."""
+    first, second = await made_source(admin), await made_source(admin)
     title = "BSI veröffentlicht neue Regeln für Betreiber kritischer Anlagen"
-    rows = [{"url": "https://example.org/a", "text": BSI, "title": title},
-            {"url": "https://mirror.example/b", "text": "Kopie. " + BSI, "title": title + "!"},
-            {"url": "https://example.org/c", "text": "Anders. " + BSI,
+    key, objects = manifest(
+        first,
+        uuid.uuid4(),
+        [
+            {"url": "https://example.org/a", "text": BSI, "title": title},
+            {"url": "https://example.org/a2", "text": "Zweite. " + BSI, "title": title + "."},
+        ],
+    )
+    assert "near_duplicate" not in (await process_manifest(db, key, loader(objects))).by_kind
+    rows = [{"url": "https://mirror.example/b", "text": "Kopie. " + BSI, "title": title + "!"},
+            {"url": "https://mirror.example/c", "text": "Anders. " + BSI,
              "title": "BSI warnt vor Schwachstellen in Routern"}]  # fmt: skip
-    key, objects = manifest(sid, uuid.uuid4(), rows)
+    key, objects = manifest(second, uuid.uuid4(), rows)
     counts = await process_manifest(db, key, loader(objects))
     assert counts.by_kind.get("near_duplicate") == 1
-    items = {i.canonical_url: i for i in (await db.scalars(
-        select(Item).where(Item.source_id == uuid.UUID(sid)))).all()}  # fmt: skip
+    items = {i.canonical_url: i for i in (await db.scalars(select(Item).where(
+        Item.source_id.in_([uuid.UUID(first), uuid.UUID(second)])))).all()}  # fmt: skip
     assert items["https://mirror.example/b"].needs_review is True
-    assert items["https://example.org/c"].needs_review is False
+    assert items["https://mirror.example/c"].needs_review is False
+    assert items["https://example.org/a2"].needs_review is False
     events = (await db.scalars(select(ChangeEvent.item_id).where(
         ChangeEvent.item_id.in_([i.id for i in items.values()])))).all()  # fmt: skip
-    assert items["https://mirror.example/b"].id not in events and len(set(events)) == 2
+    assert items["https://mirror.example/b"].id not in events and len(set(events)) == 3
+
+
+async def test_numbered_acts_are_never_near_duplicates(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 7, N13 (R21, R22): titles that differ only in an act number or date."""
+    feed, eurlex = await made_source(admin), await made_source(admin)
+    base = (
+        "Commission Implementing Regulation (EU) 2026/{n} of {d} November 2026 "
+        "on incident reporting"
+    )
+    key, objects = manifest(
+        feed,
+        uuid.uuid4(),
+        [
+            {
+                "url": "https://news.example/guess",
+                "text": "Guess. " + BSI,
+                "title": base.format(n=1299, d=12),
+            }
+        ],
+    )
+    await process_manifest(db, key, loader(objects))
+    rows = [{"url": f"https://example.org/{n}", "text": f"{n}. " + BSI,
+             "title": base.format(n=n, d=13)} for n in (1300, 1301, 1302)]  # fmt: skip
+    key, objects = manifest(eurlex, uuid.uuid4(), rows)
+    counts = await process_manifest(db, key, loader(objects))
+    assert counts.by_kind.get("new") == 3 and "near_duplicate" not in counts.by_kind
 
 
 async def test_a_news_feeds_titles_never_silence_an_official_item(
@@ -279,3 +317,75 @@ async def test_a_news_feeds_titles_never_silence_an_official_item(
     await process_manifest(db, key, loader(objects))
     copy = await db.scalar(select(Item).where(Item.canonical_url == "https://news.example/b"))
     assert copy is not None and copy.needs_review is True
+
+
+async def test_the_sweep_leaves_handed_manifests_alone_and_marks_empty_ones(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """BL-107 (g), N3: a manifest still queued is not handed over each hour; one with no
+    document list is marked processed, so never handed over again."""
+    from datetime import UTC, datetime, timedelta
+
+    from regwatch.processing.pipeline import HANDED_GRACE, handed_key, marker_key, sweep
+
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    objects: dict[str, bytes] = {}
+
+    async def store(k: str, body: bytes) -> None:
+        objects[k] = body
+
+    keys = []
+    for rows in ([{"url": "https://example.org/q", "text": BSI}], "not a list"):
+        run = CaptureRun(
+            job_id=uuid.UUID(made["job"]["id"]),
+            started_at=datetime.now(UTC),
+            finished_at=datetime.now(UTC),
+            status="success",
+            items_new=1,
+        )
+        db.add(run)
+        await db.commit()
+        key = execution.manifest_key(made["id"], run.id)
+        objects[key] = json.dumps({"documents": rows}).encode()
+        keys.append(key)
+    handed: list[str] = []
+
+    async def hand_over(k: str) -> None:
+        handed.append(k)
+
+    assert await sweep(db, loader(objects), hand_over, store=store) == 2
+    assert await sweep(db, loader(objects), hand_over, store=store) == 0  # still queued
+    await process_manifest(db, keys[1], loader(objects), store)
+    assert marker_key(keys[1]) in objects
+    old = (datetime.now(UTC) - HANDED_GRACE - timedelta(minutes=1)).isoformat().encode()
+    objects[handed_key(keys[0])] = old
+    objects[handed_key(keys[1])] = old
+    assert await sweep(db, loader(objects), hand_over, store=store) == 1  # the lost one only
+    assert handed[-1] == keys[0]
+    objects[handed_key(keys[0])] = b"2026-01-01T00:00:00"  # naive: not trusted, handed again
+    assert await sweep(db, loader(objects), hand_over, store=store) == 1
+
+
+@pytest.mark.parametrize("error", ["soft", "memory"])
+async def test_the_time_limit_or_memory_stops_the_manifest_unmarked(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """BL-107 (f) and (h): the worker's soft limit, or memory running out, is not one failed
+    row: processing stops, and no marker is written, so the sweep hands it over again."""
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    from regwatch.processing import pipeline
+
+    async def boom(*_: Any, **__: Any) -> None:
+        raise SoftTimeLimitExceeded() if error == "soft" else MemoryError()
+
+    monkeypatch.setattr(pipeline, "ingest", boom)
+    sid = await made_source(admin)
+    key, objects = manifest(sid, uuid.uuid4(), [{"url": "https://example.org/z", "text": BSI}])
+
+    async def store(k: str, body: bytes) -> None:
+        objects[k] = body
+
+    with pytest.raises((SoftTimeLimitExceeded, MemoryError)):
+        await process_manifest(db, key, loader(objects), store)
+    assert pipeline.marker_key(key) not in objects

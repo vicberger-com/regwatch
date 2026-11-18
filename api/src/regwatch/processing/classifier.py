@@ -15,6 +15,7 @@ notes: model classifier, optional, disabled by default).
 from __future__ import annotations
 
 import json
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
@@ -33,6 +34,7 @@ from regwatch.taxonomy.models import Facet, Term
 PROMPT_VERSION = "classify_v1"
 MAX_TEXT = 8000
 MAX_EVIDENCE = 200
+MIN_EVIDENCE = 15
 MAX_ANSWER = 64_000
 _PROMPTS = Path(__file__).parent / "prompts"
 _log = structlog.get_logger(__name__)
@@ -54,6 +56,11 @@ class ModelProvider(Protocol):
 PROVIDERS: dict[str, type[ModelProvider]] = {}  # none implemented yet (BL-111)
 
 
+def _fold(value: str) -> str:
+    """Compared as a reader would: NFKC, case-folded, spaces collapsed (N15)."""
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
 def prompt(terms: dict[str, str], language: str | None, text: str) -> str:
     template = (_PROMPTS / f"{PROMPT_VERSION}.txt").read_text(encoding="utf-8")
     listing = "\n".join(f"{key}: {label}" for key, label in sorted(terms.items()))
@@ -66,7 +73,7 @@ def parse(answer: str, terms: dict[str, uuid.UUID], text: str,
     """The assignments an answer may make; anything malformed or outside the list is dropped."""
     try:
         data: Any = json.loads(answer[:MAX_ANSWER])
-    except ValueError:
+    except (ValueError, RecursionError):  # a deeply nested answer too (N14)
         return []
     found = data.get("terms") if isinstance(data, dict) else None
     out: dict[uuid.UUID, TermAssignment] = {}
@@ -80,10 +87,11 @@ def parse(answer: str, terms: dict[str, uuid.UUID], text: str,
             continue
         if not 0 <= confidence <= 1 or confidence < min_confidence:
             continue
-        if not isinstance(evidence, str) or not evidence.strip() or len(evidence) > MAX_EVIDENCE:
+        if not isinstance(evidence, str) or len(evidence) > MAX_EVIDENCE:
             continue
-        if evidence.strip().lower() not in text[:MAX_TEXT].lower():
-            continue  # evidence must be a real quote
+        quote = _fold(evidence)
+        if len(quote) < MIN_EVIDENCE or quote not in _fold(text[:MAX_TEXT]):
+            continue  # evidence must be a real quote of some length (N15)
         out.setdefault(terms[key], TermAssignment(terms[key], float(confidence), evidence.strip()))
     return list(out.values())
 

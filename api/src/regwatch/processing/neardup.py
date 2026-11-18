@@ -8,6 +8,8 @@ A new item is a near-duplicate (the same news under another address) of an earli
 - rapidfuzz's token-sort ratio (word order aside, never mere containment: a short or catch-all
   title cannot match the long titles it is part of; pipeline re-verification 6, N9) reaches
   ``processing.near_duplicate_ratio`` (92, at least 80);
+- they carry the same numbers (act numbers, years, dates are identity; re-verification 7, N13);
+- they come from different sources (one source's distinct URLs are distinct documents);
 - they share a jurisdiction, the earlier one was discovered in the last ``WINDOW_DAYS`` days,
   and its source is at least as credible as the new item's (a news feed never silences an
   official source).
@@ -19,6 +21,7 @@ compared.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -36,6 +39,7 @@ MIN_TITLE = 12  # characters; shorter titles ("Notice", "Press release") say too
 MIN_WORDS = 4
 MIN_LENGTH_RATIO = 0.8
 RANK = {"official": 3, "secondary": 2, "news": 1}
+_DIGITS = re.compile(r"\d+")
 
 
 def similar(a: str, b: str) -> float:
@@ -43,6 +47,8 @@ def similar(a: str, b: str) -> float:
     Titles too short, or of too different lengths, to be the same story give 0."""
     if not (_comparable(a) and _comparable(b)):
         return 0.0
+    if sorted(_DIGITS.findall(a)) != sorted(_DIGITS.findall(b)):
+        return 0.0  # numbers are identity: Regulation 2026/1234 is not 2026/1235 (N13)
     x, y = utils.default_process(a), utils.default_process(b)
     if min(len(x), len(y)) < MIN_LENGTH_RATIO * max(len(x), len(y)):
         return 0.0
@@ -72,6 +78,7 @@ async def near_duplicate(db: AsyncSession, item: Item, jurisdiction_ids: list[uu
         .join(ItemJurisdiction, ItemJurisdiction.item_id == Item.id)
         .join(Source, Source.id == Item.source_id)
         .where(ItemJurisdiction.jurisdiction_id.in_(jurisdiction_ids), Item.id != item.id,
+               Item.source_id != item.source_id,  # a source's own URLs are its own documents
                Item.discovered_at >= since, Source.credibility.in_(standing))
         .order_by(Item.id.desc()).limit(MAX_CANDIDATES))  # fmt: skip
     for other_id, title in rows.tuples().all():
