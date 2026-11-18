@@ -22,6 +22,19 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _log = structlog.get_logger("regwatch.access")
 
 MAX_BODY_BYTES = 2 * 1024 * 1024  # 8.2 request limit; uploads get their own caps when they land
+# Upload routes with a larger cap (8.2 allows uploads up to 25 MB): the method, the path under
+# the API prefix, and the cap. CP-17: a manual source's document, 10 MB and the multipart frame.
+UPLOADS = ((b"POST", re.compile(r"/api/v1/sources/[0-9a-fA-F-]{36}/documents"),
+            10 * 1024 * 1024 + 64 * 1024),)  # fmt: skip
+
+
+def _limit(scope: Scope, default: int) -> int:
+    method = scope.get("method", "").encode()
+    path = scope.get("path", "")
+    for allowed, pattern, cap in UPLOADS:
+        if method == allowed and pattern.fullmatch(path):
+            return cap
+    return default
 
 
 class BodySizeLimitMiddleware:
@@ -40,9 +53,10 @@ class BodySizeLimitMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        limit = _limit(scope, self.max_bytes)
         declared = next((v for k, v in scope["headers"] if k == b"content-length"), None)
-        if declared is not None and (not declared.isdigit() or int(declared) > self.max_bytes):
-            await self._refuse(scope, send)
+        if declared is not None and (not declared.isdigit() or int(declared) > limit):
+            await self._refuse(scope, send, limit)
             return
         seen = 0
         started = refused = False
@@ -52,10 +66,10 @@ class BodySizeLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
-                if seen > self.max_bytes and not refused:
+                if seen > limit and not refused:
                     refused = True
                     if not started:
-                        await self._refuse(scope, send)
+                        await self._refuse(scope, send, limit)
                     # The app sees a disconnect and stops reading; its answer is dropped.
                     return {"type": "http.disconnect"}
             return message
@@ -70,9 +84,9 @@ class BodySizeLimitMiddleware:
 
         await self.app(scope, counting_receive, tracking_send)
 
-    async def _refuse(self, scope: Scope, send: Send) -> None:
+    async def _refuse(self, scope: Scope, send: Send, limit: int) -> None:
         body = {"type": "https://regwatch/errors/payload-too-large", "title": "Content Too Large",
-                "status": 413, "detail": f"Request bodies are limited to {self.max_bytes} bytes.",
+                "status": 413, "detail": f"Request bodies are limited to {limit} bytes.",
                 "instance": scope.get("path", "")}  # fmt: skip
         rid = structlog.contextvars.get_contextvars().get("request_id")
         if rid:

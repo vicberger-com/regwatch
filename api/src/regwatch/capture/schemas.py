@@ -121,6 +121,12 @@ class Candidate(BaseModel):
     external_id: str | None = None
 
 
+class DocumentAccepted(BaseModel):
+    """``POST /sources/{id}/documents`` (CP-17): the run that adds the document."""
+
+    run_id: UUID
+
+
 class SourceTestResult(BaseModel):
     candidates: list[Candidate] = Field(default=UNSET, max_length=5)
     robots_decision: str = UNSET

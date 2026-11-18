@@ -34,6 +34,7 @@ from tenacity import (
 )
 
 from regwatch.capture.connectors import api_feed as _api_feed  # noqa: F401 - registers it
+from regwatch.capture.connectors import manual as _manual  # noqa: F401 - registers it
 from regwatch.capture.connectors import rss as _rss  # noqa: F401 - registers the connector
 from regwatch.capture.connectors import web_crawl as _web_crawl  # noqa: F401 - registers it
 from regwatch.capture.connectors import web_page as _web_page  # noqa: F401 - registers it
@@ -181,6 +182,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     counter = _CountingFetcher(base.fetcher)
     ctx = ConnectorContext(fetcher=cast(CaptureFetcher, counter), store=base.store, now=base.now,
                            notes=base.notes, load=base.load)  # fmt: skip
+    ctx.scratch["run_id"] = str(run_id)  # the manual connector's request is keyed by it
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
     unchanged = 0  # fetched and compared: the same as last time, so not for M4 (CP-16)

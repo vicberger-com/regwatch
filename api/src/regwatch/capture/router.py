@@ -8,19 +8,23 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
+from starlette.datastructures import UploadFile
 
-from regwatch.capture import dryrun, runs, services, tasks
+from regwatch.capture import dryrun, manual, runs, services, tasks
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
     CaptureRun,
+    DocumentAccepted,
     Source,
     SourceHealth,
     SourceKind,
     SourceTestResult,
     SourceWrite,
 )
+from regwatch.core import objectstore
 from regwatch.core.db import DbSession
+from regwatch.core.errors import ProblemError
 from regwatch.core.routing import Paging, spec
 from regwatch.core.schemas import Page
 from regwatch.identity.permissions import CurrentPrincipal
@@ -90,6 +94,62 @@ async def test_source(
                                     tasks.publish_dry_run, valkey)  # fmt: skip
     finally:
         await valkey.aclose()
+
+
+# CP-17: a URL as JSON, or a file as multipart; the handler reads the body itself.
+DOCUMENT_BODY = {"required": True, "content": {
+    "application/json": {"schema": {
+        "type": "object", "additionalProperties": False, "required": ["url"],
+        "properties": {"url": {"type": "string", "format": "uri", "maxLength": 2048},
+                       "title": {"type": "string", "maxLength": 500}}}},
+    "multipart/form-data": {"schema": {
+        "type": "object", "required": ["file"],
+        "properties": {"file": {"type": "string", "format": "binary"},
+                       "title": {"type": "string", "maxLength": 500}}}}}}  # fmt: skip
+
+
+@router.post(
+    "/sources/{id}/documents",
+    **spec(DocumentAccepted, status=202, desc="Accepted; the run that adds the document",
+           perm=MANAGE, errors=(409, 413, 415), body=DOCUMENT_BODY, stub=False,
+           error_desc={409: "The source is not a manual source, or a run is already in progress",
+                       413: "The file is larger than 10 MB",
+                       415: "Not HTML, PDF or plain text"}),
+)  # fmt: skip
+async def add_source_document(id: UUID, principal: CurrentPrincipal, request: Request,
+                              db: DbSession) -> DocumentAccepted:  # fmt: skip
+    url, data, title = await _document_body(request)
+    run_id = await manual.add_document(db, id, principal, client_ip(request), url=url,
+                                       data=data, title=title, store=objectstore.put,
+                                       enqueue=tasks.enqueue_run)  # fmt: skip
+    return DocumentAccepted(run_id=run_id)
+
+
+async def _document_body(request: Request) -> tuple[str | None, bytes | None, str | None]:
+    """(url, file bytes, title) from a JSON or a multipart body; one file part at most."""
+    kind = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if kind == "application/json":
+        try:
+            body = await request.json()
+        except ValueError:
+            raise ProblemError(422, "validation", "The body is not JSON.") from None
+        if (not isinstance(body, dict) or set(body) - {"url", "title"}
+                or not isinstance(body.get("url"), str) or len(body["url"]) > 2048
+                or not isinstance(body.get("title", ""), str)):  # fmt: skip
+            raise ProblemError(422, "validation", 'Send {"url": ..., "title": ...}.')
+        return body["url"], None, body.get("title")
+    if kind == "multipart/form-data":
+        async with request.form(max_files=1, max_fields=1,
+                                max_part_size=manual.MAX_FILE_BYTES + 1) as form:  # fmt: skip
+            upload = form.get("file")
+            title = form.get("title")
+            if not isinstance(upload, UploadFile) or (title is not None
+                                                      and not isinstance(title, str)):  # fmt: skip
+                raise ProblemError(415, "unsupported-media-type", "Send the document as a file "
+                                   "part named file.")  # fmt: skip
+            data = await upload.read(manual.MAX_FILE_BYTES + 1)
+        return None, data, title
+    raise ProblemError(415, "unsupported-media-type", "Send JSON with a url, or a multipart file.")
 
 
 @router.get("/sources/{id}/health", **spec(SourceHealth, desc="Health", perm=READ, stub=False))

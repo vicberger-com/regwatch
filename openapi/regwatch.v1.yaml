@@ -295,6 +295,22 @@ paths:
   /sources/{id}/test:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     post: { tags: [capture], x-permission: sources.manage, responses: { "200": { description: Dry run; first candidates, content: { application/json: { schema: { type: object, properties: { candidates: { type: array, maxItems: 5, items: { $ref: "#/components/schemas/Candidate" } }, robots_decision: { type: string }, warnings: { type: array, items: { type: string } } } } } } } } }
+  /sources/{id}/documents:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post:
+      tags: [capture]
+      x-permission: sources.manage
+      description: "CP-17: add one document to a manual source, by URL (fetched through SafeFetcher by a worker) or by file (HTML, PDF or plain text, at most 10 MB). Starts a capture run; the document goes through the same extraction and manifest as captured ones. Audited."
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { type: object, additionalProperties: false, required: [url], properties: { url: { type: string, format: uri, maxLength: 2048 }, title: { type: string, maxLength: 500 } } } }
+          multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, title: { type: string, maxLength: 500 } } } }
+      responses:
+        "202": { description: Accepted; the run that adds the document, content: { application/json: { schema: { type: object, required: [run_id], properties: { run_id: { type: string, format: uuid } } } } } }
+        "409": { $ref: "#/components/responses/Problem" }
+        "413": { $ref: "#/components/responses/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
   /sources/{id}/health:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     get: { tags: [capture], x-permission: sources.read, responses: { "200": { description: Health, content: { application/json: { schema: { $ref: "#/components/schemas/SourceHealth" } } } } } }
