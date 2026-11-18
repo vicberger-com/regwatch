@@ -92,7 +92,9 @@ class ManualConnector:
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
         if candidate.hints.get("kind") == "url":
             got = await ctx.fetcher.fetch(candidate.url, rate_per_minute=job.rate_per_minute,
-                                          robots_override=job.robots_override)  # fmt: skip
+                                          robots_override=None)  # fmt: skip
+            # Never the override: anyone with sources.manage can submit any URL here, and the
+            # override's reason was written about another site (8.3; manual review finding 1).
             if not 200 <= got.status < 300:
                 raise ConnectorError("http-status", f"the page answered HTTP {got.status}")
             mime = FETCHED_KINDS.get(got.mime or "")

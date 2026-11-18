@@ -5,6 +5,7 @@ Every route is implemented (M3); the dry run runs on a worker (CP-13).
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
@@ -96,6 +97,7 @@ async def test_source(
         await valkey.aclose()
 
 
+MAX_JSON_BYTES = 8 * 1024  # a URL and a title
 # CP-17: a URL as JSON, or a file as multipart; the handler reads the body itself.
 DOCUMENT_BODY = {"required": True, "content": {
     "application/json": {"schema": {
@@ -129,9 +131,12 @@ async def _document_body(request: Request) -> tuple[str | None, bytes | None, st
     """(url, file bytes, title) from a JSON or a multipart body; one file part at most."""
     kind = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if kind == "application/json":
+        raw = await request.body()
+        if len(raw) > MAX_JSON_BYTES:  # the 10 MB cap is for files (manual review finding 2)
+            raise ProblemError(413, "payload-too-large", "A JSON body is at most 8 KB.")
         try:
-            body = await request.json()
-        except ValueError:
+            body = json.loads(raw)
+        except (ValueError, RecursionError):  # deep nesting too (finding 2)
             raise ProblemError(422, "validation", "The body is not JSON.") from None
         if (not isinstance(body, dict) or set(body) - {"url", "title"}
                 or not isinstance(body.get("url"), str) or len(body["url"]) > 2048

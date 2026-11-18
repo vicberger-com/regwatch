@@ -17,6 +17,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,9 +43,9 @@ def request_key(source_id: uuid.UUID | str, run_id: uuid.UUID | str) -> str:
 def sniff(data: bytes) -> str:
     """What the bytes are: ``application/pdf``, ``text/html`` or ``text/plain``; anything else
     is refused (415). Decided from the content alone."""
-    head = data[:1024].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
     if data.startswith(b"%PDF-"):
         return "application/pdf"
+    head = data.lstrip(b"\xef\xbb\xbf \t\r\n\x0c")[:4096].lower()
     if b"\x00" in data[:8192]:
         raise ProblemError(415, "unsupported-media-type", "Send HTML, PDF or plain text.")
     try:
@@ -52,7 +53,11 @@ def sniff(data: bytes) -> str:
     except UnicodeDecodeError:
         raise ProblemError(415, "unsupported-media-type", "Send HTML, PDF or plain text "
                            "(text as UTF-8).") from None  # fmt: skip
-    if head.startswith((b"<!doctype html", b"<html", b"<head", b"<body", b"<!--")):
+    # HTML in its common openings, XHTML after an XML prolog, and any markup that names an
+    # html element near the start: read by the isolated extraction child, never as text
+    # (manual review finding 4).
+    if head.startswith((b"<!doctype html", b"<html", b"<head", b"<body", b"<!--", b"<meta",
+                        b"<title", b"<?xml")) or b"<html" in head:  # fmt: skip
         return "text/html"
     return "text/plain"
 
@@ -84,7 +89,11 @@ async def add_document(db: AsyncSession, source_id: uuid.UUID, principal: Princi
             raise ProblemError(422, "validation", "The URL must be http or https and its host "
                                "must resolve to public addresses only.") from None  # fmt: skip
         request: dict[str, str | None] = {"kind": "url", "url": url, "title": title}
-        detail: dict[str, object] = {"url": url}
+        # The query can carry a signed link's token: the append-only audit keeps the address
+        # without it (manual review info).
+        parts = urlsplit(url)
+        shown = f"{parts.scheme}://{parts.netloc}{parts.path}" + ("?..." if parts.query else "")
+        detail: dict[str, object] = {"url": shown}
         upload: tuple[str, bytes] | None = None
     else:
         assert data is not None  # noqa: S101 - the route passes one of the two

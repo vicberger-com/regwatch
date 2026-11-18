@@ -13,11 +13,11 @@ from regwatch.capture import manual, services
 from regwatch.core import objectstore
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import ORIGIN, clear_limits, db_url
-from tests.integration.test_capture_runs import Queue, queue
+from tests.integration.test_capture_runs import Queue, db, queue
 from tests.integration.test_sources import rss
 
 pytestmark = pytest.mark.integration
-__all__ = ["admin", "clear_limits", "db_url", "queue"]  # shared fixtures
+__all__ = ["admin", "clear_limits", "db", "db_url", "queue"]  # shared fixtures
 
 PDF = b"%PDF-1.7\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
@@ -90,7 +90,10 @@ async def test_a_file_is_checked_by_its_content_and_stored(
      ({"json": {"url": "https://reg.example/", "extra": 1}}, 422),
      ({"json": {"url": "https://reg.example/", "title": "x" * 501}}, 422),
      ({"content": b"url=https://reg.example/",
-       "headers": {"content-type": "application/x-www-form-urlencoded"}}, 415)],
+       "headers": {"content-type": "application/x-www-form-urlencoded"}}, 415),
+     ({"content": b"[" * 100_000, "headers": {"content-type": "application/json"}}, 413),
+     ({"content": b"[" * 5_000, "headers": {"content-type": "application/json"}}, 422),
+     ({"content": b"{not json", "headers": {"content-type": "application/json"}}, 422)],
 )  # fmt: skip
 async def test_bad_documents_are_refused(admin: httpx.AsyncClient, queue: Queue,
                                          stored: dict[str, bytes], body: dict[str, Any],
@@ -136,3 +139,43 @@ async def test_the_body_cap_is_larger_only_on_this_route(
     elsewhere = await admin.post(_api("/sources"), content=three_mb,
                                  headers={"content-type": "application/json"})  # fmt: skip
     assert elsewhere.status_code == 413
+
+
+async def test_a_manual_source_cannot_override_robots(admin: httpx.AsyncClient) -> None:
+    """Manual review finding 1."""
+    body = {"name": "Uploads", "kind": "manual", "config": {}, "robots_policy": "override",
+            "override_reason": "The regulator agreed in writing"}  # fmt: skip
+    got = await admin.post(_api("/sources"), json=body)
+    assert got.status_code == 422
+    assert [e["field"] for e in got.json()["errors"]] == ["robots_policy"]
+
+
+async def test_the_audit_keeps_the_url_without_its_query(
+    admin: httpx.AsyncClient, queue: Queue, stored: dict[str, bytes]
+) -> None:
+    sid = await _manual(admin)
+    url = "https://reg.example/act?token=secret"
+    assert (
+        await admin.post(_api(f"/sources/{sid}/documents"), json={"url": url})
+    ).status_code == 202
+    audit = await admin.get(_api("/admin/audit"), params={"action": "source.document_added"})
+    assert audit.json()["items"][0]["after"]["url"] == "https://reg.example/act?..."
+
+
+async def test_the_scheduler_leaves_manual_sources_alone(admin: httpx.AsyncClient, queue: Queue,
+                                                         db: Any) -> None:  # fmt: skip
+    """Manual review info: no empty run each hour, so no 409 for uploads in that window."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    from regwatch.capture import runs
+    from regwatch.capture.models import CaptureJob
+
+    sid = await _manual(admin)
+    past = datetime.now(UTC) - timedelta(hours=1)
+    await db.execute(update(CaptureJob).where(CaptureJob.source_id == uuid.UUID(sid))
+                     .values(next_run_at=past))  # fmt: skip
+    await db.commit()
+    await runs.tick(db, queue)
+    assert queue.sent == []

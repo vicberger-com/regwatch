@@ -207,6 +207,9 @@ async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None,
     jobs = (await db.scalars(
         select(CaptureJob).join(Source, Source.id == CaptureJob.source_id)
         .where(CaptureJob.enabled, Source.enabled, CaptureJob.next_run_at <= now)
+        # A manual source runs only when a document is added (CP-17): an empty run each hour
+        # would only make uploads in that window answer 409 (manual review info).
+        .where(Source.kind != "manual")
         .order_by(CaptureJob.next_run_at).limit(TICK_BATCH)
         .with_for_update(of=CaptureJob, skip_locked=True))).all()  # fmt: skip
     started: list[CaptureRun] = []

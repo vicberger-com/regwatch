@@ -26,7 +26,10 @@ RUN = "01930000-0000-7000-8000-000000000001"
     ("data", "mime"),
     [(b"%PDF-1.7 ...", "application/pdf"), (b"\xef\xbb\xbf <!DOCTYPE html><p>x", "text/html"),
      (b"<html><body>x", "text/html"), (b"Plain words, caf\xc3\xa9.", "text/plain"),
-     (b"<p>a fragment, taken as text</p>", "text/plain")],
+     (b"<p>a fragment, taken as text</p>", "text/plain"),
+     (b'<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml">', "text/html"),
+     (b"<meta charset=utf-8><p>x", "text/html"), (b" " * 2000 + b"<html><p>x", "text/html"),
+     (b"<div>some text</div><html>late</html>", "text/html")],
 )  # fmt: skip
 def test_sniffing_by_content(data: bytes, mime: str) -> None:
     assert manual.sniff(data) == mime
@@ -157,3 +160,62 @@ async def test_a_page_that_cannot_be_read_is_a_typed_failure() -> None:
         await run({body_ref: b"<div>" * 1000}, {"kind": "file", "body_ref": body_ref,
                                                 "mime": "text/html"})  # fmt: skip
     assert exc.value.reason == "too-deep"
+
+
+async def test_the_override_never_applies_to_a_submitted_url() -> None:
+    """Manual review finding 1: robots.txt is obeyed whatever the job says."""
+    calls: list[Any] = []
+
+    class Recording:
+        async def fetch(self, url: str, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            from regwatch.capture.safe_fetch import FetchResult
+
+            return FetchResult(url, 200, {"content-type": "application/pdf"}, b"%PDF-1.7")
+
+    objects = {manual.request_key(SID, RUN): json.dumps({"kind": "url",
+                                                         "url": "https://elsewhere.example/m",
+                                                         "title": None}).encode()}  # fmt: skip
+
+    async def store(key: str, body: bytes) -> None:
+        objects[key] = body
+
+    async def load(key: str) -> bytes | None:
+        return objects.get(key)
+
+    ctx = ConnectorContext(fetcher=Recording(), store=store, now=lambda: NOW, load=load)  # type: ignore[arg-type]
+    ctx.scratch["run_id"] = RUN
+    job = JobSettings(**{**JOB.__dict__, "robots_override": "The regulator agreed in writing"})
+    [c] = [c async for c in connector.ManualConnector().discover(job, ctx)]
+    await connector.ManualConnector().fetch(c, job, ctx)
+    assert calls[0]["robots_override"] is None
+
+
+async def test_a_run_of_a_manual_source_reads_its_request_by_the_run_id() -> None:
+    """Manual review finding 7: through run_connector, which passes the run's id."""
+    import uuid
+
+    from regwatch.capture import execution
+    from regwatch.capture.models import CaptureJob, Source
+
+    objects: dict[str, bytes] = {}
+    run_id = uuid.UUID(RUN)
+    objects[manual.request_key(SID, run_id)] = json.dumps(
+        {"kind": "url", "url": "https://reg.example/act", "title": "Act"}
+    ).encode()
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        return context(objects, None)
+
+    source = Source(id=uuid.UUID(SID), kind="manual", robots_policy="respect", config={},
+                    override_reason=None)  # fmt: skip
+    job = CaptureJob(max_items_per_run=10, rate_limit_per_minute=6000, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    got = await execution.run_connector(run_id, job, source, make)
+    assert (got.status, got.items_new) == ("success", 1)
+    objects[manual.request_key(SID, run_id)] = json.dumps(
+        {"kind": "url", "url": "https://reg.example/img", "title": None}
+    ).encode()
+    failed = await execution.run_connector(run_id, job, source, make)
+    # Finding 5: one document, so its own reason, not "none of 1 documents".
+    assert (failed.status, failed.error_class) == ("failed", "unsupported-type")

@@ -148,7 +148,9 @@ async def test_refusals_are_not_retried(h: Harness, reason: str) -> None:
     h.fetcher.fail = {"https://e.org/a": [FetchRefusedError(reason, "server said <x>")]}
     got = await h.run(Fake(["https://e.org/a"]))
     assert [u for u, _ in h.fetcher.calls].count("https://e.org/a") == 1
-    assert (got.status, got.error_class) == ("failed", "fetch-failed")
+    # One document and it failed: the run names its reason (manual upload review finding 5).
+    assert (got.status, got.error_class) == ("failed", reason)
+    assert "<x>" not in (got.error_message or "")  # fixed text, never the server's
     assert execution.manifest_key(str(SOURCE), RUN) not in h.stored
 
 

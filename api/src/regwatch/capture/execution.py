@@ -185,6 +185,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     ctx.scratch["run_id"] = str(run_id)  # the manual connector's request is keyed by it
     allowed = "overridden" if settings.robots_override else "allowed"
     entries: list[tuple[Candidate, RawDocument]] = []
+    last_failure: tuple[str, str] | None = None  # the reason of the last failed document
     unchanged = 0  # fetched and compared: the same as last time, so not for M4 (CP-16)
     failures = 0
     refused: dict[str, int] = {}  # robots.txt or a busy host refused these pages: not failures
@@ -211,6 +212,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
                     else:
                         failures += 1
+                        last_failure = (exc.reason, _refusal(exc))
                 except ConnectorError as exc:
                     if exc.reason in STOPPING:  # a block on one document stops the run (3)
                         raise
@@ -218,6 +220,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
                     else:
                         failures += 1
+                        last_failure = (exc.reason, exc.detail)
     except TimeoutError:
         if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
             raise
@@ -246,6 +249,9 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries) + unchanged, failures, refused, cut_short)
+    if error_class == "fetch-failed" and failures == 1 and last_failure is not None:
+        # One document and it failed: its own reason says more (manual upload review 5).
+        error_class, message = last_failure
     # Only a connector that resumes from the cursor gets one, and not past failed documents
     # (CP-13/14 review finding 1, low findings): otherwise "continues" would not be true.
     resumes = "resumes" in ctx.notes and failures == 0

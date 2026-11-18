@@ -199,6 +199,10 @@ def check_robots(values: dict[str, Any], source: Source | None, principal: Princ
     policy = values.get("robots_policy", source.robots_policy if source else "respect")
     config = values.get("config", source.config if source else {}) or {}
     kind = values.get("kind", source.kind if source else None)
+    if policy == "override" and kind == "manual":
+        # A manual source takes any URL its editors submit, so no override reason can be about
+        # the sites it will reach (8.3; manual upload review finding 1).
+        raise invalid("robots_policy", "manual sources always obey robots.txt")
     if policy == "override" and kind == "api_feed" and config.get("provider") in NO_OVERRIDE:
         # Its fair use policy says robots.txt must be followed (R-06 E-UK-3; legislation
         # review finding 1); the adapter also always obeys it.
