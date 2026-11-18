@@ -8,10 +8,10 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from regwatch.capture.models import CaptureJob, CaptureRun
+from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemVersion
 from tests.integration.test_admin import _api, admin
@@ -392,3 +392,31 @@ async def test_a_feeds_full_page_first_never_locks_an_item(
     item = await db.get(Item, made.item_id)
     assert item is not None and (item.source_id, item.title) == (page, "Rule 48")
     assert item.fetched_host == "reg.example"
+
+
+async def test_an_official_source_takes_a_page_a_search_hit_fetched_first(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """BL-109 (a), re-verification 5 N8 (R16): the publisher's later rows version the page."""
+    search, page = await source(admin), await source(admin)
+    await db.execute(update(Source).where(Source.id == search).values(credibility="secondary"))
+    await db.commit()
+    url = "https://reg.example/rules/50"
+    hit = await ingest(db, search, None, row(url=url, final_url=url,
+                                             title="Rule 50 repealed - fines ahead"), 5.0,
+                       kind="search_query", credibility="secondary")  # fmt: skip
+    await db.commit()
+    changed = TEXT.replace("Providers shall report incidents", "Operators must notify everyone")
+    taken = await ingest(db, page, None, row(url=url, final_url=url, text=changed,
+                                             title="Rule 50"), 5.0,
+                         kind="web_page", credibility="official")  # fmt: skip
+    await db.commit()
+    assert (taken.kind, taken.item_id) == ("changed", hit.item_id)
+    db.expire_all()
+    item = await db.get(Item, hit.item_id)
+    assert item is not None and (item.source_id, item.title) == (page, "Rule 50")
+    # Now the publisher's: the search hit, or another official fetcher, never takes it back.
+    for other, standing in ((search, "secondary"), (await source(admin), "official")):
+        again = await ingest(db, other, None, row(url=url, final_url=url, text="Other. " * 80),
+                             5.0, kind="web_page", credibility=standing)  # fmt: skip
+        assert again.kind == "duplicate", standing

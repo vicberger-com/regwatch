@@ -32,11 +32,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.connectors.rss import plain_text
-from regwatch.capture.models import CaptureRun
+from regwatch.capture.models import CaptureRun, Source
 from regwatch.processing import versioning
 from regwatch.processing.models import Item, ItemVersion
 
 MAX_TEXT = 1_000_000
+RANK = {"official": 3, "secondary": 2, "news": 1}  # source credibility, for N8
 MAX_TITLE = 500
 MAX_SUMMARY = 4000
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -156,6 +157,7 @@ async def ingest(
     threshold_pct: float,
     retried: bool = False,
     kind: str = "",
+    credibility: str = "",
 ) -> Ingested:
     """One manifest row as an item; the caller commits."""
     url = row.get("url")
@@ -186,8 +188,16 @@ async def ingest(
         # whatever the change share (CP-19, findings N4 to N6). A fetched item is never taken,
         # so two sources fetching one page never take it in turn. A fetched page without text
         # (a feed's full page, a PDF) waits for M4's extraction: no empty version over text.
-        if item.fetched_host is not None or fetched_host is None:
+        # A fetched item passes only to a more credible source that fetched it too (official
+        # over secondary over news; BL-109 (a), finding N8): a search hit never holds the
+        # publisher's page, and sources of equal standing never take it in turn.
+        if fetched_host is None:
             return Ingested("duplicate", item.id)
+        if item.fetched_host is not None:
+            owner = await db.scalar(select(Source.credibility)
+                                    .where(Source.id == item.source_id))  # fmt: skip
+            if RANK.get(credibility, 0) <= RANK.get(owner or "", 0):
+                return Ingested("duplicate", item.id)
         item.source_id = source_id
         claimed = True
     if item is not None and item.fetched_host is None and fetched_host is not None:
@@ -218,7 +228,16 @@ async def ingest(
         except IntegrityError:
             if retried:  # not the race: let the row fail, logged by the pipeline
                 raise
-            return await ingest(db, source_id, run_id, row, threshold_pct, retried=True, kind=kind)
+            return await ingest(
+                db,
+                source_id,
+                run_id,
+                row,
+                threshold_pct,
+                retried=True,
+                kind=kind,
+                credibility=credibility,
+            )
         db.add(ItemVersion(item_id=item.id, run_id=run_id, version_no=1, content_text=text,
                            content_hash=content_hash))  # fmt: skip
         return Ingested("new", item.id)
