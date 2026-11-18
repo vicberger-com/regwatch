@@ -259,3 +259,43 @@ async def test_valkey_failures_answer_503() -> None:
         with pytest.raises(ProblemError) as exc:
             await dryrun.request(DB(), uuid.UUID(int=1), Who(), None, publish, Down(error))  # type: ignore[arg-type]
         assert exc.value.status == 503, type(error)
+
+
+async def test_a_dry_run_never_waits_for_a_search_slot() -> None:
+    """Search review finding 3: the test asks the pace with no wait, so it never reserves a
+    slot it would give up on."""
+    from regwatch.capture.connectors.base import ConnectorContext
+
+    waits: list[float] = []
+
+    async def pace(key: str, interval_s: float, max_wait_s: float = 120.0) -> None:
+        waits.append(max_wait_s)
+
+    class Fake:
+        kind = "search_query"
+
+        async def discover(self, job: Any, ctx: ConnectorContext) -> Any:
+            assert ctx.pace is not None
+            await ctx.pace("search", 60.0)
+            return
+            yield
+
+    async def make(settings: Any) -> ConnectorContext:
+        return ConnectorContext(fetcher=None, store=None, now=lambda: None, pace=pace)  # type: ignore[arg-type]
+
+    from regwatch.capture import dryrun
+    from regwatch.capture.connectors import base
+    from regwatch.capture.models import CaptureJob, Source
+
+    old = base.REGISTRY.get("search_query")
+    base.REGISTRY["search_query"] = Fake()  # type: ignore[assignment]
+    try:
+        source = Source(id=uuid.uuid4(), kind="search_query", robots_policy="respect",
+                        config={"query": "AI act"}, override_reason=None)  # fmt: skip
+        job = CaptureJob(max_items_per_run=10, rate_limit_per_minute=60, render_js=False,
+                         extraction_rules={})  # fmt: skip
+        await dryrun.preview(job, source, make)
+    finally:
+        if old is not None:
+            base.REGISTRY["search_query"] = old
+    assert waits == [0.0]

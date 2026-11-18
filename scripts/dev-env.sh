@@ -11,6 +11,7 @@
 #                   from it. The app containers get it inside REGWATCH_QUEUE_URL (BL-90 (a)).
 #   deploy/search.env the SearXNG secret key; read only by the search container (ADR-0010).
 set -euo pipefail
+umask 077  # every file below holds a secret: private from the moment it exists
 root="$(cd "$(dirname "$0")/.." && pwd)"
 target="$root/deploy/.env"
 dbtarget="$root/deploy/db.env"

@@ -99,7 +99,9 @@ def _valkey() -> Any:
                                    socket_connect_timeout=BROKER_TIMEOUT_S)  # fmt: skip
 
 
-PACE_MAX_WAIT_S = 600.0  # a query waits at most 10 minutes for its turn
+OFFICIAL_KINDS = ("rss", "web_page", "web_crawl", "api_feed")
+URL_FIELDS = ("feed_url", "page_url", "seed_urls", "endpoint_url")
+PACE_MAX_WAIT_S = 120.0  # a query waits at most 2 minutes for its turn, in a worker process
 
 
 async def _search_context(db: AsyncSession) -> tuple[Any, frozenset[str]]:
@@ -117,11 +119,15 @@ async def _search_context(db: AsyncSession) -> tuple[Any, frozenset[str]]:
     provider = (await values(db, ["search.provider"]))["search.provider"]
     client = (InternalClient(str(get_settings().search_url))
               if flag and provider == "searxng" else None)  # fmt: skip
+    # Only sources whose addresses an admin chose: never search or manual sources, and only
+    # their URL fields (search review finding 4).
     rows = await db.execute(select(Source.url, Source.config)
-                            .where(Source.enabled, Source.credibility == "official"))  # fmt: skip
+                            .where(Source.enabled, Source.credibility == "official",
+                                   Source.kind.in_(OFFICIAL_KINDS)))  # fmt: skip
     hosts: set[str] = set()
     for url, config in rows:
-        for value in [url, *(config or {}).values()]:
+        fields = [(config or {}).get(name) for name in URL_FIELDS]
+        for value in [url, *fields]:
             for one in value if isinstance(value, list) else [value]:
                 if isinstance(one, str) and one.startswith(("http://", "https://")):
                     host = urlsplit(one).hostname
@@ -147,9 +153,10 @@ async def context_factory(db: AsyncSession, valkey: Any) -> ContextFactory:
     limiter = ValkeyRateLimiter(valkey)
     search, official = await _search_context(db)
 
-    async def pace(key: str, interval_s: float) -> None:
-        """One slot at a time per key across every worker, through the Valkey limiter."""
-        wait = await limiter.take(f"internal:{key}", interval_s, PACE_MAX_WAIT_S)
+    async def pace(key: str, interval_s: float, max_wait_s: float = PACE_MAX_WAIT_S) -> None:
+        """One slot at a time per key across every worker, through the Valkey limiter; no slot
+        is reserved when the wait would be longer than ``max_wait_s``."""
+        wait = await limiter.take(f"internal:{key}", interval_s, max_wait_s)
         if wait is None:
             raise ConnectorError("rate-limited", "the search queue is busy; the next run tries")
         await asyncio.sleep(wait)

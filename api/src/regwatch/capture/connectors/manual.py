@@ -19,7 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from pydantic import BaseModel
@@ -36,6 +36,7 @@ from regwatch.capture.connectors.base import (
 from regwatch.capture.connectors.config import ExtractionRules, ManualConfig
 from regwatch.capture.connectors.web_page import _charset
 from regwatch.capture.extract.isolate import ParseError, extract_isolated
+from regwatch.capture.safe_fetch.policy import FetchRefusedError
 
 KINDS = frozenset({"text/html", "application/pdf", "text/plain"})
 FETCHED_KINDS = {"text/html": "text/html", "application/xhtml+xml": "text/html",
@@ -67,14 +68,28 @@ async def _request(job: JobSettings, ctx: ConnectorContext) -> dict[str, Any] | 
     return data if isinstance(data, dict) else None
 
 
-async def fetch_document(candidate: Candidate, job: JobSettings, ctx: ConnectorContext,
-                     extra: dict[str, Any]) -> RawDocument:  # fmt: skip
+Hop = Callable[[str], bool]
+
+
+async def fetch_document(
+    candidate: Candidate,
+    job: JobSettings,
+    ctx: ConnectorContext,
+    extra: dict[str, Any],
+    allow_hop: Hop | None = None,
+) -> RawDocument:
     """A URL (fetched through SafeFetcher, robots.txt always obeyed) or a stored upload, as a
     new document: HTML read in the isolated child, PDF and text stored. Shared with the search
     connector, whose result pages are fetched the same way."""
     if candidate.hints.get("kind") == "url":
-        got = await ctx.fetcher.fetch(candidate.url, rate_per_minute=job.rate_per_minute,
-                                      robots_override=None)  # fmt: skip
+        try:
+            got = await ctx.fetcher.fetch(candidate.url, rate_per_minute=job.rate_per_minute,
+                                          robots_override=None, allow_hop=allow_hop)  # fmt: skip
+        except FetchRefusedError as exc:
+            if exc.reason == "refused-host":  # a hop off where the source may go
+                raise ConnectorError("off-filter", "the page redirects off the allowed "
+                                     "sites") from None  # fmt: skip
+            raise
         # Never the override: anyone with sources.manage can submit any URL here, and the
         # override's reason was written about another site (8.3; manual review finding 1).
         if not 200 <= got.status < 300:

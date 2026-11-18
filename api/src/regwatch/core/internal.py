@@ -7,7 +7,9 @@ through this client instead, which can reach only what the settings name:
 - one base URL per sidecar, from the settings, never from a request, a source or a page;
 - only paths the caller names in code, joined to that base (no absolute URLs, no ``..``);
 - no redirects followed, no proxies from the environment, no cookies kept;
-- a timeout on every step and a cap on the answer's size, read as a stream;
+- a timeout on every step and on the whole call, and a cap on the answer's size, counted on the
+  raw bytes: only an uncompressed answer is asked for and accepted, so no small answer can
+  inflate in memory (search review findings 1 and 7);
 - an answer that is not 2xx, too large or not JSON is an ``InternalError`` with a fixed text.
 
 It is never used for captured content.
@@ -15,6 +17,7 @@ It is never used for captured content.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import Any
@@ -22,6 +25,7 @@ from typing import Any
 import httpx
 
 MAX_ANSWER = 4 * 1024 * 1024
+DEADLINE_S = 30.0  # the whole call: a sidecar dripping bytes cannot hold a run
 TIMEOUT = httpx.Timeout(connect=3.0, read=20.0, write=5.0, pool=3.0)
 _PATH = re.compile(r"/[A-Za-z0-9_\-/]{0,100}")
 
@@ -49,18 +53,22 @@ class InternalClient:
                                      timeout=TIMEOUT, follow_redirects=False,
                                      trust_env=False) as client:  # fmt: skip
             try:
-                headers = {"accept": "application/json"}
-                async with client.stream("GET", path, params=params, headers=headers) as got:
+                headers = {"accept": "application/json", "accept-encoding": "identity"}
+                async with asyncio.timeout(DEADLINE_S), client.stream(
+                        "GET", path, params=params, headers=headers) as got:  # fmt: skip
                     if not 200 <= got.status_code < 300:
                         status = f"the sidecar answered HTTP {got.status_code}"
                         raise InternalError("sidecar-status", status)
+                    if got.headers.get("content-encoding", "identity").lower() != "identity":
+                        raise InternalError("sidecar-encoding", "the sidecar's answer is "
+                                            "compressed, which is not accepted")  # fmt: skip
                     body = bytearray()
-                    async for chunk in got.aiter_bytes():
+                    async for chunk in got.aiter_raw():  # the bytes as sent, never inflated
                         body += chunk
                         if len(body) > self.max_answer:
                             raise InternalError("sidecar-too-large", "the sidecar's answer is "
                                                 "larger than the limit")  # fmt: skip
-            except httpx.TimeoutException:
+            except (httpx.TimeoutException, TimeoutError):
                 raise InternalError(
                     "sidecar-timeout", "the sidecar did not answer in time"
                 ) from None

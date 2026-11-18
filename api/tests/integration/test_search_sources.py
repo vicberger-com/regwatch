@@ -50,3 +50,18 @@ async def test_the_search_context_follows_the_flag_and_the_provider(
     assert put.status_code in (200, 204), put.text
     on, _ = await tasks._search_context(db)  # type: ignore[arg-type]
     assert on is not None and on.base_url == "http://search:8080"
+
+
+async def test_search_sources_are_secondary_and_never_name_official_hosts(
+    admin: httpx.AsyncClient, db: object
+) -> None:
+    """Search review finding 4."""
+    body = {"name": "S", "kind": "search_query", "url": "https://feeds.example/lookalike",
+            "config": {"query": "https://junk.example/ AI act"}}  # fmt: skip
+    made = await admin.post(_api("/sources"), json=body)
+    assert made.status_code == 201, made.text
+    assert made.json()["credibility"] == "secondary"  # never official by default
+    loud = {**body, "name": "S2", "credibility": "official"}
+    assert (await admin.post(_api("/sources"), json=loud)).status_code == 201
+    _, official = await tasks._search_context(db)  # type: ignore[arg-type]
+    assert "feeds.example" not in official and "junk.example" not in official

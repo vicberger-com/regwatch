@@ -38,6 +38,7 @@ from regwatch.capture.connectors.base import (
 from regwatch.capture.connectors.config import SearchQueryConfig
 from regwatch.capture.connectors.manual import fetch_document
 from regwatch.capture.connectors.rss import MAX_SUMMARY, MAX_TITLE, entry_link, plain_text
+from regwatch.capture.safe_fetch.policy import FetchRefusedError, parse_target
 from regwatch.core.internal import InternalError
 
 PACE_S = 60.0
@@ -65,6 +66,18 @@ def check(config: SearchQueryConfig) -> None:
     if len(config.languages) > MAX_LANGUAGES or not all(
             _LANGUAGE.fullmatch(x) for x in config.languages):  # fmt: skip
         raise ConnectorError("bad-config", "languages are tags such as en or de-AT")
+
+
+def _host(url: str) -> str | None:
+    """The host of an https or http URL on its default port, by SafeFetcher's parse; another
+    port is never an official host's (search review finding 5)."""
+    try:
+        target = parse_target(url)
+    except FetchRefusedError:
+        return None
+    if (target.scheme, target.port) not in (("http", 80), ("https", 443)):
+        return None
+    return target.host
 
 
 def _on(host: str, domains: list[str] | frozenset[str]) -> bool:
@@ -113,8 +126,8 @@ class SearchQueryConnector:
                 raise ConnectorError("malformed-answer", "the search answer has no results list")
             if page == 1:
                 answered = {e for r in results if isinstance(r, dict)
-                            for e in (r.get("engines") or [])
-                            if isinstance(e, str)}  # fmt: skip
+                            and isinstance(r.get("engines"), list)
+                            for e in r["engines"] if isinstance(e, str)}  # finding 6  # fmt: skip
                 if not results or answered <= ONLY_UNUSABLE:
                     down = ", ".join(_engines(answer.get("unresponsive_engines"))) or "none named"
                     raise ConnectorError("search-unavailable", "no usable search engine "
@@ -126,7 +139,9 @@ class SearchQueryConnector:
                     if isinstance(result, dict) else None  # fmt: skip
                 if url is None or url in seen:
                     continue
-                host = (url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]).lower()
+                host = _host(url)
+                if host is None:
+                    continue
                 if config.site_filters and not _on(host, config.site_filters):
                     continue
                 if config.official_domains_only and not _on(host, ctx.official_hosts):
@@ -142,9 +157,33 @@ class SearchQueryConnector:
 
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
-        return await fetch_document(candidate, job, ctx, {
-            "search": True, "credibility": candidate.hints.get("credibility", "secondary"),
-            "snippet": candidate.summary})  # fmt: skip
+        """The result's page. Every redirect hop must stay where the source's filters allow,
+        and credibility is judged on where the page ends up, not on the result's address
+        (search review finding 2)."""
+        config = job.config
+        assert isinstance(config, SearchQueryConfig)  # noqa: S101 - job_settings validated it
+
+        def allowed(hop: str) -> bool:
+            host = _host(hop)
+            return host is not None and (
+                (not config.site_filters or _on(host, config.site_filters))
+                and (not config.official_domains_only or _on(host, ctx.official_hosts))
+            )
+
+        doc = await fetch_document(candidate, job, ctx, {"search": True,
+                                                         "snippet": candidate.summary},
+                                   allow_hop=allowed)  # fmt: skip
+        final = _host(doc.final_url or candidate.url)
+        official = final is not None and _on(final, ctx.official_hosts)
+        return RawDocument(
+            **{
+                **doc.__dict__,
+                "metadata": {
+                    **doc.metadata,
+                    "credibility": "official" if official else "secondary",
+                },
+            }
+        )
 
     def health(self, job: JobSettings) -> HealthReport:
         return HealthReport("unknown", "health comes from the job's runs")

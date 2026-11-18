@@ -21,7 +21,7 @@ async def test_a_json_answer_from_the_fixed_base() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return httpx.Response(200, json={"results": []})
+        return httpx.Response(200, stream=httpx.ByteStream(b'{"results": []}'))
 
     got = await client(handler).get_json("/search", {"q": "AI act", "format": "json"})
     assert got == {"results": []}
@@ -32,10 +32,13 @@ async def test_a_json_answer_from_the_fixed_base() -> None:
 @pytest.mark.parametrize(
     ("response", "reason"),
     [(httpx.Response(302, headers={"location": "http://169.254.169.254/"}), "sidecar-status"),
-     (httpx.Response(500), "sidecar-status"), (httpx.Response(200, content=b"not json"),
-                                               "sidecar-malformed"),
-     (httpx.Response(200, content=b"[" * 1000), "sidecar-malformed"),
-     (httpx.Response(200, content=b"x" * 2048), "sidecar-too-large")],
+     (httpx.Response(500), "sidecar-status"),
+     (httpx.Response(200, stream=httpx.ByteStream(b"not json")), "sidecar-malformed"),
+     (httpx.Response(200, stream=httpx.ByteStream(b"[" * 1000)), "sidecar-malformed"),
+     (httpx.Response(200, stream=httpx.ByteStream(b"x" * 2048)), "sidecar-too-large"),
+     # Search review finding 1: a compressed answer is refused before anything is inflated.
+     (httpx.Response(200, headers={"content-encoding": "gzip, gzip"},
+                     stream=httpx.ByteStream(b"\x1f\x8b...")), "sidecar-encoding")],
 )  # fmt: skip
 async def test_answers_that_are_not_usable_are_typed_errors(response: httpx.Response,
                                                             reason: str) -> None:  # fmt: skip
@@ -68,3 +71,35 @@ async def test_only_fixed_paths_on_the_base(path: str) -> None:
 
     with pytest.raises(ValueError):
         await client(handler).get_json(path, {})
+
+
+async def test_the_client_asks_for_an_uncompressed_answer() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, stream=httpx.ByteStream(b"{}"))
+
+    await client(handler).get_json("/search", {})
+    assert seen[0].headers["accept-encoding"] == "identity"
+
+
+async def test_a_dripping_sidecar_meets_the_whole_call_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search review finding 7: the read timeout is per read; the deadline is per call."""
+    import asyncio
+
+    from regwatch.core import internal
+
+    monkeypatch.setattr(internal, "DEADLINE_S", 0.2)
+
+    class Drip(httpx.AsyncByteStream):
+        async def __aiter__(self):  # type: ignore[no-untyped-def]
+            while True:
+                await asyncio.sleep(0.05)
+                yield b" "
+
+    with pytest.raises(InternalError) as exc:
+        await client(lambda r: httpx.Response(200, stream=Drip())).get_json("/search", {})
+    assert exc.value.reason == "sidecar-timeout"

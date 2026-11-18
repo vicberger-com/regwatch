@@ -73,9 +73,18 @@ async def preview(job: CaptureJob, source: Source, make_context: ContextFactory)
     except ConnectorError as exc:
         return {"candidates": [], "robots_decision": "unknown", "warnings": [exc.detail]}
     base = await make_context(settings)
+    pace = None
+    if base.pace is not None:
+        paced = base.pace
+
+        async def pace(key: str, interval_s: float) -> None:
+            # A test never waits for a search slot, so it can never hold one it then gives up
+            # on (search review finding 3): it runs now, or says the search is busy.
+            await paced(key, interval_s, 0.0)  # type: ignore[call-arg]
+
     ctx = ConnectorContext(fetcher=base.fetcher, store=_no_store, now=base.now,
                            search=base.search, official_hosts=base.official_hosts,
-                           pace=base.pace)  # fmt: skip
+                           pace=pace)  # fmt: skip
     found: list[dict[str, Any]] = []
     warnings: list[str] = []
     decision = "overridden" if settings.robots_override else "allowed"

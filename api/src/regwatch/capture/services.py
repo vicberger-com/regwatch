@@ -389,6 +389,9 @@ async def create_source(db: AsyncSession, body: SourceWrite, principal: Principa
     await check_urls(kind, values)  # before the first query: no connection is held
     await _db_checks(db, values)
     actor = principal.user.id
+    if values.get("kind") == "search_query" and "credibility" not in values:
+        # Search finds pages anywhere: never official by default (search review finding 4).
+        values["credibility"] = "secondary"
     source = Source(owner_user_id=actor, **values)
     db.add(source)
     await db.flush()

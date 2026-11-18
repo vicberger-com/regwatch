@@ -50,7 +50,7 @@ def site(request: httpx.Request) -> httpx.Response:
 
 
 def context(searx: Searx | None, official: frozenset[str] = frozenset(),
-            paced: list[float] | None = None) -> ConnectorContext:  # fmt: skip
+            paced: list[float] | None = None, handler: Any = None) -> ConnectorContext:  # fmt: skip
     async def public(host: str, port: int) -> list[str]:
         return ["93.184.215.14"]
 
@@ -63,7 +63,7 @@ def context(searx: Searx | None, official: frozenset[str] = frozenset(),
             paced.append(interval_s)
 
     fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
-                          transport=httpx.MockTransport(site))  # fmt: skip
+                          transport=httpx.MockTransport(handler or site))  # fmt: skip
     capture = CaptureFetcher(fetcher, MemoryRateLimiter(), rate_per_minute=6000)
     return ConnectorContext(fetcher=capture, store=store, now=lambda: NOW, search=searx,
                             official_hosts=official, pace=pace)  # fmt: skip
@@ -195,3 +195,53 @@ async def test_filtered_pages_run_out_at_the_page_limit() -> None:
     searx = Searx([other, other])
     got = await found(searx, site_filters=["reg.example"], max_results=20)
     assert got == [] and len(searx.asked) == 2
+
+
+def redirecting(request: httpx.Request) -> httpx.Response:
+    if request.url.path == "/robots.txt":
+        return httpx.Response(404, stream=httpx.ByteStream(b""))
+    if request.url.path == "/exit":
+        return httpx.Response(302, headers={"location": "https://evil.example/fake-rule"})
+    return site(request)
+
+
+async def test_redirects_are_held_to_the_filters_and_credibility_to_the_end() -> None:
+    """Search review finding 2."""
+    from regwatch.capture.connectors.base import Candidate
+
+    ctx = context(Searx(), frozenset({"reg.example"}), handler=redirecting)
+    candidate = Candidate(url="https://reg.example/exit", hints={"kind": "url"})
+    connector = search_query.SearchQueryConnector()
+    with pytest.raises(ConnectorError) as exc:  # the filter refuses the hop before contact
+        await connector.fetch(candidate, job(site_filters=["reg.example"]), ctx)
+    assert exc.value.reason == "off-filter"
+    doc = await connector.fetch(candidate, job(), ctx)  # no filter: fetched, but not official
+    assert doc.final_url == "https://evil.example/fake-rule"
+    assert doc.metadata["credibility"] == "secondary"
+
+
+@pytest.mark.parametrize(
+    ("url", "credibility"),
+    [("https://reg.example/a", "official"), ("https://reg.example:8443/a", None),
+     ("http://reg.example:443/a", None), ("https://lookalike-reg.example/a", "secondary")],
+)  # fmt: skip
+async def test_only_default_ports_on_official_hosts_are_official(
+    url: str, credibility: str | None
+) -> None:
+    """Finding 5: another port is not the official host's (and is not taken at all)."""
+    searx = Searx([{"results": [result(url)]}])
+    got = await found(searx, context(searx, frozenset({"reg.example"})))
+    assert [c.hints["credibility"] for c in got] == ([credibility] if credibility else [])
+
+
+@pytest.mark.parametrize("engines", [5, "bing", None, [5, None]])
+async def test_engines_of_the_wrong_type_are_not_usable_engines(engines: Any) -> None:
+    """Finding 6: never a TypeError, and a string is not read letter by letter."""
+    answer = {"results": [{"url": "https://reg.example/a", "engines": engines}]}
+    with pytest.raises(ConnectorError) as exc:
+        await found(Searx([answer]))
+    assert exc.value.reason == "search-unavailable"
+
+
+def test_a_url_that_does_not_parse_has_no_host() -> None:
+    assert search_query._host("ftp://reg.example/") is None
