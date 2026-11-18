@@ -31,6 +31,7 @@ import json
 import re
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 
@@ -48,6 +49,10 @@ from regwatch.capture.connectors.rss import entry_link
 from regwatch.capture.extract.isolate import ParseError, extract_isolated
 
 HTML = frozenset({"text/html", "application/xhtml+xml"})
+# Pages that cannot be read within the extraction limits cost up to 20 s each; after this many
+# in one run the run stops (HTML extraction review R4, BL-98 (a); web listing review 3).
+MAX_UNREADABLE = 3
+UNREADABLE = frozenset({"too-slow", "too-large", "too-deep", "parse-failed"})
 
 
 def _charset(content_type: str) -> str | None:
@@ -74,9 +79,27 @@ def _own_listing_ref(value: Any, source_id: str) -> str | None:
     return None
 
 
-async def _get_html(url: str, job: JobSettings, ctx: ConnectorContext) -> Any:  # noqa: ANN401
+def _host(url: str) -> str | None:
+    try:
+        return urlsplit(url).hostname
+    except ValueError:
+        return None
+
+
+async def _get_html(url: str, job: JobSettings, ctx: ConnectorContext,
+                    host: str | None = None) -> Any:  # noqa: ANN401  # fmt: skip
+    """``host``, for a page a listing links to: every hop must stay on it, and the robots.txt
+    override applies only if it is ``page_url``'s own host, the site the override's reason was
+    written about (web listing review finding 1, 8.3)."""
+    override = job.robots_override
+    allow = None
+    if host is not None:
+        allow = lambda hop: _host(hop) == host  # noqa: E731
+        config = job.config
+        if not isinstance(config, WebPageConfig) or _host(str(config.page_url)) != host:
+            override = None
     got = await ctx.fetcher.fetch(url, rate_per_minute=job.rate_per_minute,
-                                  robots_override=job.robots_override)  # fmt: skip
+                                  robots_override=override, allow_hop=allow)  # fmt: skip
     if not 200 <= got.status < 300:
         raise ConnectorError("http-status", f"the page answered HTTP {got.status}")
     if (got.mime or "") not in HTML:
@@ -121,8 +144,9 @@ async def _previous_listing(job: JobSettings, ctx: ConnectorContext) -> dict[str
         return {}
     if not isinstance(data, dict):
         return {}
-    return {u: v for u, v in data.items()
-            if isinstance(u, str) and isinstance(v, list) and len(v) == 2
+    # [content_hash, text_ref, checked_at]; two items from before checked_at was kept.
+    return {u: (v + [""])[:3] for u, v in data.items()
+            if isinstance(u, str) and isinstance(v, list) and len(v) in (2, 3)
             and all(isinstance(x, str) for x in v)}  # fmt: skip
 
 
@@ -146,24 +170,42 @@ class WebPageConnector:
         got = await _get_html(str(config.page_url), job, ctx)
         listing = await _extract(got, job, config.listing_link_selector)
         keep = _url_filter(job.rules)
+        strip = getattr(job.rules, "strip_query_params", True)
+        host = _host(got.url)  # links stay on the listing's own host (finding 1)
         previous = await _previous_listing(job, ctx)
-        seen: list[str] = []
+        seen: dict[str, None] = {}
         for href in listing.links:
             url = entry_link({"link": href}, got.url)
-            if url is None or url in seen or not keep(url):
+            if url is not None and strip:
+                url = url.split("?", 1)[0]  # one document, not one per query (finding 5)
+            if url is None or url in seen or _host(url) != host or not keep(url):
                 continue
             if len(seen) >= config.max_links:
                 ctx.notes.add("truncated")  # more links than max_links
                 break
-            seen.append(url)
-        ctx.scratch["listing"] = {"listed": seen, "pages": {}, "previous": previous}
-        for url in seen:
-            yield Candidate(url=url, hints={"previous": previous.get(url, [None, None])})
+            seen[url] = None
+        ctx.notes.add("state-per-document")
+        ctx.scratch["listing"] = {"listed": list(seen), "pages": {}, "previous": previous,
+                                  "host": host, "unreadable": 0}  # fmt: skip
+        # Pages never checked first, then the longest unchecked, so a run that stops at its
+        # item limit is followed by one that reaches the rest (finding 4).
+        order = sorted(seen, key=lambda u: (u in previous, previous.get(u, ["", "", ""])[2]))
+        for url in order:
+            yield Candidate(url=url, hints={"previous": previous.get(url, [None, None])[:2]})
 
     async def fetch(self, candidate: Candidate, job: JobSettings,
                     ctx: ConnectorContext) -> RawDocument:  # fmt: skip
-        got = await _get_html(candidate.url, job, ctx)
-        found = await _extract(got, job)
+        listing = ctx.scratch.get("listing")
+        got = await _get_html(candidate.url, job, ctx, listing["host"] if listing else None)
+        try:
+            found = await _extract(got, job)
+        except ConnectorError as exc:
+            if listing is not None and exc.reason in UNREADABLE:
+                listing["unreadable"] += 1
+                if listing["unreadable"] >= MAX_UNREADABLE:
+                    stop = f"{MAX_UNREADABLE} pages could not be read within the limits"
+                    raise ConnectorError("unreadable-pages", stop) from None
+            raise
         before_hash, before_ref = (candidate.hints.get("previous") or [None, None])[:2]
         text_ref = f"text/{job.source_id}/{found.content_hash}.txt"
         if before_hash == found.content_hash:
@@ -171,9 +213,9 @@ class WebPageConnector:
         else:
             change = "changed" if before_hash else "new"
             await ctx.store(text_ref, found.text.encode())
-        listing = ctx.scratch.get("listing")
         if listing is not None:
-            listing["pages"][candidate.url] = [found.content_hash, text_ref]
+            listing["pages"][candidate.url] = [found.content_hash, text_ref,
+                                               ctx.now().isoformat()]  # fmt: skip
         elif change != "unchanged":
             ctx.state = {"content_hash": found.content_hash, "text_ref": text_ref}
         key = f"raw/{job.source_id}/{hashlib.sha256(got.body).hexdigest()}"

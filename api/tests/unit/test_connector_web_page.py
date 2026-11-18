@@ -231,6 +231,13 @@ class Listing:
         if request.url.path == "/list":
             items = "".join(f'<li><a href="{h}">doc</a></li>' for h in self.links)
             body = f"<nav><a href='/nav'>menu</a></nav><ul class=docs>{items}</ul>".encode()
+        elif request.url.path.endswith(".pdf"):
+            return httpx.Response(200, headers={"content-type": "application/pdf"},
+                                  stream=httpx.ByteStream(b"%PDF"))  # fmt: skip
+        elif request.url.path.startswith("/deep"):
+            body = b"<div>" * 1000
+        elif request.url.path == "/hop":
+            return httpx.Response(302, headers={"Location": "https://third.example/x"})
         else:
             body = f"<div class=c><p>{self.docs.get(request.url.path, 'none')}</p></div>".encode()
         return httpx.Response(200, headers={"content-type": "text/html"},
@@ -238,7 +245,7 @@ class Listing:
 
 
 async def listing_run(site: Listing, objects: dict[str, bytes], cursor: dict[str, Any] | None,
-                      max_links: int = 50, **rules: Any) -> Any:  # fmt: skip
+                      max_links: int = 50, max_items: int = 100, **rules: Any) -> Any:  # fmt: skip
     import uuid
 
     from regwatch.capture import execution
@@ -266,7 +273,8 @@ async def listing_run(site: Listing, objects: dict[str, bytes], cursor: dict[str
                     config={"page_url": "https://regulator.example/list", "mode": "listing",
                             "listing_link_selector": "ul.docs", "max_links": max_links},
                     override_reason=None)  # fmt: skip
-    job_row = CaptureJob(max_items_per_run=100, rate_limit_per_minute=6000, render_js=False,
+    job_row = CaptureJob(max_items_per_run=max_items, rate_limit_per_minute=6000,
+                         render_js=False,
                          extraction_rules={"content_selectors": ["div.c"], **rules},
                          cursor=cursor)  # fmt: skip
     return await execution.run_connector(uuid.uuid4(), job_row, source, make)
@@ -350,3 +358,75 @@ async def test_a_state_object_that_is_not_a_map_is_ignored() -> None:
     site = Listing(["/a"], {"/a": "A"})
     got = await listing_run(site, {ref: b"[1, 2]"}, {"listing_ref": ref})
     assert got.documents[0].change == "new"
+
+
+async def test_links_stay_on_the_listing_host_and_hops_too() -> None:
+    """Web listing review finding 1: no other host, not even by a redirect."""
+    links = ["https://third.example/private", "https://sub.regulator.example/x", "/hop", "/a"]
+    site = Listing(links,
+                   {"/a": "A"})  # fmt: skip
+    got = await listing_run(site, {}, None)
+    assert [d.url for d in got.documents] == ["https://regulator.example/a"]
+    assert got.status == "partial"  # /hop was refused at its redirect, never fetched elsewhere
+    assert "/x" not in site.paths and "/private" not in site.paths
+
+
+async def test_the_override_applies_to_page_urls_host_only() -> None:
+    calls: list[Any] = []
+
+    class Recording:
+        async def fetch(self, url: str, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            from regwatch.capture.safe_fetch import FetchResult
+
+            return FetchResult(url, 200, {"content-type": "text/html"}, b"<p>x</p>")
+
+    settings = JobSettings(**{**job().__dict__, "robots_override": "Owner agreed with the site"})
+    ctx = ConnectorContext(fetcher=Recording(), store=None, now=lambda: NOW)  # type: ignore[arg-type]
+    await web_page._get_html(URL, settings, ctx, "regulator.example")
+    await web_page._get_html("https://other.example/x", settings, ctx, "other.example")
+    await web_page._get_html(URL, settings, ctx)
+    assert [c["robots_override"] for c in calls] == ["Owner agreed with the site", None,
+                                                     "Owner agreed with the site"]  # fmt: skip
+    assert calls[0]["allow_hop"]("https://regulator.example/y")
+    assert not calls[0]["allow_hop"]("https://third.example/y") and calls[2]["allow_hop"] is None
+
+
+async def test_a_failing_page_keeps_the_others_state() -> None:
+    """Finding 2: a PDF in the listing fails, yet /a and /b are unchanged next time."""
+    site = Listing(["/a", "/b", "/report.pdf"], {"/a": "A", "/b": "B"})
+    objects: dict[str, bytes] = {}
+    first = await listing_run(site, objects, None)
+    assert (first.status, first.items_new) == ("partial", 2) and first.cursor is not None
+    again = await listing_run(site, objects, first.cursor)
+    assert (again.items_new, again.items_unchanged) == (0, 2)
+
+
+async def test_a_run_stops_after_three_unreadable_pages() -> None:
+    """Finding 3: hostile pages cost up to 20 s each; the run stops at the third."""
+    site = Listing(["/a"] + [f"/deep{n}" for n in range(10)], {"/a": "A"})
+    got = await listing_run(site, {}, None)
+    assert (got.status, got.error_class) == ("partial", "unreadable-pages")
+    assert sum(1 for p in site.paths if p.startswith("/deep")) == 3
+
+
+async def test_the_item_limit_rotates_through_the_links() -> None:
+    """Finding 4: pages never checked first, then the longest unchecked."""
+    site = Listing([f"/d{n}" for n in range(5)], {})
+    objects: dict[str, bytes] = {}
+
+    first = await listing_run(site, objects, None, max_items=2)
+    second = await listing_run(site, objects, first.cursor, max_items=2)
+    third = await listing_run(site, objects, second.cursor, max_items=2)
+    names = [[d.url.rsplit("/", 1)[1] for d in r.documents] for r in (first, second, third)]
+    assert names == [["d0", "d1"], ["d2", "d3"], ["d4"]]
+
+
+async def test_query_variants_are_one_page() -> None:
+    site = Listing([f"/a?v={n}" for n in range(5)], {"/a": "A"})
+    got = await listing_run(site, {}, None)
+    assert [d.url for d in got.documents] == ["https://regulator.example/a"]
+
+
+def test_a_url_that_does_not_parse_has_no_host() -> None:
+    assert web_page._host("https://[bad") is None

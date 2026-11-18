@@ -60,7 +60,7 @@ SKIPPING = frozenset({"robots", "rate-limited"})
 # A document the provider does not have in the asked form (EUR-Lex review finding 1): skipped,
 # not failed, so the cursor still moves past it.
 UNAVAILABLE = frozenset({"unavailable"})
-STOPPING = frozenset({"blocked-by-provider"})
+STOPPING = frozenset({"blocked-by-provider", "unreadable-pages"})
 REFUSALS = {
     "robots": "robots.txt does not allow it",
     "rate-limited": "the host is busy; tried again next run",
@@ -212,9 +212,6 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
                         refused[exc.reason] = refused.get(exc.reason, 0) + 1
                     else:
                         failures += 1
-            finish = getattr(connector, "finish", None)
-            if finish is not None:  # discovery ran to its end: the connector's own state
-                await finish(settings, ctx)
     except TimeoutError:
         if not deadline.expired():  # some other timeout (a store's ETIMEDOUT): not ours (R1)
             raise
@@ -235,6 +232,9 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         else:
             return Outcome("failed", exc.reason, exc.detail, robots_decision=allowed,
                            bytes_fetched=counter.fetched)  # fmt: skip
+    finish = getattr(connector, "finish", None)
+    if finish is not None:  # discovery ended, at its end, a limit or a later error
+        await finish(settings, ctx)
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries) + unchanged, failures, refused, cut_short)
@@ -242,7 +242,11 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     # (CP-13/14 review finding 1, low findings): otherwise "continues" would not be true.
     resumes = "resumes" in ctx.notes and failures == 0
     cursor = _cursor(settings.cursor, entries, base.now()) if resumes else None
-    if ctx.state is not None and failures == 0 and not cut_short:  # the connector's own (CP-16)
+    # The connector's own state (CP-16): written when every document was fetched, or always for
+    # a connector whose state is per document and keeps the old entry of any it did not reach
+    # (listing mode; web listing review finding 2).
+    per_document = "state-per-document" in ctx.notes
+    if ctx.state is not None and (per_document or (failures == 0 and not cut_short)):
         cursor = ctx.state if ctx.state != settings.cursor else None
     if stopped is not None:  # some documents, then discovery failed: partial, with its reason
         status, (error_class, message) = "partial", stopped
@@ -252,8 +256,8 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
         # ask for the same window again (API feed re-verification R1), so the admin must act.
         moved = cursor is not None
         message = (
-            "more documents were offered than one run takes; the next run continues from the "
-            "newest one stored"
+            "more documents were offered than one run takes; the next run continues where this "
+            "one stopped"
             if moved
             else "more documents were offered than one run takes; raise the items per run "
             "or narrow the query"

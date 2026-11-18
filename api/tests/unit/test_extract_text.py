@@ -169,3 +169,13 @@ def test_links_from_a_listing_selector(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(text, "MAX_LINKS", 1)
     assert text.links(page, "a", walk) == ["/a"]
     assert text.extract(page, ExtractionRules(), "a.one").links == ["/b"]
+
+
+def test_links_a_reader_cannot_see_are_not_taken() -> None:
+    """Web listing review finding 5: template contents, hidden and excluded elements."""
+    body = (
+        b'<ul class=d><li><a href="/ok">ok</a></li><template><a href="/t">t</a></template>'
+        b'<li hidden><a href="/h">h</a></li><li class=x><a href="/x">x</a></li></ul>'
+    )
+    got = text.extract(tree.parse(body), ExtractionRules(exclude_selectors=[".x"]), "ul.d")
+    assert got.links == ["/ok"]

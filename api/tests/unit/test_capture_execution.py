@@ -317,7 +317,7 @@ async def test_a_run_that_took_less_than_was_offered_is_partial(h: Harness) -> N
                 yield c
 
     moving = await h.run(Resumes([f"https://e.org/{n}" for n in range(5)]), max_items=3)
-    assert "continues from the newest one stored" in (moving.error_message or "")
+    assert "continues where this one stopped" in (moving.error_message or "")
     assert moving.cursor == {"publication_date": NOW.date().isoformat()}
     h.fetcher.fail = {"https://e.org/1": [FetchRefusedError("too-large", "big")]}
     failed = await h.run(Resumes([f"https://e.org/{n}" for n in range(5)]), max_items=3)

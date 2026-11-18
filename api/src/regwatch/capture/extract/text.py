@@ -177,14 +177,29 @@ def _first(page: Page, selector: str | None, skip: set[int], walk: Walk) -> ET.E
     return found[0] if found else None
 
 
-def links(page: Page, selector: str, walk: Walk) -> list[str]:
+def _anchors(el: ET.Element, skip: set[int]) -> list[ET.Element]:
+    """``a`` elements at or inside ``el``, in document order, but none inside a template, a
+    ``hidden`` element or an excluded one: links a reader cannot see (web listing review 5)."""
+    out: list[ET.Element] = []
+    stack = [el]
+    while stack:
+        item = stack.pop()
+        if (not isinstance(item.tag, str) or item.tag == "template" or id(item) in skip
+                or item.get("hidden") is not None):  # fmt: skip
+            continue
+        if item.tag == "a":
+            out.append(item)
+        stack.extend(reversed(list(item)))
+    return out
+
+
+def links(page: Page, selector: str, walk: Walk, skip: set[int] | None = None) -> list[str]:
     """The hrefs of the elements the selector matches, in document order and each once: an
-    ``a`` element's own, else those of the ``a`` elements inside it. As written, unresolved;
-    the connector resolves and checks them as any captured link."""
+    ``a`` element's own, else those of the visible ``a`` elements inside it. As written,
+    unresolved; the connector resolves and checks them as any captured link."""
     out: dict[str, None] = {}
     for el in compile_selector(selector).select(page.root, walk):
-        anchors = [el] if el.tag == "a" else list(el.iter("a"))
-        for a in anchors:
+        for a in _anchors(el, skip or set()):
             href = (a.get("href") or "").strip()
             if href and len(href) <= MAX_HREF:
                 out.setdefault(href, None)
@@ -237,5 +252,5 @@ def extract(page: Page, rules: ExtractionRules, links_selector: str | None = Non
         if published is None:
             warnings.append("the date could not be read")
     digest = hashlib.sha256(text.encode()).hexdigest()
-    found = links(page, links_selector, walk) if links_selector else []
+    found = links(page, links_selector, walk, skip) if links_selector else []
     return Extracted(text, digest, title, published, method, warnings, found)

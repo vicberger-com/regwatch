@@ -46,6 +46,8 @@ export const REASONS: Record<string, string> = {
   "too-deep": "The page is nested too deeply to read safely.",
   "too-slow": "The page took too long to read safely.",
   "parse-failed": "The page could not be read.",
+  "unreadable-pages":
+    "Several linked pages could not be read within the safety limits, so the run stopped.",
   "needs-contact":
     "This provider refuses anonymous requests. Set the contact email in Settings (general.contact_email) first.",
   "http-status": "The site answered with an error status.",
