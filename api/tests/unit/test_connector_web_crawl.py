@@ -703,3 +703,58 @@ async def test_finish_without_a_crawl_is_harmless() -> None:
     job = JobSettings(source_id="s", kind="web_crawl", config=config, rules=ExtractionRules())
     await web_crawl.WebCrawlConnector().finish(job, ctx)
     assert ctx.state is None
+
+
+@pytest.mark.parametrize(("job_rate", "politeness"), [(10, 2.0), (30, 6.0)])
+async def test_ten_a_minute_under_a_200_page_crawl(monkeypatch: pytest.MonkeyPatch, job_rate: int,
+                                                   politeness: float) -> None:  # fmt: skip
+    """M3 acceptance 5: on a simulated clock, no 60 s window holds more than 10 requests to the
+    host (robots.txt included) across a 200-page crawl. Extraction is stubbed: this measures
+    the requests, not the parsing."""
+    from regwatch.capture.extract.text import Extracted
+    from regwatch.capture.safe_fetch import rate as rate_mod
+
+    clock = [0.0]
+    monkeypatch.setattr(rate_mod.time, "monotonic", lambda: clock[0])
+
+    async def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    async def fast(got: Any, job: Any, links: Any = None) -> Extracted:
+        home = got.url.endswith("reg.example/")
+        found = [f"/p{n}" for n in range(199)] if home and links else []
+        return Extracted(text=got.url, content_hash=f"{abs(hash(got.url)):064d}"[:64],
+                         links=found)  # fmt: skip
+
+    monkeypatch.setattr(web_crawl, "_extract", fast)
+    times: list[float] = []
+
+    def timed(request: httpx.Request) -> httpx.Response:
+        times.append(clock[0])
+        clock[0] += 0.05
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, stream=httpx.ByteStream(b""))
+        return httpx.Response(200, headers={"content-type": "text/html"},
+                              stream=httpx.ByteStream(b"<p>x</p>"))  # fmt: skip
+
+    async def make(settings: JobSettings) -> ConnectorContext:
+        async def public(host: str, port: int) -> list[str]:
+            return ["93.184.215.14"]
+
+        async def nothing(key: str, body: bytes) -> None:
+            return None
+
+        fetcher = SafeFetcher("regwatch-test (+ops@example.org)", resolver=public,
+                              transport=httpx.MockTransport(timed))  # fmt: skip
+        capture = CaptureFetcher(fetcher, MemoryRateLimiter(), sleep=sleep)
+        return ConnectorContext(fetcher=capture, store=nothing, now=tick)
+
+    source = Source(id=uuid.UUID(int=9), kind="web_crawl", robots_policy="respect",
+                    config={"seed_urls": [SEED], "allowed_domains": ["reg.example"],
+                            "politeness_delay_seconds": politeness})  # fmt: skip
+    job = CaptureJob(max_items_per_run=500, rate_limit_per_minute=job_rate, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    got = await execution.run_connector(uuid.uuid4(), job, source, make)
+    assert got.status == "success" and len(got.documents) == 200
+    worst = max(sum(1 for t in times if start <= t < start + 60) for start in times)
+    assert len(times) == 201 and worst <= 10

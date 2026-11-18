@@ -56,7 +56,12 @@ if [[ "${1:-}" != "--force" && -f "$target" && -f "$dbtarget" && ! -f "$queuetar
 fi
 if [[ "${1:-}" != "--force" ]]; then
   if [[ -f "$target" && -f "$dbtarget" ]]; then
-    echo "deploy/.env and deploy/db.env exist; pass --force to recreate them"
+    if [[ -f "$queuetarget" && -f "$searchtarget" ]]; then
+      echo "all deploy env files exist; nothing to add"
+    else
+      echo "deploy/.env and deploy/db.env exist; pass --force to recreate them"
+    fi
+    echo "--force makes new passwords, which no longer match the database volume" >&2
     exit 0
   fi
   if [[ -f "$target" ]]; then

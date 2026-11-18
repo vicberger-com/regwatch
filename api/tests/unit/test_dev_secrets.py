@@ -68,6 +68,9 @@ def test_dev_env_writes_owner_credentials_to_db_env_only(tmp_path: Path) -> None
     added = subprocess.run([bash, str(tmp_path / "scripts/dev-env.sh")], capture_output=True,  # noqa: S603
                            text=True, check=True, env={"PATH": os.environ["PATH"]})  # fmt: skip
     assert added.stdout.strip() == "wrote deploy/search.env"
+    nothing = subprocess.run([bash, str(tmp_path / "scripts/dev-env.sh")], capture_output=True,  # noqa: S603
+                             text=True, check=True, env={"PATH": os.environ["PATH"]})  # fmt: skip
+    assert nothing.stdout.strip() == "all deploy env files exist; nothing to add"
     assert (tmp_path / "deploy/.env").read_text() == app
     assert (tmp_path / "deploy/queue.env").read_text() == queue
 
