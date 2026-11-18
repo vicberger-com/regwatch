@@ -248,3 +248,34 @@ async def test_a_near_duplicate_title_is_kept_for_review_without_an_event(
     events = (await db.scalars(select(ChangeEvent.item_id).where(
         ChangeEvent.item_id.in_([i.id for i in items.values()])))).all()  # fmt: skip
     assert items["https://mirror.example/b"].id not in events and len(set(events)) == 2
+
+
+async def test_a_news_feeds_titles_never_silence_an_official_item(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Pipeline re-verification 6, N9 (R17): the same title from a news feed first does not make
+    the official source's item a near-duplicate; the reverse does."""
+    from sqlalchemy import update
+
+    from regwatch.capture.models import Source
+
+    news, official = await made_source(admin), await made_source(admin)
+    await db.execute(update(Source).where(Source.id == uuid.UUID(news))
+                     .values(credibility="news"))  # fmt: skip
+    await db.commit()
+    title = "BSI veröffentlicht neue Regeln für Betreiber kritischer Anlagen"
+    for sid, url in ((news, "https://news.example/a"), (official, "https://example.org/a")):
+        key, objects = manifest(sid, uuid.uuid4(), [{"url": url, "text": f"{url} " + BSI,
+                                                     "title": title}])  # fmt: skip
+        await process_manifest(db, key, loader(objects))
+    real = await db.scalar(select(Item).where(Item.canonical_url == "https://example.org/a"))
+    assert real is not None and real.needs_review is False
+    assert await db.scalar(select(ChangeEvent.id).where(ChangeEvent.item_id == real.id))
+    key, objects = manifest(
+        news,
+        uuid.uuid4(),
+        [{"url": "https://news.example/b", "text": "again " + BSI, "title": title}],
+    )
+    await process_manifest(db, key, loader(objects))
+    copy = await db.scalar(select(Item).where(Item.canonical_url == "https://news.example/b"))
+    assert copy is not None and copy.needs_review is True

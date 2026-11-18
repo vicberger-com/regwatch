@@ -193,13 +193,15 @@ async def ingest(
         # A fetched item passes only to a more credible source that fetched it too (official
         # over secondary over news; BL-109 (a), finding N8): a search hit never holds the
         # publisher's page, and sources of equal standing never take it in turn.
+        # Credibility counts on every claim (N10): an item never fetched passes to a fetching
+        # source at least as credible as its owner, a fetched one only to a more credible one.
         if fetched_host is None:
             return Ingested("duplicate", item.id)
-        if item.fetched_host is not None:
-            owner = await db.scalar(select(Source.credibility)
-                                    .where(Source.id == item.source_id))  # fmt: skip
-            if RANK.get(credibility, 0) <= RANK.get(owner or "", 0):
-                return Ingested("duplicate", item.id)
+        owner = await db.scalar(select(Source.credibility)
+                                .where(Source.id == item.source_id))  # fmt: skip
+        mine, theirs = RANK.get(credibility, 0), RANK.get(owner or "", 0)
+        if mine < theirs or (item.fetched_host is not None and mine == theirs):
+            return Ingested("duplicate", item.id)
         item.source_id = source_id
         claimed = True
     if item is not None and item.fetched_host is None and fetched_host is not None:

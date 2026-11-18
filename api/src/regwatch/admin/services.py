@@ -58,6 +58,7 @@ INT_BOUNDS: dict[str, tuple[int, int]] = {
     "auth.password_min_length": (12, 128),
     "sessions.idle_timeout_max_minutes": (15, 1440),
     "sessions.absolute_lifetime_hours": (1, 168),
+    "processing.near_duplicate_ratio": (80, 100),  # M4 pipeline re-verification 6, N11
 }
 BRANDING_KEYS = {
     "site_title": "general.site_title",

@@ -255,7 +255,7 @@ async def test_a_fetched_page_takes_an_item_a_feed_only_listed(
     )
     await db.commit()
     real = TEXT + "\nArticle 41. A small addition."  # below the 5 % threshold
-    taken = await ingest(db, page, None, row(text=real, **PAGE), 5.0)
+    taken = await ingest(db, page, None, row(text=real, **PAGE), 5.0, credibility="official")
     await db.commit()
     assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
     db.expire_all()
@@ -362,7 +362,9 @@ async def test_eur_lex_takes_back_a_display_link_a_feed_listed_first(
     await db.commit()
     real = row(url=link, title="Regulation (EU) 2026/123", metadata={"provider": "eur_lex"},
                final_url="https://publications.europa.eu/resource/cellar/x")  # fmt: skip
-    taken = await ingest(db, eurlex, None, real, 5.0, kind="api_feed:eur_lex")
+    taken = await ingest(
+        db, eurlex, None, real, 5.0, kind="api_feed:eur_lex", credibility="official"
+    )
     await db.commit()
     assert (taken.kind, taken.item_id) == ("changed", planted.item_id)
     db.expire_all()
@@ -385,7 +387,7 @@ async def test_a_feeds_full_page_first_never_locks_an_item(
     item = await db.get(Item, made.item_id)
     assert made.kind == "new" and item is not None and item.fetched_host is None
     taken = await ingest(db, page, None, row(url=url, final_url=url, title="Rule 48"), 5.0,
-                         kind="web_page")  # fmt: skip
+                         kind="web_page", credibility="official")  # fmt: skip
     await db.commit()
     assert (taken.kind, taken.item_id) == ("changed", made.item_id)
     db.expire_all()
@@ -432,3 +434,21 @@ async def test_a_row_without_a_language_gets_the_detected_one(
                                           language=None, title="Neue Regeln"), 5.0)  # fmt: skip
     item = await db.get(Item, got.item_id)
     assert item is not None and (item.language, item.translation_pending) == ("de", True)
+
+
+async def test_a_less_credible_source_never_takes_even_an_unfetched_item(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Pipeline re-verification 6, N10 (R19): an official feed's summary item is not taken by a
+    search hit's fetched row, whatever its title says."""
+    feed, search = await source(admin), await source(admin)
+    url = "https://reg.example/rules/60"
+    made = await ingest(db, feed, None, row(url=url, title="Rule 60 on reporting"), 5.0,
+                        kind="rss", credibility="official")  # fmt: skip
+    await db.commit()
+    hit = await ingest(db, search, None, row(url=url, final_url=url, text="Scrapped. " * 80,
+                                             title="Rule 60 SCRAPPED - fines ahead"), 5.0,
+                       kind="search_query", credibility="secondary")  # fmt: skip
+    assert hit.kind == "duplicate"
+    item = await db.get(Item, made.item_id)
+    assert item is not None and (item.source_id, item.title) == (feed, "Rule 60 on reporting")

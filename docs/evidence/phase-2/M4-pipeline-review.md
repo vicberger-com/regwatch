@@ -125,6 +125,17 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 
 `process_manifest` reused the name `kind` for the event kind, so after a run's first new or changed row every later row was ingested with `kind="new_item"` or `"content_changed"` and an official API's rows stopped speaking for their host (introduced in `a4d9bad`). Fixed by naming the event kind `event`; `test_every_row_of_an_official_api_run_speaks_for_its_host` fails without the fix. To be checked in the next review of this module.
 
+## Re-verification 6 (36de361: N8 `a2abdd4`, language `9474ccb`, near-duplicates `36de361`): not signed off
+
+`a2abdd4` yes; `9474ccb` yes (about 10 ms a detection, 95 MB peak, no network calls under strace); `36de361` no.
+
+| # | Severity | Description | Fix | Verified |
+| --- | --- | --- | --- | --- |
+| N9 | high | Token-set ratio is 100 for containment, and matching ignored credibility: a news feed's short titles ("Regulation (EU) 2026") silenced later official items in the same jurisdiction. | token-sort ratio, at least four words and lengths within 0.8; only an earlier item from an at least as credible source counts | pending |
+| N10 | medium | Taking an unfetched item ignored credibility: a search hit took an official feed's item with its own title. | every claim needs a source at least as credible (more credible for a fetched item) | pending |
+| N11 | low | `processing.near_duplicate_ratio` unbounded: 0 silenced everything. | bounded 80 to 100 | pending |
+| N12 | info | candidate flood, admin credibility flips, lingua on random letters | BL-112 | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.
