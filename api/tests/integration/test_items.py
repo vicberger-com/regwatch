@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import httpx
 import pytest
@@ -93,3 +94,83 @@ async def test_an_anonymous_caller_reads_nothing(
     async with anonymous:
         for path in ("", "/versions", "/diff?from=1&to=2"):
             assert (await anonymous.get(_api(f"/items/{item_id}{path}"))).status_code == 401
+
+
+async def test_tags_reprocessing_and_who_may_change_them(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 5 through the routes: a user's tags survive reprocessing; a removed rule tag
+    stays removed (marked incorrect); reprocessing is queued, audited and refused to viewers."""
+    from sqlalchemy import select
+
+    from regwatch.core.models import AuditLog
+    from regwatch.processing import tasks
+    from regwatch.processing.pipeline import reprocess_item
+    from tests.integration.test_processing_classify import term
+
+    item_id = await three_versions(admin, db)
+    rule = await term(admin, {"keywords": ["Bundesamt"]})
+    mine = await term(admin, {"keywords": ["nothing-matches-this"]})
+    assert await reprocess_item(db, uuid.UUID(item_id))  # the new rule tags the item
+    got = (await admin.get(_api(f"/items/{item_id}"))).json()
+    assert {t["term_id"]: t["assigned_by"] for t in got["terms"]}[str(rule)] == "rule"
+    body = {"add_term_ids": [str(mine)], "remove_term_ids": [str(rule)],
+            "add_jurisdiction_codes": ["fr"], "remove_jurisdiction_codes": ["DE"]}  # fmt: skip
+    put = await admin.put(_api(f"/items/{item_id}/tags"), json=body)
+    assert put.status_code == 200, put.text
+    terms = {t["term_id"]: (t["assigned_by"], t["feedback"]) for t in put.json()["terms"]}
+    assert terms == {str(mine): ("user", None), str(rule): ("rule", "incorrect")}
+    assert [j["code"] for j in put.json()["jurisdictions"]] == ["FR"]
+    assert await reprocess_item(db, uuid.UUID(item_id))  # taxonomy run again
+    db.expire_all()
+    again = (await admin.get(_api(f"/items/{item_id}"))).json()
+    terms = {t["term_id"]: (t["assigned_by"], t["feedback"]) for t in again["terms"]}
+    assert terms == {str(mine): ("user", None), str(rule): ("rule", "incorrect")}
+    assert "FR" in [j["code"] for j in again["jurisdictions"]]
+    judged = await admin.put(
+        _api(f"/items/{item_id}/tags"),
+        json={"feedback": [{"term_id": str(rule), "feedback": "correct"}]},
+    )
+    assert {t["term_id"]: t["feedback"] for t in judged.json()["terms"]}[str(rule)] == "correct"
+    dropped = await admin.put(_api(f"/items/{item_id}/tags"), json={"remove_term_ids": [str(mine)]})
+    assert str(mine) not in {t["term_id"] for t in dropped.json()["terms"]}
+
+    queued: list[str] = []
+    monkeypatch.setattr(tasks, "enqueue_reprocess", queued.append)
+    assert (await admin.post(_api(f"/items/{item_id}/reprocess"))).status_code == 202
+    assert queued == [item_id]
+    actions = (await db.scalars(select(AuditLog.action).where(AuditLog.entity_id == item_id))).all()
+    assert actions.count("item.tags") == 3 and "item.reprocess" in actions
+
+    def down(_: str) -> None:
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr(tasks, "enqueue_reprocess", down)
+    assert (await admin.post(_api(f"/items/{item_id}/reprocess"))).status_code == 503
+    viewer = await _as_new_user(admin, f"viewer-{uuid.uuid4().hex[:8]}@example.org", ["viewer"])
+    try:
+        assert (await viewer.post(_api(f"/items/{item_id}/reprocess"))).status_code == 403
+        assert (await viewer.put(_api(f"/items/{item_id}/tags"), json={})).status_code == 403
+    finally:
+        await viewer.aclose()
+    missing = await admin.post(_api(f"/items/{uuid.uuid4()}/reprocess"))
+    assert missing.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"add_term_ids": ["00000000-0000-7000-8000-000000000009"]},
+     {"add_jurisdiction_codes": ["XX"]}, {"remove_jurisdiction_codes": ["Z" * 17]},
+     {"add_jurisdiction_codes": ["DE"], "remove_jurisdiction_codes": ["de"]},
+     {"feedback": [{"term_id": "00000000-0000-7000-8000-000000000009", "feedback": "correct"}]},
+     {"feedback": [{"term_id": "00000000-0000-7000-8000-000000000009", "feedback": "maybe"}]},
+     {"add_jurisdiction_codes": [f"C{n}" for n in range(101)]}],
+)  # fmt: skip
+async def test_tag_changes_that_are_refused(
+    admin: httpx.AsyncClient, db: AsyncSession, body: dict[str, Any]
+) -> None:
+    item_id = await three_versions(admin, db)
+    got = await admin.put(_api(f"/items/{item_id}/tags"), json=body)
+    assert got.status_code == 422, got.text
+    still = (await admin.get(_api(f"/items/{item_id}"))).json()
+    assert [j["code"] for j in still["jurisdictions"]] == ["DE"]

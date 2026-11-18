@@ -46,6 +46,10 @@ def test_the_registered_task_names_match_the_contract(valid_env: dict[str, str])
     registered = {name for name in app.tasks if name.startswith("capture.")}
     expected = {n for n in contract["celery_tasks"] if n.startswith("capture.")}
     assert registered == expected - {"capture.fetch_candidate"}  # lands with the connectors
+    processing = {name for name in app.tasks if name.startswith("process.")}
+    # M4 runs the chain inside process.extract; the per-stage names stay unused for now
+    assert processing == {"process.extract", "process.reprocess_item"}
+    assert processing <= set(contract["celery_tasks"])
 
 
 async def test_enqueue_run_sends_the_contract_task(

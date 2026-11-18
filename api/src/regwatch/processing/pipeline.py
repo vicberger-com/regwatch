@@ -27,7 +27,7 @@ from regwatch.processing import geotag
 from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
-from regwatch.processing.models import Item
+from regwatch.processing.models import Item, ItemVersion
 from regwatch.taxonomy.models import Jurisdiction
 
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
@@ -132,3 +132,28 @@ async def sweep(db: AsyncSession, load: Load, hand_over: Callable[[str], Awaitab
             await hand_over(key)
             handed += 1
     return handed
+
+
+async def reprocess_item(db: AsyncSession, item_id: uuid.UUID) -> bool:
+    """Tag ``item_id`` again from its latest version with today's rules and source defaults
+    (M4 acceptance 5): jurisdictions and terms are replaced, a user's own tags and judged tags
+    are kept, and no change event is raised (the content did not change). False if gone."""
+    item = await db.scalar(select(Item).where(Item.id == item_id).with_for_update())
+    if item is None:
+        return False
+    source = await db.scalar(select(Source).where(Source.id == item.source_id))
+    text = await db.scalar(select(ItemVersion.content_text).where(ItemVersion.item_id == item.id)
+                           .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
+    wanted = list(source.default_jurisdiction_ids or []) if source is not None else []
+    found = await db.scalars(select(Jurisdiction.code).where(Jurisdiction.id.in_(wanted)))
+    settings = await values(db, ["classification.min_confidence"])
+    try:
+        min_confidence = float(settings["classification.min_confidence"])
+    except (TypeError, ValueError):
+        min_confidence = MIN_CONFIDENCE
+    hits = geotag.detect(item.title, text or "", item.canonical_url, list(found.all()))
+    await tag_jurisdictions(db, item, hits)
+    terms = list(source.default_term_ids or []) if source is not None else []
+    await classify(db, item, text or "", await load_rules(db), terms, min_confidence)
+    await db.commit()
+    return True

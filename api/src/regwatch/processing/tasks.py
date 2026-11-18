@@ -6,13 +6,15 @@ capture run hands its whole manifest over once it has ended (M3 writes one per r
 
 from __future__ import annotations
 
+import uuid
+
 import anyio
 from celery import shared_task
 
 from regwatch.core import objectstore
 from regwatch.core.db import create_engine, session_factory
 from regwatch.core.settings import get_settings
-from regwatch.processing.pipeline import process_manifest, sweep
+from regwatch.processing.pipeline import process_manifest, reprocess_item, sweep
 
 
 async def _process(key: str) -> None:
@@ -27,6 +29,27 @@ async def _process(key: str) -> None:
 @shared_task(name="process.extract", queue="process")  # type: ignore[untyped-decorator]
 def extract(raw_document_ref: str) -> None:
     anyio.run(_process, raw_document_ref)
+
+
+async def _reprocess(item_id: str) -> None:
+    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            await reprocess_item(db, uuid.UUID(item_id))
+    finally:
+        await engine.dispose()
+
+
+@shared_task(name="process.reprocess_item", queue="process")  # type: ignore[untyped-decorator]
+def reprocess(item_id: str) -> None:
+    anyio.run(_reprocess, item_id)
+
+
+def enqueue_reprocess(item_id: str) -> None:
+    """Queue ``process.reprocess_item`` (``POST /items/{id}/reprocess``)."""
+    from regwatch.core.worker import celery_app
+
+    celery_app().send_task("process.reprocess_item", args=[item_id], queue="process")
 
 
 async def _sweep() -> int:
