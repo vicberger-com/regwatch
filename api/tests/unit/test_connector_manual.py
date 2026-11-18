@@ -219,3 +219,17 @@ async def test_a_run_of_a_manual_source_reads_its_request_by_the_run_id() -> Non
     failed = await execution.run_connector(run_id, job, source, make)
     # Finding 5: one document, so its own reason, not "none of 1 documents".
     assert (failed.status, failed.error_class) == ("failed", "unsupported-type")
+
+
+def test_a_manual_source_saved_with_an_override_runs_without_it() -> None:
+    """Manual re-verification R1: rows saved before overrides were refused for manual."""
+    import uuid
+
+    from regwatch.capture import execution
+    from regwatch.capture.models import CaptureJob, Source
+
+    source = Source(id=uuid.UUID(SID), kind="manual", robots_policy="override", config={},
+                    override_reason="Saved before the fix")  # fmt: skip
+    job = CaptureJob(max_items_per_run=10, rate_limit_per_minute=60, render_js=False,
+                     extraction_rules={})  # fmt: skip
+    assert execution.job_settings(job, source).robots_override is None

@@ -111,6 +111,8 @@ def job_settings(job: CaptureJob, source: Source,
     except ProblemError as exc:
         raise ConnectorError("bad-config", "the stored source settings are not valid") from exc
     override = source.override_reason if source.robots_policy == "override" else None
+    if source.kind == "manual":  # never, even if saved before that was refused (manual R1)
+        override = None
     return JobSettings(source_id=str(source.id), kind=source.kind, config=config, rules=rules,
                        max_items=job.max_items_per_run, rate_per_minute=job.rate_limit_per_minute,
                        render_js=job.render_js, robots_override=override,
@@ -249,7 +251,7 @@ async def run_connector(run_id: uuid.UUID, job: CaptureJob, source: Source,
     if entries:
         await base.store(manifest_key(settings.source_id, run_id), _manifest(run_id, entries))
     status, error_class, message = _verdict(len(entries) + unchanged, failures, refused, cut_short)
-    if error_class == "fetch-failed" and failures == 1 and last_failure is not None:
+    if error_class == "fetch-failed" and failures == 1 and not refused and last_failure:
         # One document and it failed: its own reason says more (manual upload review 5).
         error_class, message = last_failure
     # Only a connector that resumes from the cursor gets one, and not past failed documents

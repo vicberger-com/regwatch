@@ -131,6 +131,9 @@ async def _document_body(request: Request) -> tuple[str | None, bytes | None, st
     """(url, file bytes, title) from a JSON or a multipart body; one file part at most."""
     kind = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if kind == "application/json":
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_JSON_BYTES:  # before reading it (R3)
+            raise ProblemError(413, "payload-too-large", "A JSON body is at most 8 KB.")
         raw = await request.body()
         if len(raw) > MAX_JSON_BYTES:  # the 10 MB cap is for files (manual review finding 2)
             raise ProblemError(413, "payload-too-large", "A JSON body is at most 8 KB.")
