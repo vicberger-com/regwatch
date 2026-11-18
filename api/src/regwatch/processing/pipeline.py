@@ -24,10 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from regwatch.admin.services import values
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
 from regwatch.processing import geotag, neardup
+from regwatch.processing.classifier import ModelProvider, classify_by_model, model_provider
 from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
-from regwatch.processing.models import Item, ItemVersion
+from regwatch.processing.models import Item, ItemTerm, ItemVersion
 from regwatch.taxonomy.models import Jurisdiction
 
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
@@ -87,6 +88,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     except (TypeError, ValueError):
         ratio = float(neardup.DEFAULT_RATIO)
     terms = list(source.default_term_ids or [])
+    provider = await model_provider(db)
     await db.commit()
     for row in rows[:MAX_ROWS]:
         if not isinstance(row, dict):
@@ -105,6 +107,8 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
                 await classify(db, item, text, rules, terms, min_confidence)
+                if provider is not None:  # off unless flagged and implemented (acceptance 4)
+                    await _by_model(db, item, text, provider, min_confidence)
                 event = "new_item" if got.kind == "new" else "content_changed"
                 twin = (
                     await neardup.near_duplicate(db, item, ids, ratio)
@@ -171,5 +175,16 @@ async def reprocess_item(db: AsyncSession, item_id: uuid.UUID) -> bool:
     await tag_jurisdictions(db, item, hits)
     terms = list(source.default_term_ids or []) if source is not None else []
     await classify(db, item, text or "", await load_rules(db), terms, min_confidence)
+    provider = await model_provider(db)
+    if provider is not None:
+        await _by_model(db, item, text or "", provider, min_confidence)
     await db.commit()
     return True
+
+
+async def _by_model(db: AsyncSession, item: Item, text: str, provider: ModelProvider,
+                    min_confidence: float) -> None:  # fmt: skip
+    await db.flush()
+    kept = set((await db.scalars(select(ItemTerm.term_id)
+                                 .where(ItemTerm.item_id == item.id))).all())  # fmt: skip
+    await classify_by_model(db, item, text, provider, kept, min_confidence)

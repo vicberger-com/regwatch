@@ -114,3 +114,96 @@ async def test_source_default_terms_and_the_minimum_confidence(
     assert default in tagged and weak not in tagged
     await db.commit()
     assert (await tags(db, found.id)).get(default) == "source_default"
+
+
+async def test_with_the_model_flag_off_rules_alone_classify_and_nothing_calls_out(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 4: flag off (even with a provider named), and flag on with a provider this
+    build does not implement: rules tag, and no HTTP request is made (a network mock)."""
+    from sqlalchemy import update
+
+    from regwatch.admin.models import FeatureFlag, Setting
+    from regwatch.processing.pipeline import reprocess_item
+
+    def no_network(*_: Any, **__: Any) -> None:
+        raise AssertionError("an outbound call was made")
+
+    rule = await term(admin, {"keywords": ["ransomware"]})
+    made = await item(admin, db, "Operators must report ransomware incidents. " * 20)
+    monkeypatch.setattr(httpx.AsyncClient, "send", no_network)  # after the API calls above
+    await db.merge(Setting(key="classification.model_provider", value="ollama"))
+    await db.commit()
+    for enabled in (False, True):
+        await db.execute(update(FeatureFlag).where(FeatureFlag.key == "classification.model")
+                         .values(enabled=enabled))  # fmt: skip
+        await db.commit()
+        assert await reprocess_item(db, made.id)
+        assert (await tags(db, made.id)).get(rule) == "rule"
+    await db.execute(update(FeatureFlag).where(FeatureFlag.key == "classification.model")
+                     .values(enabled=False))  # fmt: skip
+    await db.execute(
+        Setting.__table__.delete().where(Setting.key == "classification.model_provider")
+    )
+    await db.commit()
+
+
+async def test_a_model_provider_tags_only_what_its_answer_proves(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a provider (a fake, as none is built yet): valid answers tag as ``model``; a
+    failing provider never fails the item; rule and user tags are left alone."""
+    import json
+
+    from sqlalchemy import select, update
+
+    from regwatch.admin.models import FeatureFlag, Setting
+    from regwatch.processing import classifier
+    from regwatch.processing.pipeline import reprocess_item
+    from regwatch.taxonomy.models import Term
+
+    rule = await term(admin, {"keywords": ["ransomware"]})
+    other = await term(admin, {"keywords": ["nothing-matches-this"]})
+    other_key = await db.scalar(select(Term.key).where(Term.id == other))
+    made = await item(admin, db, "Operators must report ransomware incidents. " * 20)
+    replies: list[str] = []
+
+    class Fake:
+        name = "fake"
+
+        async def complete(self, prompt: str) -> str:
+            assert "<<<" in prompt and "ransomware" in prompt
+            if not replies:
+                raise TimeoutError("model down")
+            return replies.pop()
+
+    monkeypatch.setitem(classifier.PROVIDERS, "fake", Fake)  # type: ignore[arg-type]
+    await db.merge(Setting(key="classification.model_provider", value="fake"))
+    await db.execute(update(FeatureFlag).where(FeatureFlag.key == "classification.model")
+                     .values(enabled=True))  # fmt: skip
+    await db.commit()
+    try:
+        assert await reprocess_item(db, made.id)  # the provider fails: rules still tag
+        assert await tags(db, made.id) == {rule: "rule"}
+        replies.append(
+            json.dumps(
+                {
+                    "terms": [
+                        {
+                            "key": f"topic.{other_key}",
+                            "confidence": 0.9,
+                            "evidence": "report ransomware",
+                        },
+                        {"key": "topic.invented", "confidence": 1, "evidence": "report ransomware"},
+                    ]
+                }
+            )
+        )
+        assert await reprocess_item(db, made.id)
+        assert await tags(db, made.id) == {rule: "rule", other: "model"}
+    finally:
+        await db.execute(update(FeatureFlag).where(FeatureFlag.key == "classification.model")
+                         .values(enabled=False))  # fmt: skip
+        await db.execute(Setting.__table__.delete().where(
+            Setting.key == "classification.model_provider"))  # fmt: skip
+        await db.commit()
