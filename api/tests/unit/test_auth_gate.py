@@ -110,10 +110,8 @@ async def test_permitted_user_reaches_the_handler(
 ) -> None:
     _resolve_to(monkeypatch, _principal({"items.read"}))
     assert (
-        await _get(
-            app, "/items/00000000-0000-7000-8000-000000000000/versions", cookies={"rw_session": "t"}
-        )
-    ).status_code == 501
+        await _get(app, "/map/activity", cookies={"rw_session": "t"})
+    ).status_code == 501  # a stub (M5): the gate let the call through
 
 
 async def test_temporary_password_allows_only_the_change(
