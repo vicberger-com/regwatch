@@ -47,3 +47,17 @@ R-05 measured MapLibre GL JS 6.16.0 in headless Chromium against Natural Earth v
 ## Owner decisions at Gate G0 (2026-11-02)
 
 - Accepted as written. The R-05 assumptions are accepted: Natural Earth default view with disputed areas drawn neutral and a non-endorsement statement on the legal page; French overseas regions are list-only; Antarctica is drawn neutral as AQ.
+
+## Amendment 1 (2026-11-19, M6): Equal Earth at build time
+
+Approved on recommendation under the owner's standing instruction of 2026-11-19. It replaces decision 6's runtime projection.
+
+- **What changes:** `scripts/build-map-data.sh` now projects the simplified boundaries to Equal Earth at build time, using the project's own formula in `scripts/project-equal-earth.mjs`. The output is scaled so that x lies within ±90 and y within ±44.
+- **How it renders:** MapLibre draws the files in its pre-registered `identity` projection. The map therefore needs no CRS of its own, no `addProjection` and no projection script inside its workers.
+- **Why:** MapLibre 6.19's custom CRS needs the same projection rebuilt inside every worker from a `definition` string, through a handler loaded with `importScriptInWorkers`. That is an experimental API with a script that CSP must allow. Projecting once at build time is simpler, has no runtime dependency on the experiment, and drew correctly in headless Chromium (swiftshader).
+- **Consequences:**
+  - The map's coordinates are not longitude and latitude. Nothing reads them as such: selection uses the feature's `iso` property.
+  - There is no Mercator fallback setting, since a Mercator view would need a second file.
+  - A basemap or tiles would have to be cut in the same space. ADR-0004 already rules both out.
+- **Size:** the projected 1:50m file is 158 KB gzip, against 169 KB unprojected.
+- **Worker:** MapLibre's worker is emitted as a same-origin file (`setWorkerUrl`), which CSP `script-src 'self'` allows.
