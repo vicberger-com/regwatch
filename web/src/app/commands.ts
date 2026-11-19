@@ -5,7 +5,7 @@
  * the control.
  */
 import type { LucideIcon } from "lucide-react";
-import { Map, Settings } from "lucide-react";
+import { List, Map, Settings } from "lucide-react";
 
 import { hasPermission } from "@/lib/auth/session";
 import type { Me } from "@/lib/auth/session";
@@ -45,6 +45,8 @@ function sameCommand(a: Command, b: Command): boolean {
   return (
     a.label === b.label &&
     a.to === b.to &&
+    a.run === b.run &&
+    a.shortcut === b.shortcut &&
     a.permission === b.permission &&
     String(a.anyPermission) === String(b.anyPermission) &&
     a.order === b.order &&
@@ -145,8 +147,8 @@ export const ADMIN_PERMISSIONS = [
 ];
 
 /**
- * The shell's own commands. Items (20), Reports (30), Outputs (40) and User (50) register
- * theirs with their screens, so the rail never links to a page that does not exist yet.
+ * The shell's own commands. Reports (30), Outputs (40) and User (50) register theirs with
+ * their screens, so the rail never links to a page that does not exist yet.
  */
 export function registerShellCommands(): void {
   registerCommand({
@@ -155,6 +157,15 @@ export function registerShellCommands(): void {
     icon: Map,
     to: "/",
     order: 10,
+    permission: "items.read",
+  });
+  registerCommand({
+    id: "nav.items",
+    label: "Items",
+    icon: List,
+    to: "/items",
+    order: 20,
+    permission: "items.read",
   });
   registerCommand({
     id: "nav.settings",

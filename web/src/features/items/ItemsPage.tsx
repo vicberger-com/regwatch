@@ -1,0 +1,292 @@
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+
+import { jurisdictionName } from "@/features/map/names";
+import { problemText } from "@/lib/auth/session";
+
+import { searchQuery, type ItemSummary, type Query } from "./api";
+import { Marked } from "./Marked";
+
+export const PAGE_SIZE = 25;
+export type Sort =
+  "relevance" | "last_changed_desc" | "published_desc" | "title_asc";
+
+export interface ItemsSearch {
+  q?: string;
+  /** Jurisdiction codes, comma-separated in the URL. */
+  j?: string;
+  /** Changed within the last this many days. */
+  days?: number;
+  sort?: Sort;
+  page?: number;
+}
+
+const SORTS: { value: Sort; label: string; column: string }[] = [
+  {
+    value: "last_changed_desc",
+    label: "Last changed, newest first",
+    column: "changed",
+  },
+  {
+    value: "published_desc",
+    label: "Published, newest first",
+    column: "published",
+  },
+  { value: "title_asc", label: "Title, A to Z", column: "title" },
+  { value: "relevance", label: "Relevance", column: "" },
+];
+
+/** The validated `/items` search parameters (TanStack Router `validateSearch`). */
+export function parseItemsSearch(raw: Record<string, unknown>): ItemsSearch {
+  const out: ItemsSearch = {};
+  if (typeof raw.q === "string" && raw.q.trim()) out.q = raw.q.slice(0, 500);
+  if (typeof raw.j === "string" && /^[A-Za-z0-9,_-]{1,400}$/.test(raw.j))
+    out.j = raw.j.toUpperCase();
+  const days = Number(raw.days);
+  if (Number.isInteger(days) && days >= 1 && days <= 3660) out.days = days;
+  if (SORTS.some((s) => s.value === raw.sort)) out.sort = raw.sort as Sort;
+  const page = Number(raw.page);
+  if (Number.isInteger(page) && page >= 1 && page <= 400) out.page = page;
+  return out;
+}
+
+/** ``search`` without the given keys (a new search starts on page 1). */
+function without(
+  search: ItemsSearch,
+  ...keys: (keyof ItemsSearch)[]
+): ItemsSearch {
+  return Object.fromEntries(
+    Object.entries(search).filter(
+      ([key]) => !keys.includes(key as keyof ItemsSearch),
+    ),
+  );
+}
+
+export function toQuery(search: ItemsSearch, now = new Date()): Query {
+  const filters: NonNullable<Query["filters"]> = {};
+  if (search.j) filters.jurisdictions = search.j.split(",").filter(Boolean);
+  if (search.days) {
+    filters.changed = {
+      from: new Date(now.getTime() - search.days * 86_400_000).toISOString(),
+    };
+  }
+  return {
+    ...(search.q ? { q: search.q } : {}),
+    filters,
+    sort: search.sort ?? (search.q ? "relevance" : "last_changed_desc"),
+    page: search.page ?? 1,
+    page_size: PAGE_SIZE,
+    highlight: Boolean(search.q),
+    facet_counts: false,
+  };
+}
+
+const date = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString() : "—";
+
+function Title({ item }: { item: ItemSummary }) {
+  const lit = item.highlights?.title?.[0];
+  return (
+    <>
+      <Link
+        to="/items/$id"
+        params={{ id: item.id }}
+        className="font-semibold text-accent underline-offset-2 hover:underline"
+      >
+        {lit ? <Marked html={lit} /> : item.title}
+      </Link>
+      {item.title_en && item.title_en !== item.title && (
+        <span className="block text-sm text-text-muted" lang="en">
+          {item.title_en}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** `/items`: the items table (screens.md), driven by the URL so views can be linked. */
+export function ItemsPage(props: {
+  search: ItemsSearch;
+  onSearch: (next: ItemsSearch) => void;
+}) {
+  const { search, onSearch } = props;
+  const [text, setText] = useState(search.q ?? "");
+  const [now] = useState(() => new Date()); // one "now" per visit keeps the query key stable
+  const result = useQuery({
+    ...searchQuery(toQuery(search, now)),
+    placeholderData: keepPreviousData,
+  });
+  const sort = toQuery(search, now).sort;
+  const page = search.page ?? 1;
+  const total = result.data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const rest = without(search, "q", "page");
+    onSearch(text.trim() ? { ...rest, q: text.trim() } : rest);
+  };
+  const ariaSort = (column: string) =>
+    SORTS.find((s) => s.value === sort)?.column === column
+      ? column === "title"
+        ? "ascending"
+        : "descending"
+      : undefined;
+  // SearchResult narrows Page.items to ItemSummary; the generated intersection keeps unknown.
+  const items = (result.data?.items ?? []) as ItemSummary[];
+  const caption = result.isPending
+    ? "Loading items…"
+    : `${String(total)}${total >= 10_000 ? "+" : ""} ${total === 1 ? "item" : "items"}`;
+
+  return (
+    <>
+      <h1 className="text-2xl font-semibold">Items</h1>
+      <form
+        role="search"
+        onSubmit={submit}
+        className="mt-4 flex flex-wrap items-end gap-2"
+      >
+        <label className="flex flex-col text-sm">
+          Search items
+          <input
+            type="search"
+            value={text}
+            maxLength={500}
+            onChange={(e) => {
+              setText(e.target.value);
+            }}
+            className="mt-1 w-96 max-w-full rounded border border-border bg-surface px-2 py-1"
+          />
+        </label>
+        <button
+          type="submit"
+          className="rounded bg-accent px-3 py-1 text-accent-contrast"
+        >
+          Search
+        </button>
+        <label className="ml-4 flex flex-col text-sm">
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => {
+              onSearch({
+                ...without(search, "page"),
+                sort: e.target.value as Sort,
+              });
+            }}
+            className="mt-1 rounded border border-border bg-surface px-2 py-1"
+          >
+            {SORTS.filter((s) => s.value !== "relevance" || search.q).map(
+              (s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+      </form>
+      {search.j && (
+        <p className="mt-2 text-sm text-text-muted">
+          Jurisdictions: {search.j.split(",").map(jurisdictionName).join(", ")}
+          {search.days
+            ? `; changed in the last ${String(search.days)} days`
+            : ""}
+        </p>
+      )}
+      {result.isError && (
+        <p role="alert" className="mt-3 text-critical">
+          {problemText(result.error, "The items could not be loaded.")}
+        </p>
+      )}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full border-collapse text-left">
+          <caption
+            className="mb-2 text-left text-sm text-text-muted"
+            aria-live="polite"
+          >
+            {caption}
+          </caption>
+          <thead>
+            <tr className="border-b border-border">
+              <th
+                scope="col"
+                aria-sort={ariaSort("title")}
+                className="py-2 pr-4"
+              >
+                Title
+              </th>
+              <th scope="col" className="py-2 pr-4">
+                Jurisdictions
+              </th>
+              <th scope="col" className="py-2 pr-4">
+                Source
+              </th>
+              <th
+                scope="col"
+                aria-sort={ariaSort("published")}
+                className="py-2 pr-4"
+              >
+                Published
+              </th>
+              <th
+                scope="col"
+                aria-sort={ariaSort("changed")}
+                className="py-2 pr-4"
+              >
+                Last changed
+              </th>
+              <th scope="col" className="py-2">
+                Severity
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className="border-b border-border align-top">
+                <td className="py-2 pr-4">
+                  <Title item={item} />
+                </td>
+                <td className="py-2 pr-4">
+                  {item.jurisdictions
+                    .map((j) => j.code)
+                    .filter(Boolean)
+                    .join(", ")}
+                </td>
+                <td className="py-2 pr-4">{item.source_name ?? ""}</td>
+                <td className="py-2 pr-4">{date(item.published_at)}</td>
+                <td className="py-2 pr-4">{date(item.last_changed_at)}</td>
+                <td className="py-2">{item.severity ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <nav aria-label="Pages" className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => {
+            onSearch({ ...search, page: page - 1 });
+          }}
+          className="rounded border border-border px-2 py-1 disabled:opacity-50"
+        >
+          Previous page
+        </button>
+        <span>
+          Page {String(page)} of {String(pages)}
+        </span>
+        <button
+          type="button"
+          disabled={page >= pages}
+          onClick={() => {
+            onSearch({ ...search, page: page + 1 });
+          }}
+          className="rounded border border-border px-2 py-1 disabled:opacity-50"
+        >
+          Next page
+        </button>
+      </nav>
+    </>
+  );
+}

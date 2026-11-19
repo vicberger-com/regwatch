@@ -27,16 +27,14 @@ describe("command registry", () => {
       run: () => undefined,
       permission: "items.read",
     });
-    expect(railCommands(withPermissions([])).map((c) => c.id)).toEqual([
-      "nav.map",
-    ]);
+    expect(railCommands(withPermissions([]))).toEqual([]);
     expect(
       railCommands(withPermissions(["audit.read"])).map((c) => c.id),
-    ).toEqual(["nav.map", "nav.settings"]);
+    ).toEqual(["nav.settings"]);
     expect(
       commandsFor(withPermissions(["items.read"])).map((c) => c.id),
-    ).toEqual(["nav.map", "x.print"]);
-    expect(commandsFor(null).map((c) => c.id)).toEqual(["nav.map"]);
+    ).toEqual(["nav.map", "nav.items", "x.print"]);
+    expect(commandsFor(null)).toEqual([]);
   });
 
   it("needs exactly one of a route and a handler", () => {
@@ -70,6 +68,8 @@ describe("command registry", () => {
   it("registering the shell commands again is harmless", () => {
     registerShellCommands();
     registerShellCommands();
-    expect(commandsFor(withPermissions(["users.manage"]))).toHaveLength(2);
+    expect(
+      commandsFor(withPermissions(["users.manage", "items.read"])),
+    ).toHaveLength(3);
   });
 });

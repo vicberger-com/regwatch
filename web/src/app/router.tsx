@@ -9,6 +9,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
@@ -28,6 +29,8 @@ import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AdminHome } from "@/features/admin/AdminHome";
+import { ItemPage } from "@/features/items/ItemPage";
+import { ItemsPage, parseItemsSearch } from "@/features/items/ItemsPage";
 import { MapPage } from "@/features/map/MapPage";
 
 import { AppShell } from "./AppShell";
@@ -79,7 +82,12 @@ const homeRoute = createRoute({
   staticData: { title: "Map" },
   component: function Home() {
     const { me } = authedRoute.useRouteContext();
-    if (!hasPermission(me, "items.read")) return <NotPermitted />;
+    if (!hasPermission(me, "items.read")) {
+      // An administrator without items.read lands on the settings home instead (map review 1).
+      if (ADMIN_PERMISSIONS.some((p) => hasPermission(me, p)))
+        return <Navigate to="/admin" />;
+      return <NotPermitted />;
+    }
     return <MapPage />;
   },
 });
@@ -102,6 +110,39 @@ function NotPermitted() {
     </p>
   );
 }
+
+const itemsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/items",
+  staticData: { title: "Items" },
+  validateSearch: parseItemsSearch,
+  component: function Items() {
+    const { me } = authedRoute.useRouteContext();
+    const search = itemsRoute.useSearch();
+    const navigate = itemsRoute.useNavigate();
+    if (!hasPermission(me, "items.read")) return <NotPermitted />;
+    return (
+      <ItemsPage
+        search={search}
+        onSearch={(next) => {
+          void navigate({ search: next });
+        }}
+      />
+    );
+  },
+});
+
+const itemRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/items/$id",
+  staticData: { title: "Item" },
+  component: function Item() {
+    const { me } = authedRoute.useRouteContext();
+    const { id } = itemRoute.useParams();
+    if (!hasPermission(me, "items.read")) return <NotPermitted />;
+    return <ItemPage id={id} />;
+  },
+});
 
 const adminHomeRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -240,6 +281,8 @@ export const routeTree = rootRoute.addChildren([
   authedRoute.addChildren([
     homeRoute,
     changePasswordRoute,
+    itemsRoute,
+    itemRoute,
     adminHomeRoute,
     usersRoute,
     taxonomyRoute,

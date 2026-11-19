@@ -119,6 +119,34 @@ describe("map page", () => {
     );
   });
 
+  it("sends an administrator without items.read to the settings home, with no Map link", async () => {
+    fakeApi({
+      "GET /auth/me": [200, { ...ADMIN, permissions: ["users.manage"] }],
+    });
+    renderAt("/");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeInTheDocument();
+    const rail = screen.getByRole("navigation", { name: "Main" });
+    expect(within(rail).queryByRole("link", { name: "Map" })).toBeNull();
+  });
+
+  it("announces the selection and keeps the list on it", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    const list = await screen.findByRole("listbox");
+    const map = await engine();
+    map.on.onSelect("FR");
+    expect(
+      await screen.findByText(/Selected: France, 1 item changed/),
+    ).toHaveAttribute("role", "status");
+    const options = within(list).getAllByRole("option");
+    expect(list).toHaveAttribute("aria-activedescendant", options[2]?.id);
+  });
+
   it("says when the activity cannot be loaded, and refuses users without items.read", async () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
