@@ -43,6 +43,7 @@ pytestmark = [
 __all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns"]
 
 ITEMS = int(os.environ.get("REGWATCH_PERF_ITEMS", "1000000"))
+EXPLAIN = bool(os.environ.get("REGWATCH_PERF_EXPLAIN"))  # read at import: fixtures reset the env
 WORDS = ("regulation directive incident reporting cybersecurity data protection privacy "
          "operator provider authority network security critical infrastructure cloud supply "
          "chain software identity encryption telecoms energy finance health transport guidance "
@@ -119,13 +120,13 @@ async def test_search_map_and_export_at_scale(
 ) -> None:
     sid = await made_source(admin)
     await populate(db, sid)
-    if os.environ.get("REGWATCH_PERF_EXPLAIN"):
+    if EXPLAIN:
         from sqlalchemy import func, select
         from sqlalchemy.dialects import postgresql
 
         from regwatch.search.query import compile_query
 
-        for body in QUERIES[:2]:
+        for body in [QUERIES[i] for i in (0, 7, 8, 10)]:
             made = compile_query(Query.model_validate(body))
             assert made.matches is not None
             for name, stmt in (
