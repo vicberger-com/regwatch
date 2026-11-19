@@ -15,7 +15,7 @@
 | D9 | Toolbar placement and default map encoding | Left rail; recency | M6 |
 | D10 | Retention periods | Items indefinite, artifacts 90 days, audit 2 years | M8, M10 |
 | D11 | Phase dates and pilot group | Unset | Section 6 |
-| D12 | Repository name, branch, registry | Answered: vicaberger/regwatch, main; registry GHCR assumed | M0 |
+| D12 | Repository name, branch, registry | Answered: vicberger-com/regwatch (moved from vicaberger/regwatch on 2026-11-19 so the organization's security features apply), main; registry GHCR assumed | M0 |
 | D13 | License for the application's own code | Open; repository private meanwhile | root LICENSE |
 
 ## 10.2 Risks
