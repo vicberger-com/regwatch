@@ -22,6 +22,10 @@ API_DIR = Path(__file__).resolve().parents[2]
 # Server settings for the load test (BL-118), e.g. "-c shared_buffers=2GB -c work_mem=32MB";
 # empty for every other test run.
 PG_ARGS = tuple(os.environ.get("REGWATCH_PG_ARGS", "").split())
+INDEX_IMAGE = (
+    "opensearchproject/opensearch@sha256:"
+    "3bf4fe26aeb9f7b03c0ebcb1302bb24e855ee6b89fd926d26a71a83ef6f7e076"
+)  # CP-22
 PG_IMAGE = "postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a"
 PASSWORD = "it-only"  # noqa: S105 - throwaway container bound to 127.0.0.1
 APP_PASSWORD = "it-app-only"  # noqa: S105 - regwatch_api, as deploy/db-init creates it
@@ -131,3 +135,58 @@ def processing_handovers(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     handed: list[str] = []
     monkeypatch.setattr(runs, "_to_processing", handed.append)
     return handed
+
+
+@dataclass
+class OpenSearch:
+    url: str
+    password: str
+    ca_b64: str
+
+
+def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """A fixed local command (Docker, curl, the setup script); never input from a test."""
+    return subprocess.run(args, env=env, capture_output=True, text=True, check=False)  # noqa: S603
+
+
+@pytest.fixture(scope="session")
+def opensearch(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OpenSearch]:
+    """A throwaway OpenSearch (ADR-0011) prepared by scripts/index-setup.sh, with its security
+    plugin on, published on 127.0.0.1 only; skipped where the setup cannot run."""
+    root = API_DIR.parent
+    work = tmp_path_factory.mktemp("index")
+    env = {**os.environ, "INDEX_SETUP_OUT": str(work / "gen"),
+           "INDEX_SETUP_ENV": str(work / "index.env")}  # fmt: skip
+    setup = _run([str(root / "scripts" / "index-setup.sh"), "--force"], env)
+    if setup.returncode != 0:
+        pytest.skip(f"index-setup.sh failed: {setup.stderr[-300:]}")
+    values = dict(line.split("=", 1) for line in (work / "index.env").read_text().splitlines()
+                  if "=" in line and not line.startswith("#"))  # fmt: skip
+    name = f"regwatch-os-{uuid.uuid4().hex[:8]}"
+    config = "/usr/share/opensearch/config"
+    _docker(
+        "run", "-d", "--rm", "--name", name, "--hostname", "index", "-p", "127.0.0.1::9200",
+        "-e", "DISABLE_INSTALL_DEMO_CONFIG=true", "-e", "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m",
+        "--ulimit", "nofile=65536:65536",
+        "-v", f"{root}/deploy/opensearch/opensearch.yml:{config}/opensearch.yml:ro",
+        "-v", f"{work}/gen/certs:{config}/certs:ro",
+        "-v", f"{work}/gen/security:{config}/opensearch-security:ro",
+        INDEX_IMAGE,
+    )  # fmt: skip
+    try:
+        port = int(_docker("port", name, "9200/tcp").splitlines()[0].rsplit(":", 1)[1])
+        deadline = time.monotonic() + 120
+        while True:  # 401: the security plugin is up and refusing anonymous calls
+            probe = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-k",
+                          f"https://127.0.0.1:{port}/"])  # fmt: skip
+            if probe.stdout == "401":
+                break
+            if time.monotonic() > deadline:
+                raise RuntimeError("OpenSearch did not start")
+            time.sleep(2)
+        yield OpenSearch(f"https://localhost:{port}", values["REGWATCH_INDEX_PASSWORD"],
+                         values["REGWATCH_INDEX_CA_B64"])  # fmt: skip
+    finally:
+        _run(["docker", "rm", "-f", "-v", name])
+        _run(["docker", "run", "--rm", "--user", "0", "-v", f"{work}:/w", "--entrypoint", "rm",
+              INDEX_IMAGE, "-rf", "/w/gen"])  # fmt: skip

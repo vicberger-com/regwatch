@@ -50,6 +50,9 @@ def test_the_registered_task_names_match_the_contract(valid_env: dict[str, str])
     # M4 runs the chain inside process.extract; the per-stage names stay unused for now
     assert processing == {"process.extract", "process.reprocess_item"}
     assert processing <= set(contract["celery_tasks"])
+    searching = {name for name in app.tasks if name.startswith("search.")}
+    assert searching == {"search.index_items", "search.reindex"}  # ADR-0011
+    assert searching <= set(contract["celery_tasks"])
 
 
 async def test_enqueue_run_sends_the_contract_task(

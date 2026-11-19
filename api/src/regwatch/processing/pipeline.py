@@ -32,6 +32,7 @@ from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemTerm, ItemVersion
 from regwatch.processing.translate import Budget, Translator, translate_item, translator
+from regwatch.search.tasks import queue_index
 from regwatch.taxonomy.models import Jurisdiction
 
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
@@ -68,6 +69,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     """Every document of the run whose manifest is ``key``."""
     counts = Counts()
     started = time.monotonic()
+    touched: list[uuid.UUID] = []
     spend = Budget()  # translation, per manifest (N27)
     match = MANIFEST.fullmatch(key)
     if match is None:
@@ -157,6 +159,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                     counts.add("near_duplicate")
                 else:
                     await raise_events(db, item, event, ids, got.changed_pct)
+                touched.append(item.id)
             await db.commit()
         except (SoftTimeLimitExceeded, MemoryError):  # stop; the sweep hands it over again
             await db.rollback()
@@ -165,6 +168,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             await db.rollback()
             counts.failed += 1
             _log.warning("processing_row_failed", run_id=str(run_id), error=type(exc).__name__)
+    await queue_index(touched)  # the search index follows PostgreSQL (ADR-0011)
     if store is not None:
         await store(marker_key(key), json.dumps({"failed": counts.failed,
                                                  **counts.by_kind}).encode())  # fmt: skip
@@ -222,6 +226,7 @@ async def reprocess_item(db: AsyncSession, item_id: uuid.UUID) -> bool:
     if provider is not None:
         await _by_model(db, item, text or "", provider, min_confidence)
     await db.commit()
+    await queue_index([item.id])
     return True
 
 

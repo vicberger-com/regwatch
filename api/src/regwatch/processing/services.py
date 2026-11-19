@@ -316,4 +316,8 @@ async def update_tags(db: AsyncSession, item_id: uuid.UUID, body: TagsUpdate, ac
     if after != before:
         audit(db, "item.tags", "item", item.id, actor=actor, ip=ip, before=before, after=after)
     await db.commit()
+    if after != before:
+        from regwatch.search.tasks import queue_index
+
+        await queue_index([item.id])  # the search index follows the tags (ADR-0011)
     return await item_detail(db, item.id)

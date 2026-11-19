@@ -99,6 +99,8 @@ celery_tasks:                   # dotted names are the contract; queues in paren
   process.events:               { queue: process, module: M4 }
   process.reprocess_item:       { queue: process, module: M4, args: [item_id] }
   search.refresh_activity:      { queue: default, module: M5, note: debounced rollup refresh }
+  search.index_items:           { queue: process, module: M5, args: [item_ids], note: ADR-0011 index documents }
+  search.reindex:               { queue: process, module: M5, note: ADR-0011 full rebuild from PostgreSQL }
   outputs.render_pdf:           { queue: outputs, module: M8, args: [output_job_id] }
   outputs.send_email:           { queue: outputs, module: M8, args: [output_job_id] }
   outputs.print_ipp:            { queue: outputs, module: M8, args: [output_job_id] }

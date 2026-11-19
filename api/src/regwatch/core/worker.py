@@ -70,13 +70,18 @@ def make_app(settings: Settings | None = None) -> Celery:
         worker_prefetch_multiplier=1,
         broker_connection_retry_on_startup=True,
         task_default_queue="capture",
-        task_routes={"capture.*": {"queue": "capture"}, "process.*": {"queue": "process"}},
+        task_routes={
+            "capture.*": {"queue": "capture"},
+            "process.*": {"queue": "process"},
+            "search.*": {"queue": "process"},
+        },  # fmt: skip
         beat_schedule=BEAT,
         timezone="UTC",
         enable_utc=True,
         worker_hijack_root_logger=False,
     )
-    app.conf.include = ["regwatch.capture.tasks", "regwatch.processing.tasks"]
+    app.conf.include = ["regwatch.capture.tasks", "regwatch.processing.tasks",
+                        "regwatch.search.tasks"]  # fmt: skip
     return app
 
 

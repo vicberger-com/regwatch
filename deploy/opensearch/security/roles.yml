@@ -5,6 +5,9 @@ regwatch_index:
     - cluster:monitor/health
     - cluster:monitor/main
     - indices:data/read/scroll/clear
+    - indices:data/write/bulk
+    - indices:data/read/mget
+    - indices:data/read/msearch
   index_permissions:
     - index_patterns: ["regwatch-*"]
       allowed_actions:
@@ -15,7 +18,7 @@ regwatch_index:
         - indices:admin/aliases
         - indices:admin/aliases/get
         - indices:admin/delete
-        - indices:admin/refresh
+        - indices:admin/refresh*
         - indices:data/read/*
         - indices:data/write/*
         - indices:monitor/stats

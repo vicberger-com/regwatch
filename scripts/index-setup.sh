@@ -43,7 +43,7 @@ issue() {  # name, extensions
   openssl x509 -req -in "$1.csr" -CA ca.pem -CAkey ca-key.pem -CAcreateserial -days 825 \
     -sha256 -extfile "$1.ext" -out "$1.pem" 2>/dev/null
 }
-issue index "subjectAltName=DNS:index
+issue index "subjectAltName=DNS:index,DNS:localhost,IP:127.0.0.1
 extendedKeyUsage=serverAuth,clientAuth
 keyUsage=critical,digitalSignature,keyEncipherment"
 issue regwatch-index-admin "extendedKeyUsage=clientAuth
