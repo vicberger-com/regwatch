@@ -75,3 +75,13 @@ facets:
       - { key: decision, label: Decision }
       - { key: enforcement_action, label: Enforcement action }
       - { key: consultation, label: Consultation }
+  # M4 effective dates (owner decision 2026-11-19): the date a text says it applies from, read
+  # by processing.dates; stored in item.attributes as an ISO date.
+  - key: effective_date
+    label: Effective date
+    system: true
+    value_type: date
+    multi: false
+    show_in_view_selector: false
+    sort_order: 50
+    terms: []

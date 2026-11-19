@@ -24,7 +24,7 @@ EXPECTED = {
     "setting": 40,
     "feature_flag": 8,
     "jurisdiction": 250 + 5,
-    "facet": 5,
+    "facet": 6,
     "term": 14 + 10 + 9 + 9 + 6 + 22,
 }
 

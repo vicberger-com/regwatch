@@ -18,14 +18,15 @@ from typing import Any
 
 import structlog
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.services import values
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
-from regwatch.processing import geotag, neardup
+from regwatch.processing import geotag, neardup, snapshot
 from regwatch.processing.classifier import ModelProvider, classify_by_model, model_provider
 from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
+from regwatch.processing.dates import effective_date
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemTerm, ItemVersion
@@ -114,11 +115,24 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 assert item is not None  # noqa: S101 - just made or locked
                 value = row.get("text")
                 text = value if isinstance(value, str) else ""
+                if when := effective_date(item.title, text):  # owner decision 2026-11-19
+                    item.attributes = {
+                        **(item.attributes or {}),
+                        "effective_date": when.isoformat(),
+                    }
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
                 await classify(db, item, text, rules, terms, min_confidence)
                 if provider is not None:  # off unless flagged and implemented (acceptance 4)
                     await _by_model(db, item, text, provider, min_confidence)
+                if store is not None:  # the sanitized HTML for display (design notes)
+                    ref = await snapshot.snapshot(row, source_id, item.id,
+                                                  item.current_version_no, load, store)  # fmt: skip
+                    if ref is not None:
+                        await db.execute(update(ItemVersion).where(
+                            ItemVersion.item_id == item.id,
+                            ItemVersion.version_no == item.current_version_no)
+                            .values(content_html_ref=ref))  # fmt: skip
                 event = "new_item" if got.kind == "new" else "content_changed"
                 twin = (
                     await neardup.near_duplicate(db, item, ids, ratio)

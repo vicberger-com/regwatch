@@ -59,7 +59,14 @@ def test_jurisdictions(data: seed.SeedData) -> None:
 
 
 def test_facets_and_terms(data: seed.SeedData) -> None:
-    expected = {"topic", "industry", "technology", "regulation_type", "control_framework"}
+    expected = {
+        "topic",
+        "industry",
+        "technology",
+        "regulation_type",
+        "control_framework",
+        "effective_date",
+    }  # the M4 date facet (owner decision 2026-11-19)
     assert set(data.facets) == expected
     for key, terms in data.terms.items():
         assert re.fullmatch(r"[a-z][a-z0-9_]{1,40}", key)

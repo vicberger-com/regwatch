@@ -411,3 +411,43 @@ async def test_a_feeds_unfetched_copy_never_silences_the_fetched_original(
     real = await db.scalar(select(Item).where(Item.canonical_url == url))
     assert real is not None and real.needs_review is False and real.fetched_host
     assert await db.scalar(select(ChangeEvent.id).where(ChangeEvent.item_id == real.id))
+
+
+async def test_a_new_html_version_gets_a_sanitized_snapshot(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 design notes: sanitized HTML stored beside the text (owner decision 2026-11-19)."""
+    from regwatch.processing.models import ItemVersion
+
+    sid = await made_source(admin)
+    ref = f"raw/{sid}/" + "e" * 64
+    key, objects = manifest(sid, uuid.uuid4(), [{"url": "https://example.org/snap", "text": BSI,
+                                                 "title": "Snapshot", "mime": "text/html",
+                                                 "body_ref": ref}])  # fmt: skip
+    objects[ref] = b"<main><h1>Regel</h1><script>alert(1)</script></main>"
+
+    async def store(k: str, body: bytes) -> None:
+        objects[k] = body
+
+    await process_manifest(db, key, loader(objects), store)
+    item = await db.scalar(select(Item).where(Item.canonical_url == "https://example.org/snap"))
+    assert item is not None
+    version = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == item.id))
+    assert version is not None and version.content_html_ref == f"html/{item.id}/1.html"
+    assert objects[version.content_html_ref] == b"<main><h1>Regel</h1></main>"
+
+
+async def test_an_effective_date_is_stored_in_the_items_attributes(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M4 effective dates (owner decision 2026-11-19): the seeded date facet."""
+    from regwatch.taxonomy.models import Facet
+
+    assert await db.scalar(select(Facet.value_type).where(Facet.key == "effective_date")) == "date"
+    sid = await made_source(admin)
+    text = "Das Gesetz tritt am 1. Januar 2027 in Kraft.\n" + BSI
+    key, objects = manifest(sid, uuid.uuid4(), [{"url": "https://example.org/eff", "text": text,
+                                                 "title": "Neues Gesetz"}])  # fmt: skip
+    await process_manifest(db, key, loader(objects))
+    item = await db.scalar(select(Item).where(Item.canonical_url == "https://example.org/eff"))
+    assert item is not None and item.attributes["effective_date"] == "2027-01-01"
