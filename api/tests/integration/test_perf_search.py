@@ -22,14 +22,16 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.db import create_engine, session_factory
 from regwatch.core.errors import ProblemError
+from regwatch.processing.models import Item
 from regwatch.search import export, services
 from regwatch.search.activity import activity
 from regwatch.search.schemas import Query
+from tests.integration.conftest import opensearch
 from tests.integration.test_admin import admin
 from tests.integration.test_auth import clear_limits, db_url
 from tests.integration.test_capture_runs import db
@@ -41,10 +43,13 @@ pytestmark = [
     pytest.mark.perf,
     pytest.mark.skipif(not os.environ.get("REGWATCH_PERF"), reason="set REGWATCH_PERF=1"),
 ]
-__all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns"]
+__all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns", "opensearch"]
 
 ITEMS = int(os.environ.get("REGWATCH_PERF_ITEMS", "1000000"))
-EXPLAIN = bool(os.environ.get("REGWATCH_PERF_EXPLAIN"))  # read at import: fixtures reset the env
+EXPLAIN = bool(os.environ.get("REGWATCH_PERF_EXPLAIN"))
+ON_INDEX = bool(
+    os.environ.get("REGWATCH_PERF_INDEX")
+)  # ADR-0011: measure on OpenSearch  # read at import: fixtures reset the env
 WORDS = ("regulation directive incident reporting cybersecurity data protection privacy "
          "operator provider authority network security critical infrastructure cloud supply "
          "chain software identity encryption telecoms energy finance health transport guidance "
@@ -136,12 +141,41 @@ QUERIES: list[dict[str, Any]] = [
 
 
 async def test_search_map_and_export_at_scale(
-    admin: httpx.AsyncClient, db: AsyncSession, db_url: str
+    admin: httpx.AsyncClient,
+    db: AsyncSession,
+    db_url: str,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sid = await made_source(admin)
     await populate(db, sid)
+    if ON_INDEX:
+        from regwatch.core.settings import get_settings
+        from regwatch.search import index
+
+        node = request.getfixturevalue("opensearch")
+        for key, value in (("REGWATCH_INDEX_URL", node.url),
+                           ("REGWATCH_INDEX_PASSWORD", node.password),
+                           ("REGWATCH_INDEX_CA_B64", node.ca_b64)):  # fmt: skip
+            monkeypatch.setenv(key, value)
+        get_settings.cache_clear()
+        client = index.IndexClient()
+        await index.ensure(client)
+        started = time.monotonic()
+        after, sent = None, 0
+        while True:
+            stmt = select(Item.id).order_by(Item.id).limit(index.BATCH)
+            ids = list((await db.scalars(stmt if after is None
+                                         else stmt.where(Item.id > after))).all())  # fmt: skip
+            if not ids:
+                break
+            sent += await index.index_items(db, ids, client)
+            after = ids[-1]
+            db.expunge_all()
+        await client.call("POST", f"/{index.ALIAS}/_refresh")
+        print(f"indexed {sent} items in {time.monotonic() - started:.0f} s")
     if EXPLAIN:
-        from sqlalchemy import func, select
+        from sqlalchemy import func
         from sqlalchemy.dialects import postgresql
 
         from regwatch.search.query import compile_query

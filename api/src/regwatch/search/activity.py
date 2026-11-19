@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.errors import ProblemError, ProblemFieldError
 from regwatch.processing.models import ChangeEvent, Item
-from regwatch.search import services
+from regwatch.search import index, indexed, services
 from regwatch.search.query import check, conditions, resolve_terms
 from regwatch.search.schemas import MapActivity, MapRow, Query, QueryFilters
 from regwatch.taxonomy.models import Jurisdiction
@@ -73,8 +73,24 @@ async def activity(db: AsyncSession, user_id: uuid.UUID | None, period_days: int
     filters = parse_filters(raw_filters)
     check(Query(filters=filters) if filters else Query())
     services.limited(user_id)
+    terms = await resolve_terms(db, filters)  # an unknown facet is a 400 on either path
+    if index.configured():  # ADR-0011: the index's nested aggregation
+        try:
+            hits = await indexed.activity(index.IndexClient(), filters, start, end, view_by)
+        except index.IndexFailedError as exc:
+            if exc.reason == "index-timeout":
+                raise services.busy() from None
+        else:
+            found = [MapRow(code=r["code"], count=r["count"], last_changed_at=r["last"],
+                            max_severity=next((lvl for lvl in ("major", "notable", "info")
+                                               if r["levels"].get(lvl)), "none"),
+                            breakdown={lvl: r["levels"].get(lvl, 0)
+                                       for lvl in ("info", "notable", "major")})
+                     for r in sorted(hits, key=lambda r: r["code"])]  # fmt: skip
+            return MapActivity(period_start=start, period_end=end, view_by=view_by,
+                               generated_at=datetime.now(UTC), stale=False, rows=found)  # fmt: skip
     await db.execute(text(f"SET LOCAL statement_timeout = '{services.STATEMENT_TIMEOUT}'"))
-    where = conditions(filters, await resolve_terms(db, filters))
+    where = conditions(filters, terms)
     # The region view lists M49 sub-regions, and bodies with no region (EU, COE) by their own
     # code, so no event is dropped (slice 2 S5).
     key = (Jurisdiction.code if view_by == "country"

@@ -22,6 +22,7 @@ API_DIR = Path(__file__).resolve().parents[2]
 # Server settings for the load test (BL-118), e.g. "-c shared_buffers=2GB -c work_mem=32MB";
 # empty for every other test run.
 PG_ARGS = tuple(os.environ.get("REGWATCH_PG_ARGS", "").split())
+HEAP = os.environ.get("REGWATCH_INDEX_HEAP", "512m")  # the load test sets more
 INDEX_IMAGE = (
     "opensearchproject/opensearch@sha256:"
     "3bf4fe26aeb9f7b03c0ebcb1302bb24e855ee6b89fd926d26a71a83ef6f7e076"
@@ -166,7 +167,8 @@ def opensearch(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OpenSearch]
     config = "/usr/share/opensearch/config"
     _docker(
         "run", "-d", "--rm", "--name", name, "--hostname", "index", "-p", "127.0.0.1::9200",
-        "-e", "DISABLE_INSTALL_DEMO_CONFIG=true", "-e", "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m",
+        "-e", "DISABLE_INSTALL_DEMO_CONFIG=true",
+        "-e", f"OPENSEARCH_JAVA_OPTS=-Xms{HEAP} -Xmx{HEAP}",
         "--ulimit", "nofile=65536:65536",
         "-v", f"{root}/deploy/opensearch/opensearch.yml:{config}/opensearch.yml:ro",
         "-v", f"{work}/gen/certs:{config}/certs:ro",

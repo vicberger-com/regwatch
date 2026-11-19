@@ -18,6 +18,7 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime
+from typing import Any
 
 import structlog
 from sqlalchemy import func, literal, select, text
@@ -33,6 +34,7 @@ from regwatch.identity.services import SlidingWindow
 from regwatch.processing.models import ChangeEvent, Item, ItemJurisdiction, ItemTerm
 from regwatch.processing.schemas import ItemJurisdiction as PlaceOut
 from regwatch.processing.schemas import ItemSummary, TermAssignment
+from regwatch.search import index, indexed
 from regwatch.search.query import WORD, check, compile_query, period, resolve_terms
 from regwatch.search.query import words as query_words
 from regwatch.search.schemas import FacetCount, Query, SearchResult
@@ -207,7 +209,89 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     check(query)
     limited(user_id)
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
-    terms = await resolve_terms(db, query.filters)
+    terms = await resolve_terms(db, query.filters)  # an unknown facet is a 400 on either path
+    from_index = await _from_index(db, query)  # ADR-0011: the index when it is configured
+    if from_index is not None:
+        page_ids, total, facets = from_index
+    else:
+        page_ids, total, facets = await _from_postgresql(db, query, terms)
+    start, end = period(query.filters)
+    found = await summaries(db, page_ids, start, end) if page_ids else {}
+    marks = words(query.q or "") if query.highlight else []
+    items = []
+    for item_id in page_ids:
+        summary = found.get(item_id)
+        if summary is None:  # removed meanwhile (finding 16), or not yet removed from the index
+            continue
+        if marks:
+            lit: dict[str, list[str]] = {}
+            for field, value, snip in (("title", summary.title, False),
+                                       ("summary", summary.summary, True),
+                                       ("title_en", summary.title_en, False),
+                                       ("summary_en", summary.summary_en, True)):  # fmt: skip
+                if got := highlight(value, marks, snip):
+                    lit[field] = got
+            summary.highlights = lit
+        items.append(summary)
+    took = int((time.monotonic() - started) * 1000)
+    engine = "index" if from_index is not None else "sql"
+    _log.info("search", query_hash=query_hash(query), user_id=str(user_id) if user_id else None,
+              took_ms=took, total=total, engine=engine)  # fmt: skip
+    return SearchResult(items=items, total=min(total, MAX_TOTAL), page=query.page,
+                        page_size=query.page_size, facets=facets, took_ms=took)  # fmt: skip
+
+
+async def _from_index(
+    db: AsyncSession, query: Query
+) -> tuple[list[uuid.UUID], int, dict[str, list[FacetCount]]] | None:
+    """The page, total and facets from the index; None when it is not configured or cannot
+    be reached (then PostgreSQL answers); a timeout is a 503."""
+    if not index.configured():
+        return None
+    try:
+        page_ids, total, aggs = await indexed.search(index.IndexClient(), query,
+                                                     query.facet_counts)  # fmt: skip
+    except index.IndexFailedError as exc:
+        if exc.reason == "index-timeout":
+            raise busy() from None
+        _log.warning("index_unavailable", reason=exc.reason)
+        return None
+    return page_ids, total, await _labelled(db, aggs) if query.facet_counts else {}
+
+
+async def _labelled(db: AsyncSession, aggs: dict[str, Any]) -> dict[str, list[FacetCount]]:
+    """The index's facet buckets with labels from PostgreSQL; only facets shown in filters."""
+    counts: dict[tuple[str, str], int] = {}
+    for bucket in aggs.get("terms", {}).get("buckets", []):
+        facet, _, key = str(bucket["key"]).partition(":")
+        counts[(facet, key)] = int(bucket["doc_count"])
+    out: dict[str, list[FacetCount]] = {}
+    if counts:
+        rows = await db.execute(
+            select(Facet.key, Term.key, Term.label).join(Term, Term.facet_id == Facet.id)
+            .where(Facet.show_in_filters, Facet.key.in_({f for f, _ in counts}),
+                   Term.key.in_({k for _, k in counts})))  # fmt: skip
+        for facet, key, label in rows.tuples().all():
+            if (facet, key) in counts:
+                out.setdefault(facet, []).append(
+                    FacetCount(key=key, label=label, count=counts[(facet, key)]))  # fmt: skip
+    places = {str(b["key"]): int(b["doc_count"])
+              for b in aggs.get("jurisdiction", {}).get("buckets", [])}  # fmt: skip
+    if places:
+        names = await db.execute(select(Jurisdiction.code, Jurisdiction.name)
+                                 .where(Jurisdiction.code.in_(list(places))))  # fmt: skip
+        out["jurisdiction"] = [FacetCount(key=c, label=n, count=places[c])
+                               for c, n in names.tuples().all()]  # fmt: skip
+    for values_ in out.values():
+        values_.sort(key=lambda f: (-f.count, f.key))
+        del values_[FACET_VALUES:]
+    return out
+
+
+async def _from_postgresql(
+    db: AsyncSession, query: Query, terms: dict[str, list[uuid.UUID]]
+) -> tuple[list[uuid.UUID], int, dict[str, list[FacetCount]]]:
+    """The page, total and facets from PostgreSQL (no index, or the index unreachable)."""
     compiled = compile_query(query, terms)
     # First every match, unordered, up to MAX_TOTAL + 1: cheap however rare the words (an
     # ordered read walks the date index and, for a rare word, all of it; BL-118). If they all
@@ -236,24 +320,6 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
             "The search took too long; narrow it and try again.",
             headers={"Retry-After": "5"},
         ) from None  # N2
-    start, end = period(query.filters)
-    found = await summaries(db, page_ids, start, end) if page_ids else {}
-    marks = words(query.q or "") if query.highlight else []
-    items = []
-    for item_id in page_ids:
-        summary = found.get(item_id)
-        if summary is None:  # removed meanwhile (finding 16)
-            continue
-        if marks:
-            lit: dict[str, list[str]] = {}
-            for field, value, snip in (("title", summary.title, False),
-                                       ("summary", summary.summary, True),
-                                       ("title_en", summary.title_en, False),
-                                       ("summary_en", summary.summary_en, True)):  # fmt: skip
-                if got := highlight(value, marks, snip):
-                    lit[field] = got
-            summary.highlights = lit
-        items.append(summary)
     facets: dict[str, list[FacetCount]] = {}
     if query.facet_counts:
         try:
@@ -262,8 +328,4 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
             if not timed_out(exc):
                 raise
             await db.rollback()
-    took = int((time.monotonic() - started) * 1000)
-    _log.info("search", query_hash=query_hash(query),
-              user_id=str(user_id) if user_id else None, took_ms=took, total=total)  # fmt: skip
-    return SearchResult(items=items, total=min(total, MAX_TOTAL), page=query.page,
-                        page_size=query.page_size, facets=facets, took_ms=took)  # fmt: skip
+    return page_ids, total, facets
