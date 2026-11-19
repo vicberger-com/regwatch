@@ -19,6 +19,8 @@ regwatch_index:
         - indices:admin/aliases/get
         - indices:admin/delete
         - indices:admin/refresh*
+        - indices:admin/settings/update
+        - indices:admin/settings/get
         - indices:data/read/*
         - indices:data/write/*
         - indices:monitor/stats

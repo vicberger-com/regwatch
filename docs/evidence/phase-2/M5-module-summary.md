@@ -1,6 +1,6 @@
 # M5 Search and query: module status record
 
-**Branch:** `feat/M5-search`, then `feat/M5-map` (stacked on M4). · **Date:** 2026-11-19 · **Status:** acceptance 1, 2 and 4 are met by tests. **Acceptance 3 is not met** (BL-118). Both slices are signed off for security (`M5-search-review.md`). The module is not complete.
+**Branch:** `feat/M5-search`, then `feat/M5-map` (stacked on M4). · **Date:** 2026-11-19 · **Status:** acceptance 1 to 4 met: 1, 2 and 4 by tests, 3 by the 1M-item load test on OpenSearch (ADR-0011). The OpenSearch slices wait for their security review; the k6 concurrency run is open.
 
 ## Acceptance criteria (`docs/modules/M5-search-query.md`)
 
@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 1 | "NIS2 incident" ranks items with both terms above items with one, with highlights | **Met** | `tests/integration/test_search.py::test_more_of_the_words_rank_first_with_highlights`, `test_repeating_a_word_never_beats_having_both`, `test_an_old_item_with_every_word_is_still_the_best_match` |
 | 2 | Region Europe, topic data protection, last 30 days: the search count equals the map's sum over European jurisdictions | **Met** | `tests/integration/test_map_activity.py::test_europes_map_rows_sum_to_the_search_total` |
-| 3 | p95 under 300 ms for search and 150 ms for map activity on a 1 million item synthetic dataset | **Not met** | `tests/integration/test_perf_search.py` (`REGWATCH_PERF=1`). At 300,000 pessimistic items: search p95 3.4 s, map p95 806 ms. At 1M, cold facet counts take seconds. Analysis and next steps are in BL-118. |
+| 3 | p95 under 300 ms for search and 150 ms for map activity on a 1 million item synthetic dataset | **Met on OpenSearch** | `tests/integration/test_perf_search.py` with `REGWATCH_PERF=1 REGWATCH_PERF_INDEX=1`: search p95 254 ms, map p95 48 ms, after a warm-up pass (cold: median 369 ms, worst 2.5 s); sequential, the k6 10-user run is open. PostgreSQL alone measured p95 about 5 s (BL-118), hence ADR-0011 |
 | 4 | A CSV export of 50,000 rows streams without exhausting memory (under 300 MB worker RSS) | **Met** | the load test: 50,000 rows with 17 MB peak Python allocations; the review measured 12.4 MB; `test_search_export.py` |
 
 ## Built

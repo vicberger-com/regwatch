@@ -65,7 +65,9 @@ async def activity(db: AsyncSession, user_id: uuid.UUID | None, period_days: int
     if view_by not in VIEWS:
         raise _bad("view_by", "country or region")
     # A time without a zone is UTC (S7).
-    end = (end if end.tzinfo else end.replace(tzinfo=UTC)) if end else datetime.now(UTC)
+    # A default end is now, to the minute: repeated maps within it share the index's cache.
+    end = (end if end.tzinfo else end.replace(tzinfo=UTC)) if end else (
+        datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=1))  # fmt: skip
     start = (start if start.tzinfo else start.replace(tzinfo=UTC)) if start else (
         end - timedelta(days=period_days))  # fmt: skip
     if start >= end:

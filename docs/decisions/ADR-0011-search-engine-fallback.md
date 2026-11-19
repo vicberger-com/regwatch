@@ -77,3 +77,12 @@ Option 1 is not recommended until Meilisearch documents a production build witho
   - a wrong password: 401;
   - TLS without the CA: refused.
 - **Roles of the two stores:** PostgreSQL stays the system of record. Search, facets and map aggregations move to the index behind `search.services` in the slices that follow. When `REGWATCH_INDEX_URL` is unset, search runs on PostgreSQL as now.
+
+## Results (2026-11-19, BL-118)
+
+Measured with `REGWATCH_PERF=1 REGWATCH_PERF_INDEX=1` on 1 million corpus-derived items, one node, 2 GB heap:
+- **Rebuild:** 545 s, with refresh off during the rebuild (`index.bulk_mode`).
+- **Cold (warm-up pass, reported separately):** search median 369 ms, worst 2,465 ms.
+- **Warm, sequential:** search p50 82 ms, **p95 254 ms** (target 300); map p50 30 ms, **p95 48 ms** (target 150).
+- **What it took:** facet counts over a 2,000-match sampler, eager global ordinals on the aggregated keywords, and the default map period rounded to the minute so OpenSearch's request cache is shared.
+- **Open:** ADR-0002's k6 run with 10 concurrent users.

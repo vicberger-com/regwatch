@@ -30,6 +30,7 @@ from regwatch.search.schemas import Query, QueryFilters
 
 FIELDS = ["title^3", "title.*^2", "summary", "summary.*", "title_en^2", "summary_en"]
 FACET_TERMS = 1000  # distinct facet:key values counted per request
+FACET_SAMPLE = 2000
 JURISDICTIONS = 400
 _SORT = {
     "last_changed_desc": [{"last_changed_at": "desc"}, {"_id": "desc"}],
@@ -105,9 +106,13 @@ def body(query: Query, facets: bool) -> dict[str, Any]:
                                                                        _SORT["last_changed_desc"])),
     }  # fmt: skip
     if facets:
-        out["aggs"] = {"terms": {"terms": {"field": "terms", "size": FACET_TERMS}},
-                       "jurisdiction": {"terms": {"field": "jurisdictions",
-                                                  "size": JURISDICTIONS}}}  # fmt: skip
+        # Counted over the best FACET_SAMPLE matches, as the PostgreSQL path samples them (the
+        # 1M-item load test: counting every match cost most of the request).
+        counts = {
+            "terms": {"terms": {"field": "terms", "size": FACET_TERMS}},
+            "jurisdiction": {"terms": {"field": "jurisdictions", "size": JURISDICTIONS}},
+        }
+        out["aggs"] = {"sample": {"sampler": {"shard_size": FACET_SAMPLE}, "aggs": counts}}
     return out
 
 
@@ -118,7 +123,7 @@ async def search(client: IndexClient, query: Query,
     hits = got.get("hits", {})
     ids = [uuid.UUID(h["_id"]) for h in hits.get("hits", [])]
     total = min(int(hits.get("total", {}).get("value", 0)), MAX_WINDOW)
-    return ids, total, got.get("aggregations", {})
+    return ids, total, got.get("aggregations", {}).get("sample", {})
 
 
 async def activity(client: IndexClient, found: QueryFilters | None, start: datetime,
@@ -137,7 +142,9 @@ async def activity(client: IndexClient, found: QueryFilters | None, start: datet
                          "levels": {"terms": {"field": "events.severity", "size": 3},
                                     "aggs": items}}}}}}}},
     }  # fmt: skip
-    got = await client.call("POST", f"/{ALIAS}/_search", request)
+    # Identical map requests within a minute share OpenSearch's request cache (the caller
+    # rounds a default period to the minute).
+    got = await client.call("POST", f"/{ALIAS}/_search", request, params={"request_cache": "true"})
     buckets = (got.get("aggregations", {}).get("events", {}).get("period", {})
                .get("places", {}).get("buckets", []))  # fmt: skip
     rows = []

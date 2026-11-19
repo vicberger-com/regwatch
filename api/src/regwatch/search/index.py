@@ -45,8 +45,9 @@ TIMEOUT = httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=3.0)
 BATCH = 500
 SUPRANATIONAL = {"EU": "150", "COE": "150"}  # bodies without a region, by the region they belong to
 STEMMED = {"en": "english", "de": "german", "fr": "french", "es": "spanish", "pt": "portuguese"}
-PATHS = frozenset({f"/{INDEX}", f"/{INDEX}/_bulk", f"/{ALIAS}/_search", f"/{ALIAS}/_count",
-                   f"/{ALIAS}/_refresh", "/_aliases", "/_cluster/health"})  # fmt: skip
+PATHS = frozenset({f"/{INDEX}", f"/{INDEX}/_bulk", f"/{INDEX}/_settings", f"/{ALIAS}/_search",
+                   f"/{ALIAS}/_count", f"/{ALIAS}/_refresh", "/_aliases",
+                   "/_cluster/health"})  # fmt: skip
 
 
 class IndexFailedError(Exception):
@@ -149,13 +150,18 @@ MAPPING: dict[str, Any] = {
             "summary": {**_text("standard"), "fields": {c: _text(a) for c, a in STEMMED.items()}},
             "title_en": _text("english"), "summary_en": _text("english"),
             "language": {"type": "keyword"}, "source_id": {"type": "keyword"},
+            # Aggregated on every request: global ordinals built at refresh, not per query.
             "credibility": {"type": "keyword"}, "status": {"type": "keyword"},
             "needs_review": {"type": "boolean"}, "published_at": {"type": "date"},
-            "last_changed_at": {"type": "date"}, "jurisdictions": {"type": "keyword"},
-            "regions": {"type": "keyword"}, "terms": {"type": "keyword"},
+            "last_changed_at": {"type": "date"},
+            "jurisdictions": {"type": "keyword", "eager_global_ordinals": True},
+            "regions": {"type": "keyword"},
+            "terms": {"type": "keyword", "eager_global_ordinals": True},
             "events": {"type": "nested", "properties": {
-                "occurred_at": {"type": "date"}, "severity": {"type": "keyword"},
-                "jurisdiction": {"type": "keyword"}, "region": {"type": "keyword"}}},
+                "occurred_at": {"type": "date"},
+                "severity": {"type": "keyword", "eager_global_ordinals": True},
+                "jurisdiction": {"type": "keyword", "eager_global_ordinals": True},
+                "region": {"type": "keyword", "eager_global_ordinals": True}}},
         },
     },
 }  # fmt: skip
@@ -222,6 +228,13 @@ def bulk_body(docs: dict[uuid.UUID, dict[str, Any]], gone: Iterable[uuid.UUID]) 
     return ("\n".join(lines) + "\n").encode()
 
 
+async def bulk_mode(client: IndexClient, on: bool) -> None:
+    """A full rebuild without refreshes (each refresh also rebuilds the global ordinals), then
+    back to a refresh a second."""
+    await client.call("PUT", f"/{INDEX}/_settings",
+                      {"index": {"refresh_interval": "-1" if on else "1s"}})  # fmt: skip
+
+
 async def index_items(db: AsyncSession, ids: list[uuid.UUID],
                       client: IndexClient | None = None) -> int:  # fmt: skip
     """Write the documents of ``ids`` (delete the ones with no item); how many were sent."""
@@ -243,3 +256,17 @@ async def index_items(db: AsyncSession, ids: list[uuid.UUID],
                 raise IndexFailedError("index-bulk", f"{failed} documents were not indexed")
         sent += len(batch)
     return sent
+
+
+async def rebuild(db: AsyncSession, client: IndexClient) -> int:
+    """Every item's document, in id order, BATCH at a time; how many were sent."""
+    sent, after = 0, None
+    while True:
+        stmt = select(Item.id).order_by(Item.id).limit(BATCH)
+        ids = list((await db.scalars(stmt if after is None
+                                     else stmt.where(Item.id > after))).all())  # fmt: skip
+        if not ids:
+            return sent
+        sent += await index_items(db, ids, client)
+        after = ids[-1]
+        db.expunge_all()

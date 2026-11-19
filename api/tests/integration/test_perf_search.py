@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.db import create_engine, session_factory
 from regwatch.core.errors import ProblemError
-from regwatch.processing.models import Item
 from regwatch.search import export, services
 from regwatch.search.activity import activity
 from regwatch.search.schemas import Query
@@ -162,16 +161,9 @@ async def test_search_map_and_export_at_scale(
         client = index.IndexClient()
         await index.ensure(client)
         started = time.monotonic()
-        after, sent = None, 0
-        while True:
-            stmt = select(Item.id).order_by(Item.id).limit(index.BATCH)
-            ids = list((await db.scalars(stmt if after is None
-                                         else stmt.where(Item.id > after))).all())  # fmt: skip
-            if not ids:
-                break
-            sent += await index.index_items(db, ids, client)
-            after = ids[-1]
-            db.expunge_all()
+        await index.bulk_mode(client, True)
+        sent = await index.rebuild(db, client)
+        await index.bulk_mode(client, False)
         await client.call("POST", f"/{index.ALIAS}/_refresh")
         print(f"indexed {sent} items in {time.monotonic() - started:.0f} s")
     if EXPLAIN:
@@ -193,6 +185,29 @@ async def test_search_map_and_export_at_scale(
                 plan = (await db.execute(text("EXPLAIN (ANALYZE) " + sql))).scalars().all()
                 print(f"\n== {name} {body}\n" + "\n".join(plan[:30]))
             await db.rollback()
+    # A warm-up pass first, as k6's ramp-up does (ADR-0002 decision 5): its timings are cold
+    # caches and are reported apart, not in the p95.
+    cold: list[float] = []
+    for body in QUERIES:
+        services.searches._hits.clear()
+        started = time.monotonic()
+        try:
+            await services.search(db, Query.model_validate(body), uuid.uuid4())
+        except ProblemError:
+            await db.rollback()
+        await db.commit()
+        cold.append((time.monotonic() - started) * 1000)
+    for days in (7, 30, 90, 365):
+        services.searches._hits.clear()
+        try:
+            await activity(db, uuid.uuid4(), days, None, None, None, "country")
+        except ProblemError:
+            await db.rollback()
+        await db.commit()
+    print(
+        f"warm-up (cold caches): search max {max(cold):.0f} ms, "
+        f"median {statistics.median(cold):.0f} ms"
+    )
     timings: list[float] = []
     for _round in range(5):
         for body in QUERIES:

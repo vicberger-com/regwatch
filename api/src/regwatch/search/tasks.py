@@ -13,11 +13,9 @@ import uuid
 import anyio
 import structlog
 from celery import shared_task
-from sqlalchemy import select
 
 from regwatch.core.db import create_engine, session_factory
 from regwatch.core.settings import get_settings
-from regwatch.processing.models import Item
 from regwatch.search import index
 
 MAX_IDS = 2000  # one task; more are split
@@ -50,16 +48,11 @@ async def _reindex() -> int:
         async with session_factory(engine)() as db:
             client = index.IndexClient()
             await index.ensure(client)
-            sent, after = 0, None
-            while True:
-                stmt = select(Item.id).order_by(Item.id).limit(index.BATCH)
-                ids = list((await db.scalars(stmt if after is None
-                                             else stmt.where(Item.id > after))).all())  # fmt: skip
-                if not ids:
-                    return sent
-                sent += await index.index_items(db, ids, client)
-                after = ids[-1]
-                db.expunge_all()
+            await index.bulk_mode(client, True)
+            try:
+                return await index.rebuild(db, client)
+            finally:
+                await index.bulk_mode(client, False)
     finally:
         await engine.dispose()
 
