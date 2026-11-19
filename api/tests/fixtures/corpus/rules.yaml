@@ -1,0 +1,24 @@
+# Representative keyword rules for the corpus quality report (M4 roadmap 4.9; M4 Q2: English
+# plus keyword lists in the rule languages, which the owner seeds in the taxonomy). Test data:
+# written by hand for this report, not shipped as seed.
+topic:
+  cybersecurity: [cybersecurity, cyber security, cyber-security, Cybersicherheit, IT-Sicherheit,
+                  cybersécurité, ciberseguridad, cibersegurança, サイバーセキュリティ, 网络安全]
+  incident-reporting: [incident reporting, report incidents, reporting of incidents,
+                       notification of incidents, Meldepflicht, Sicherheitsvorfall, Vorfälle melden,
+                       notification des incidents, signalement des incidents,
+                       notificación de incidentes, notificação de incidentes, インシデント報告,
+                       事案の報告, 事件报告]
+  data-protection:  # two hits: a passing mention of personal data is not the topic
+    min_hits: 2
+    keywords: [data protection, personal data, GDPR, Datenschutz, personenbezogene Daten,
+                    DSGVO, protection des données, données personnelles, RGPD,
+                    protección de datos, datos personales, proteção de dados, dados pessoais,
+                    LGPD, 個人情報保護, 个人信息保护]
+  critical-infrastructure: [critical infrastructure, critical entities, essential services,
+                            kritische Infrastruktur, KRITIS, infrastructures critiques,
+                            infraestructuras críticas, infraestruturas críticas, 重要インフラ,
+                            关键信息基础设施]
+  supply-chain-security: [supply chain security, software supply chain, SBOM, SSDF,
+                          Lieferkette, chaîne d'approvisionnement, cadena de suministro,
+                          cadeia de suprimentos, サプライチェーン, 供应链安全]
