@@ -584,3 +584,32 @@ def test_upgraded(url: str, expected: str) -> None:
     from regwatch.capture.safe_fetch.fetch import upgraded
 
     assert upgraded(url, frozenset({"example.org"})) == expected
+
+
+async def test_a_post_body_is_sent_once_and_never_redirected() -> None:
+    """M4 translation: POST with a body, at most MAX_CONTENT bytes, no redirect ever."""
+    import httpx
+
+    from regwatch.capture.safe_fetch.fetch import MAX_CONTENT
+
+    seen: list[tuple[str, bytes, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.read(), request.headers.get("content-type", "")))
+        if request.url.path == "/moved":
+            return httpx.Response(307, headers={"location": "https://other.example/x"})
+        return httpx.Response(200, stream=httpx.ByteStream(b"{}"))
+
+    fetcher = PinnedFetcher({FIXTURES: "127.0.0.1"}, transport=httpx.MockTransport(handler))
+    got = await fetcher.fetch(f"http://{FIXTURES}/translate", method="POST", content=b'{"q":1}',
+                              headers={"content-type": "application/json"})  # fmt: skip
+    assert got.status == 200 and seen == [("POST", b'{"q":1}', "application/json")]
+    with pytest.raises(FetchRefusedError) as exc:
+        await fetcher.fetch(f"http://{FIXTURES}/moved", method="POST", content=b"k")
+    assert exc.value.reason == "redirects" and len(seen) == 2  # other.example never asked
+    with pytest.raises(ValueError):
+        await fetcher.fetch(f"http://{FIXTURES}/x", content=b"body on a GET")
+    with pytest.raises(ValueError):
+        await fetcher.fetch(f"http://{FIXTURES}/x", method="POST", content=b"x" * (MAX_CONTENT + 1))
+    with pytest.raises(ValueError):
+        await fetcher.fetch(f"http://{FIXTURES}/x", headers={"authorization": "Bearer k"})

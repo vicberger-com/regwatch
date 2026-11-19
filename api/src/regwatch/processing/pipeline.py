@@ -30,6 +30,7 @@ from regwatch.processing.dates import effective_date
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemTerm, ItemVersion
+from regwatch.processing.translate import Translator, translate_item, translator
 from regwatch.taxonomy.models import Jurisdiction
 
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
@@ -100,6 +101,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
         ratio = float(neardup.DEFAULT_RATIO)
     terms = list(source.default_term_ids or [])
     provider = await model_provider(db)
+    engine = await translator(db)
     await db.commit()
     for row in rows[:MAX_ROWS]:
         if not isinstance(row, dict):
@@ -123,7 +125,9 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                     }
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
-                await classify(db, item, text, rules, terms, min_confidence)
+                # Translation before classification, so English rules see it (design notes).
+                scan = await _translated(db, item, text, engine) if engine is not None else text
+                await classify(db, item, scan, rules, terms, min_confidence)
                 if provider is not None:  # off unless flagged and implemented (acceptance 4)
                     await _by_model(db, item, text, provider, min_confidence)
                 if store is not None:  # the sanitized HTML for display (design notes)
@@ -203,7 +207,9 @@ async def reprocess_item(db: AsyncSession, item_id: uuid.UUID) -> bool:
     hits = geotag.detect(item.title, text or "", item.canonical_url, list(found.all()))
     await tag_jurisdictions(db, item, hits)
     terms = list(source.default_term_ids or []) if source is not None else []
-    await classify(db, item, text or "", await load_rules(db), terms, min_confidence)
+    engine = await translator(db)  # acceptance 6: a new provider replaces the translation
+    scan = await _translated(db, item, text or "", engine) if engine is not None else text or ""
+    await classify(db, item, scan, await load_rules(db), terms, min_confidence)
     provider = await model_provider(db)
     if provider is not None:
         await _by_model(db, item, text or "", provider, min_confidence)
@@ -228,3 +234,14 @@ async def _recently_handed(load: Load, key: str) -> bool:
     if when is None or when.tzinfo is None:
         return False
     return datetime.now(UTC) - when < HANDED_GRACE
+
+
+async def _translated(db: AsyncSession, item: Item, text: str, engine: Translator) -> str:
+    """Translate ``item``; the text to classify: the original plus any English (never fails)."""
+    version = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == item.id)
+                              .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
+    if not await translate_item(db, item, version, text, engine):
+        return text
+    english = (version.translations or {}).get("en", {}) if version is not None else {}
+    extra = [item.title_en, item.summary_en, english.get("text")]
+    return "\n".join([text, *(e for e in extra if isinstance(e, str) and e)])

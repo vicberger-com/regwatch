@@ -43,7 +43,10 @@ from regwatch.capture.safe_fetch.policy import (
 REDIRECTS = {301, 302, 303, 307, 308}
 # Request headers a caller may add (EUR-Lex: Cellar answers by Accept and Accept-Language;
 # conditional requests, BL-91 (a)). Host, cookies and authorization can never be set.
-REQUEST_HEADERS = frozenset({"accept", "accept-language", "if-none-match", "if-modified-since"})
+REQUEST_HEADERS = frozenset(
+    {"accept", "accept-language", "if-none-match", "if-modified-since", "content-type"}
+)  # content-type: a POST body (M4 translation)
+MAX_CONTENT = 64 * 1024  # a POST body (M4 translation: 4,000 characters of text, 8.4)
 MAX_HEADER_VALUE = 256
 
 
@@ -217,7 +220,8 @@ class SafeFetcher:
         self._transport = transport
 
     def _request(self, client: httpx.AsyncClient, target: Target, ip: IPAddress,
-                 method: str, extra: Mapping[str, str] | None = None) -> httpx.Request:  # fmt: skip
+                 method: str, extra: Mapping[str, str] | None = None,
+                 content: bytes | None = None) -> httpx.Request:  # fmt: skip
         literal = f"[{ip}]" if ip.version == 6 else str(ip)
         url = f"{target.scheme}://{literal}:{target.port}{target.path}"
         host = target.origin.split("://", 1)[1]
@@ -232,6 +236,7 @@ class SafeFetcher:
                 "Accept-Encoding": "gzip, deflate",
             },  # fmt: skip
             extensions=extensions,
+            content=content,
         )
 
     async def check_url(self, url: str) -> Target:
@@ -293,7 +298,7 @@ class SafeFetcher:
         return bytes(out)
 
     async def _hop(self, client: httpx.AsyncClient, url: str, method: str,
-                   extra: Mapping[str, str] | None = None,
+                   extra: Mapping[str, str] | None = None, content: bytes | None = None,
                    ) -> tuple[FetchResult | None, str | None, int]:  # fmt: skip
         """One request: the result, or the redirect location and status."""
         target = parse_target(url)
@@ -302,7 +307,7 @@ class SafeFetcher:
             async with asyncio.timeout(self.limits.total_s):  # DNS included (finding 3)
                 ip = (await self._resolve(target))[0]
                 phase = "the server at"
-                request = self._request(client, target, ip, method, extra)
+                request = self._request(client, target, ip, method, extra, content)
                 response = await client.send(request, stream=True)
                 try:
                     location = response.headers.get("location")
@@ -340,15 +345,19 @@ class SafeFetcher:
     async def fetch(
         self, url: str, method: str = "GET", before_hop: HopCheck | None = None,
         headers: Mapping[str, str] | None = None, upgrade_hosts: frozenset[str] = frozenset(),
+        content: bytes | None = None,
     ) -> FetchResult:  # fmt: skip
         """Fetch ``url`` with every hop checked; ``FetchRefusedError`` says why it was refused.
 
         ``before_hop`` is awaited with each hop's URL before it is requested, including
         redirect targets, so robots.txt and per-host rate limits apply to every host reached.
         ``headers`` adds allowlisted request headers to every hop; a redirect to http on one of
-        ``upgrade_hosts`` is rewritten to https before it is checked and requested.
+        ``upgrade_hosts`` is rewritten to https before it is checked and requested. ``content``
+        is a POST body of at most ``MAX_CONTENT`` bytes; such a request is never redirected.
         """
         extra = checked_headers(headers)
+        if content is not None and (method != "POST" or len(content) > MAX_CONTENT):
+            raise ValueError(f"a request body goes with POST only, at most {MAX_CONTENT} bytes")
         limits = self.limits
         timeout = httpx.Timeout(connect=limits.connect_s, read=limits.read_s,
                                 write=limits.read_s, pool=limits.connect_s)  # fmt: skip
@@ -368,7 +377,11 @@ class SafeFetcher:
             while True:
                 if before_hop is not None:
                     await before_hop(current)
-                result, location, status = await self._hop(client, current, method, extra)
+                result, location, status = await self._hop(client, current, method, extra,
+                                                           content)  # fmt: skip
+                if result is None and content is not None:
+                    # A body (it may carry a key) is never sent on to another address.
+                    raise FetchRefusedError("redirects", "a POST is never redirected")
                 if result is not None:
                     return FetchResult(result.url, result.status, result.headers, result.body,
                                        redirects)  # fmt: skip

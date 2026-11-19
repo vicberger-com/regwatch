@@ -207,3 +207,89 @@ async def test_a_model_provider_tags_only_what_its_answer_proves(
         await db.execute(Setting.__table__.delete().where(
             Setting.key == "classification.model_provider"))  # fmt: skip
         await db.commit()
+
+
+async def test_a_japanese_item_gets_english_from_the_selected_provider(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 6: original kept, English title and summary from the provider; switching the
+    provider and reprocessing replaces the translation and records the new provider; English
+    rules apply to the translation."""
+    from sqlalchemy import select
+
+    from regwatch.processing import pipeline
+    from regwatch.processing.models import ItemVersion
+    from regwatch.processing.translate import Translation
+
+    rule = await term(admin, {"keywords": ["incident reporting"]})
+    made = await item(admin, db, "サイバー事案の報告に関する新しい規則を公表しました。" * 10)
+    made.language, made.summary = "ja", "報告義務の概要"
+    await db.commit()
+
+    class Fake:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def translate(self, text: str, source_lang: str,
+                            target_lang: str = "en") -> Translation:  # fmt: skip
+            assert source_lang == "ja" and target_lang == "en"
+            return Translation(f"[{self.name}] incident reporting rules", self.name)
+
+    async def engine_a(_: Any) -> Fake:
+        return Fake("alpha")
+
+    monkeypatch.setattr(pipeline, "translator", engine_a)
+    assert await pipeline.reprocess_item(db, made.id)
+    got = await db.scalar(select(Item).where(Item.id == made.id)
+                          .execution_options(populate_existing=True))  # fmt: skip
+    assert got is not None and got.title == "Notice"  # the original is kept
+    assert got is not None and got.title_en == "[alpha] incident reporting rules"
+    assert got.translation_pending is False and (await tags(db, made.id)).get(rule) == "rule"
+    version = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == made.id))
+    assert version is not None and version.translations["en"]["provider"] == "alpha"
+
+    async def engine_b(_: Any) -> Fake:
+        return Fake("beta")
+
+    monkeypatch.setattr(pipeline, "translator", engine_b)
+    assert await pipeline.reprocess_item(db, made.id)
+    got = await db.scalar(select(Item).where(Item.id == made.id)
+                          .execution_options(populate_existing=True))  # fmt: skip
+    version = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == made.id)
+                              .execution_options(populate_existing=True))  # fmt: skip
+    assert got is not None and got.title_en == "[beta] incident reporting rules"
+    assert version is not None and version.translations["en"]["provider"] == "beta"
+
+
+async def test_translation_is_off_unless_flagged_with_a_basis_and_a_url(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import update
+
+    from regwatch.admin.models import FeatureFlag, Setting
+    from regwatch.core import settings as settings_module
+    from regwatch.core.settings import get_settings
+    from regwatch.processing.translate import HttpTranslator, translator
+
+    base = get_settings()
+    monkeypatch.setattr(settings_module, "get_settings",
+                        lambda: base.model_copy(update={"translate_api_url": None}))  # fmt: skip
+    assert await translator(db) is None  # flag off
+    await db.execute(update(FeatureFlag).where(FeatureFlag.key == "translation.enabled")
+                     .values(enabled=True))  # fmt: skip
+    await db.merge(Setting(key="translation.provider", value="http"))
+    await db.commit()
+    try:
+        assert await translator(db) is None  # no recorded basis
+        await db.merge(Setting(key="translation.data_processing_basis", value="DPA 2026-11"))
+        await db.commit()
+        assert await translator(db) is None  # no URL
+        monkeypatch.setattr(settings_module, "get_settings", lambda: base.model_copy(
+            update={"translate_api_url": "https://tr.example"}))  # fmt: skip
+        assert isinstance(await translator(db), HttpTranslator)
+    finally:
+        await db.execute(update(FeatureFlag).where(FeatureFlag.key == "translation.enabled")
+                         .values(enabled=False))  # fmt: skip
+        for key in ("translation.provider", "translation.data_processing_basis"):
+            await db.execute(Setting.__table__.delete().where(Setting.key == key))
+        await db.commit()
