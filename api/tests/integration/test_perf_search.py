@@ -13,6 +13,7 @@ languages, one or two jurisdictions and two events each, and term tags.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import statistics
 import time
@@ -46,6 +47,7 @@ __all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns", "opensearch"]
 
 ITEMS = int(os.environ.get("REGWATCH_PERF_ITEMS", "1000000"))
 EXPLAIN = bool(os.environ.get("REGWATCH_PERF_EXPLAIN"))
+USERS = int(os.environ.get("REGWATCH_PERF_USERS", "10"))  # ADR-0002 decision 5: 10 concurrent
 ON_INDEX = bool(
     os.environ.get("REGWATCH_PERF_INDEX")
 )  # ADR-0011: measure on OpenSearch  # read at import: fixtures reset the env
@@ -243,6 +245,10 @@ async def test_search_map_and_export_at_scale(
         await db.commit()
         maps.append((time.monotonic() - started) * 1000)
     print(f"map: p50 {statistics.median(maps):.0f} ms, p95 {p95(maps):.0f} ms")
+    together, together_maps = await concurrently(db_url, USERS)
+    print(f"{USERS} users at once: search p50 {statistics.median(together):.0f} ms, "
+          f"p95 {p95(together):.0f} ms; map p50 {statistics.median(together_maps):.0f} ms, "
+          f"p95 {p95(together_maps):.0f} ms")  # fmt: skip
     engine = create_engine(db_url, poolclass_null=True)
     try:
         query = Query.model_validate({"filters": {"sources": [sid]}, "sort": "last_changed_desc"})
@@ -261,3 +267,43 @@ async def test_search_map_and_export_at_scale(
     assert peak < 300e6
     assert p95(timings) < 300, "acceptance 3: search p95"
     assert p95(maps) < 150, "acceptance 3: map activity p95"
+    assert p95(together) < 300, f"acceptance 3 with {USERS} users: search p95"
+    assert p95(together_maps) < 150, f"acceptance 3 with {USERS} users: map p95"
+
+
+async def concurrently(db_url: str, users: int) -> tuple[list[float], list[float]]:
+    """BL-118: ``users`` sessions at once, each its own user, through the app's pooled engine
+    (5 + 10 connections), each running the search mix twice and four maps; back to back, with
+    no think time (harsher than people)."""
+    engine = create_engine(db_url)
+    factory = session_factory(engine)
+    searched: list[float] = []
+    mapped: list[float] = []
+
+    async def timed(out: list[float], run: Any) -> None:  # noqa: ANN401 - a coroutine factory
+        async with factory() as db:
+            started = time.monotonic()
+            try:
+                await run(db)
+            except ProblemError:  # a 503 counts at the time it took
+                await db.rollback()
+            out.append((time.monotonic() - started) * 1000)
+
+    async def one(n: int) -> None:
+        user = uuid.uuid4()
+        mix = QUERIES[n % len(QUERIES) :] + QUERIES[: n % len(QUERIES)]
+        for body in mix * 2:
+            services.searches._hits.clear()
+            await timed(searched, lambda db, b=body: services.search(db, Query.model_validate(b),
+                                                                      user))  # fmt: skip
+        for days in (7, 30, 90, 365):
+            services.searches._hits.clear()
+            await timed(mapped, lambda db, d=days: activity(db, user, d, None, None, None,
+                                                            "country"))  # fmt: skip
+
+    try:
+        services._facet_cache.clear()
+        await asyncio.gather(*(one(n) for n in range(users)))
+    finally:
+        await engine.dispose()
+    return searched, mapped
