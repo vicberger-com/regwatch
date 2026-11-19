@@ -6,6 +6,7 @@ import { problemText } from "@/lib/auth/session";
 import { activityQuery, PERIODS } from "./api";
 import { jurisdictionName } from "./names";
 import { JurisdictionList } from "./JurisdictionList";
+import { JurisdictionPanel } from "./JurisdictionPanel";
 import { legend, steps as stepsOf, wellFormed, type Encoding } from "./scale";
 import { WorldMap } from "./WorldMap";
 
@@ -146,12 +147,25 @@ export function MapPage() {
             map implies no endorsement of any boundary or claim.
           </p>
         </div>
-        <JurisdictionList
-          label={`Jurisdictions with changes in ${periodText}, newest first`}
-          entries={entries}
-          selected={selected}
-          onSelect={setSelected}
-        />
+        <div className="flex flex-col gap-4">
+          {selected && (
+            <JurisdictionPanel
+              code={selected}
+              row={byCode.get(selected)}
+              periodDays={period}
+              periodStart={activity.data?.period_start}
+              onClose={() => {
+                setSelected(null);
+              }}
+            />
+          )}
+          <JurisdictionList
+            label={`Jurisdictions with changes in ${periodText}, newest first`}
+            entries={entries}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        </div>
       </div>
     </>
   );

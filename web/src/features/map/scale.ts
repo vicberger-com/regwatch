@@ -10,6 +10,8 @@ export interface ActivityRow {
   count: number;
   last_changed_at?: string | null;
   max_severity: "none" | "info" | "notable" | "major";
+  /** Items per severity (the API's `breakdown` for the country view). */
+  breakdown?: Record<string, number>;
 }
 
 const SEVERITY: Record<ActivityRow["max_severity"], Step> = {

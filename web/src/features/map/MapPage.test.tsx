@@ -131,6 +131,67 @@ describe("map page", () => {
     expect(within(rail).queryByRole("link", { name: "Map" })).toBeNull();
   });
 
+  it("opens a panel for the selected jurisdiction, and Escape returns focus to the list", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /map/activity": [
+        200,
+        {
+          ...ACTIVITY,
+          rows: ACTIVITY.rows.map((r) =>
+            r.code === "DE"
+              ? { ...r, breakdown: { info: 1, notable: 0, major: 2 } }
+              : r,
+          ),
+        },
+      ],
+      "POST /search": [
+        200,
+        {
+          total: 1,
+          page: 1,
+          page_size: 10,
+          items: [
+            {
+              id: "0190a000-0000-7000-8000-0000000000a1",
+              title: "BSI guidance",
+              source_id: "0190a000-0000-7000-8000-0000000000b1",
+              last_changed_at: "2026-11-18T09:00:00Z",
+              status: "new",
+              severity: "major",
+              jurisdictions: [{ code: "DE" }],
+            },
+          ],
+        },
+      ],
+    });
+    renderAt("/");
+    const list = await screen.findByRole("listbox");
+    list.focus();
+    await userEvent.keyboard("{Enter}");
+    const panel = await screen.findByRole("complementary", { name: "Germany" });
+    expect(
+      within(panel).getByRole("heading", { name: "Germany" }),
+    ).toHaveFocus();
+    expect(panel).toHaveTextContent("Items changed3");
+    expect(panel).toHaveTextContent("major2");
+    expect(
+      await within(panel).findByRole("link", { name: "BSI guidance" }),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("link", { name: /All items for Germany/ }),
+    ).toHaveAttribute("href", "/items?j=DE&days=30");
+    const body = api.calls.find((c) => c.key === "POST /search")?.body as {
+      filters: { jurisdictions: string[] };
+      page_size: number;
+    };
+    expect(body.filters.jurisdictions).toEqual(["DE"]);
+    expect(body.page_size).toBe(10);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("complementary", { name: "Germany" })).toBeNull();
+    expect(list).toHaveFocus();
+  });
+
   it("names no country over a disputed area", async () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
