@@ -18,7 +18,11 @@ def test_the_app_is_json_only_late_acked_and_beats_the_contract_tasks(
     assert conf.task_ignore_result is True and conf.result_backend is None
     assert conf.task_acks_late
     assert conf.worker_prefetch_multiplier == 1
-    assert set(conf.beat_schedule) == {"capture.schedule_tick", "capture.health_check"}
+    assert set(conf.beat_schedule) == {
+        "capture.schedule_tick",
+        "capture.health_check",
+        "search.reindex",
+    }
     assert conf.beat_schedule["capture.schedule_tick"]["schedule"] == 60.0
     assert app.conf.broker_url.startswith("redis://")
 

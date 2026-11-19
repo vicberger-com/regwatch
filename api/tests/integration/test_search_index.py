@@ -15,7 +15,7 @@ from regwatch.processing.models import Item
 from regwatch.processing.pipeline import process_manifest
 from regwatch.search import index
 from tests.integration.conftest import OpenSearch, opensearch
-from tests.integration.test_admin import admin
+from tests.integration.test_admin import _api, admin
 from tests.integration.test_auth import clear_limits, db_url
 from tests.integration.test_capture_runs import db
 from tests.integration.test_processing_pipeline import BSI, loader, made_source, manifest
@@ -133,3 +133,67 @@ async def test_without_an_index_nothing_is_queued(
     get_settings.cache_clear()
     await tasks.queue_index([uuid.uuid4()])
     assert sent == []
+
+
+async def test_admin_changes_that_alter_documents_queue_them(
+    valid_env: dict[str, str],
+    admin: httpx.AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BL-120: credibility, a region, a term key and a merge reach the index; a change touching
+    more than FULL_REINDEX_OVER items queues one full rebuild instead."""
+    from regwatch.search import tasks
+    from regwatch.taxonomy.models import Term
+
+    for key, value in (("REGWATCH_INDEX_URL", "https://index:9200"),
+                       ("REGWATCH_INDEX_PASSWORD", "unused"),
+                       ("REGWATCH_INDEX_CA_B64", "dW51c2Vk")):  # fmt: skip
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+    sent: list[set[str]] = []
+    rebuilt: list[bool] = []
+    monkeypatch.setattr(tasks, "_send", lambda ids: sent.append(set(ids)))
+    monkeypatch.setattr(tasks, "_send_reindex", lambda: rebuilt.append(True))
+    sid = await made_source(admin)
+    rows = [{"url": f"https://example.org/bl120/{n}", "text": f"{n}. " + BSI,
+             "title": f"Regel {n}", "summary": "Pflichten"} for n in range(2)]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    await process_manifest(db, key, loader(objects))
+    ids = {str(i) for i in (await db.scalars(
+        select(Item.id).where(Item.source_id == uuid.UUID(sid)))).all()}  # fmt: skip
+    assert len(ids) == 2
+
+    def queued() -> set[str]:
+        got = set().union(*sent) if sent else set()
+        sent.clear()
+        return got
+
+    queued()
+    await admin.patch(_api(f"/sources/{sid}"), json={"name": "renamed only"})
+    assert queued() == set()  # nothing in the documents changed
+    assert (await admin.patch(_api(f"/sources/{sid}"),
+                              json={"credibility": "secondary"})).status_code == 200  # fmt: skip
+    assert queued() == ids
+    assert (await admin.patch(_api("/jurisdictions/DE"),
+                              json={"region_code": "151"})).status_code == 200  # fmt: skip
+    assert queued() >= ids
+    term = await db.scalar(select(Term).where(Term.active.is_(True), Term.parent_id.is_(None))
+                           .order_by(Term.key).limit(1))  # fmt: skip
+    assert term is not None
+    other = await db.scalar(select(Term).where(Term.facet_id == term.facet_id, Term.id != term.id,
+                                               Term.active.is_(True)).limit(1))  # fmt: skip
+    assert other is not None
+    item = next(iter(ids))
+    term_id, term_key, other_id = term.id, term.key, other.id
+    await db.rollback()
+    tagged = await admin.put(_api(f"/items/{item}/tags"), json={"add_term_ids": [str(term_id)]})
+    assert tagged.status_code == 200
+    queued()
+    assert (await admin.patch(_api(f"/taxonomy/terms/{term_id}"),
+                              json={"key": f"{term_key}-renamed"})).status_code == 200  # fmt: skip
+    assert item in queued()
+    monkeypatch.setattr(tasks, "FULL_REINDEX_OVER", 0)
+    merged = await admin.post(_api(f"/taxonomy/terms/{term_id}/merge"),
+                              json={"into_term_id": str(other_id)})  # fmt: skip
+    assert merged.status_code == 200 and rebuilt == [True] and queued() == set()

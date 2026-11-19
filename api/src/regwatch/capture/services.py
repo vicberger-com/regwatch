@@ -459,6 +459,11 @@ async def update_source(db: AsyncSession, source_id: uuid.UUID, body: SourceWrit
             _audit_robots(db, source, before, principal.user.id, ip)
     out = await source_out(db, source, job)
     await db.commit()
+    if before.get("credibility") != after.get("credibility"):  # in every item's document
+        from regwatch.processing.models import Item
+        from regwatch.search.tasks import queue_matching
+
+        await queue_matching(db, Item.source_id == source_id)
     return out
 
 

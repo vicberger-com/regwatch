@@ -496,7 +496,17 @@ async def update_term(db: AsyncSession, term_id: uuid.UUID, changes: dict[str, A
         audit(db, "term.update", "term", term.id, actor=actor, ip=ip, before=before,
               after={**after, "taxonomy_version": version})  # fmt: skip
     await db.commit()
+    if after.get("key") != before.get("key"):  # documents carry facet:key (BL-120)
+        await _reindex_tagged(db, term.id)
     return term_out(term, facet.key)
+
+
+async def _reindex_tagged(db: AsyncSession, term_id: uuid.UUID) -> None:
+    from regwatch.processing.models import Item
+    from regwatch.search.tasks import queue_matching
+
+    await queue_matching(db, Item.id.in_(select(ItemTerm.item_id)
+                                         .where(ItemTerm.term_id == term_id)))  # fmt: skip
 
 
 async def _reload(db: AsyncSession, term: Term, what: str = "term") -> Term:
@@ -593,6 +603,8 @@ async def merge_term(db: AsyncSession, term_id: uuid.UUID, into_id: uuid.UUID,
     after = {"target": term_snapshot(target), "items_moved": moved, "taxonomy_version": version}
     audit(db, "term.merge", "term", term_id, actor=actor, ip=ip, before=before, after=after)
     await db.commit()
+    if moved:
+        await _reindex_tagged(db, target.id)  # the moved tags are the target's now (BL-120)
     return moved
 
 
@@ -738,6 +750,16 @@ async def update_jurisdiction(db: AsyncSession, code: str, changes: dict[str, An
         audit(db, "jurisdiction.update", "jurisdiction", j.code, actor=actor, ip=ip,
               before=before, after=after)  # fmt: skip
     await db.commit()
+    if after.get("region_code") != before.get("region_code"):  # documents carry regions
+        from regwatch.processing.models import ChangeEvent, Item, ItemJurisdiction
+        from regwatch.search.tasks import queue_matching
+
+        await queue_matching(
+            db,
+            Item.id.in_(select(ItemJurisdiction.item_id)
+                        .where(ItemJurisdiction.jurisdiction_id == j.id)),
+            Item.id.in_(select(ChangeEvent.item_id).where(ChangeEvent.jurisdiction_id == j.id)),
+        )  # fmt: skip
     return jurisdiction_out(j, parent_code)
 
 

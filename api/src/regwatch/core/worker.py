@@ -19,6 +19,7 @@ from __future__ import annotations
 from functools import cache
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import worker_process_init
 
 from regwatch.core.settings import Settings, get_settings
@@ -37,6 +38,8 @@ QUEUES = ("capture", "process")  # M3 capture; M4 processing of each run's manif
 BEAT = {
     "capture.schedule_tick": {"task": "capture.schedule_tick", "schedule": 60.0},
     "capture.health_check": {"task": "capture.health_check", "schedule": 3600.0},
+    # The nightly catch-up (BL-120): changes that queued no document, or whose queueing failed.
+    "search.reindex": {"task": "search.reindex", "schedule": crontab(hour=3, minute=30)},
 }
 
 
