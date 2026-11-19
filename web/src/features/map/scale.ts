@@ -80,7 +80,10 @@ export function wellFormed(rows: unknown): ActivityRow[] {
       typeof row.count === "number" &&
       Number.isFinite(row.count) &&
       typeof row.max_severity === "string" &&
-      SEVERITIES.has(row.max_severity)
+      SEVERITIES.has(row.max_severity) &&
+      (row.last_changed_at === undefined ||
+        row.last_changed_at === null ||
+        typeof row.last_changed_at === "string")
     );
   });
 }

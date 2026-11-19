@@ -38,6 +38,8 @@ export interface Handlers {
       x: number;
       y: number;
       note?: string;
+      /** A disputed area: the tooltip names no country (ADR-0004 decision 5). */
+      disputed?: boolean;
     } | null,
   ): void;
 }
@@ -123,8 +125,20 @@ export function createEngine(
   });
   map.on("mousemove", (e: MapMouseEvent) => {
     const [hit] = map.queryRenderedFeatures(e.point, { layers: ["disputed", "fill"] });
-    const props = hit?.properties as { iso?: string; name?: string; note?: string } | undefined;
-    on.onHover(props?.name ? { code: props.iso ?? "", name: props.name, x: e.point.x, y: e.point.y, ...(props.note ? { note: props.note } : {}) } : null);
+    const props = hit?.properties as { iso?: string; name?: string; note?: string | null } | undefined;
+    if (!hit || !props?.name) {
+      on.onHover(null);
+      return;
+    }
+    const disputed = hit.layer.id === "disputed";
+    on.onHover({
+      code: disputed ? "" : (props.iso ?? ""),
+      name: disputed ? "" : props.name,
+      x: e.point.x,
+      y: e.point.y,
+      ...(typeof props.note === "string" && props.note ? { note: props.note } : {}),
+      ...(disputed ? { disputed: true } : {}),
+    });
   }); // prettier-ignore
   map.on("mouseout", () => {
     on.onHover(null);

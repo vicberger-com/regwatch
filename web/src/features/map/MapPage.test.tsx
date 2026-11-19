@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -129,6 +129,34 @@ describe("map page", () => {
     ).toBeInTheDocument();
     const rail = screen.getByRole("navigation", { name: "Main" });
     expect(within(rail).queryByRole("link", { name: "Map" })).toBeNull();
+  });
+
+  it("names no country over a disputed area", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    const map = await engine();
+    act(() => {
+      map.on.onHover({
+        code: "",
+        name: "",
+        x: 5,
+        y: 5,
+        note: "Admin. by India; Claimed by China",
+        disputed: true,
+      });
+    });
+    expect(await screen.findByText("Disputed area")).toBeInTheDocument();
+    expect(
+      screen.getByText("Admin. by India; Claimed by China"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("India")).toBeNull();
+    act(() => {
+      map.on.onHover({ code: "DE", name: "Germany", x: 5, y: 5 });
+    });
+    expect(await screen.findAllByText(/3 items changed/)).toHaveLength(2); // list and tooltip
   });
 
   it("announces the selection and keeps the list on it", async () => {

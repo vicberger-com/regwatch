@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the map's boundary files (ADR-0004, R-05) from Natural Earth v5.1.2. Run when the data
+# Build the map's boundary files (--accept writes an output whose hash differs from the recorded one) (ADR-0004, R-05) from Natural Earth v5.1.2. Run when the data
 # or the simplification changes; the output is committed, so the web build needs no network.
 #
 # Writes web/public/map/countries.geojson (fields id = ADM0_A3, iso = ISO_A2_EH, name) and
@@ -35,12 +35,17 @@ pnpm dlx "$mapshaper" ne/geojson/ne_50m_admin_0_countries.geojson \
 pnpm dlx "$mapshaper" ne/geojson/ne_50m_admin_0_breakaway_disputed_areas.geojson \
   -filter-fields ADM0_A3,NAME,NOTE_BRK -rename-fields id=ADM0_A3,name=NAME,note=NOTE_BRK \
   -simplify 25% keep-shapes -o disputed.geojson format=geojson precision=0.001
+status=0
 for f in countries disputed; do
-  node "$root/scripts/project-equal-earth.mjs" "$f.geojson" "$out/$f.geojson"
-  got="$(sha256sum "$out/$f.geojson" | cut -d' ' -f1)"
+  node "$root/scripts/project-equal-earth.mjs" "$f.geojson" "$work/$f.out.geojson"
+  got="$(sha256sum "$work/$f.out.geojson" | cut -d' ' -f1)"
   want="expected_$f"
-  echo "$f.geojson: $(stat -c %s "$out/$f.geojson") bytes, $(gzip -9 -c "$out/$f.geojson" | wc -c) gzip, sha256 $got"
-  if [[ "$got" != "${!want}" ]]; then
-    echo "  differs from the committed file (${!want}): review the change, then update the hash here" >&2
+  echo "$f.geojson: $(stat -c %s "$work/$f.out.geojson") bytes, $(gzip -9 -c "$work/$f.out.geojson" | wc -c) gzip, sha256 $got"
+  if [[ "$got" == "${!want}" || "${1:-}" == "--accept" ]]; then
+    cp "$work/$f.out.geojson" "$out/$f.geojson"
+  else
+    echo "  differs from the committed file (${!want}); not written. Review it, then rerun with --accept and update the hash here" >&2
+    status=1
   fi
 done
+exit "$status"

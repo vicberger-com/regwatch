@@ -22,6 +22,7 @@ function readColours(): Colours {
 }
 
 interface Hover {
+  disputed?: boolean;
   code: string;
   name: string;
   x: number;
@@ -109,14 +110,21 @@ export function WorldMap(props: {
           className="pointer-events-none absolute z-10 max-w-64 rounded border border-border bg-surface px-2 py-1 text-sm shadow-menu"
           style={{ left: hover.x + 12, top: hover.y + 12 }}
         >
-          <span className="font-semibold">{hover.name}</span>
-          {hover.note ? (
-            <span className="block text-text-muted">{hover.note}</span>
-          ) : null}
-          {!hover.note && (
-            <span className="block text-text-muted">
-              {props.describe(hover.code)}
-            </span>
+          {hover.disputed ? (
+            <>
+              {/* No country is named over a disputed area (ADR-0004 decision 5). */}
+              <span className="font-semibold">Disputed area</span>
+              {hover.note && (
+                <span className="block text-text-muted">{hover.note}</span>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="font-semibold">{hover.name}</span>
+              <span className="block text-text-muted">
+                {props.describe(hover.code)}
+              </span>
+            </>
           )}
         </div>
       )}
