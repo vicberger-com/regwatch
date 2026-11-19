@@ -94,7 +94,9 @@ function Title({ item }: { item: ItemSummary }) {
         params={{ id: item.id }}
         className="font-semibold text-accent underline-offset-2 hover:underline"
       >
-        {lit ? <Marked html={lit} /> : item.title}
+        <bdi>
+          {typeof lit === "string" ? <Marked html={lit} /> : item.title}
+        </bdi>
       </Link>
       {item.title_en && item.title_en !== item.title && (
         <span className="block text-sm text-text-muted" lang="en">

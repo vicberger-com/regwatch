@@ -32,3 +32,31 @@ export const itemQuery = (id: string) =>
       return result.data;
     },
   });
+
+export type ItemVersion = Schemas["ItemVersion"];
+
+export const versionsQuery = (id: string) =>
+  queryOptions({
+    queryKey: ["items", id, "versions"],
+    queryFn: async (): Promise<ItemVersion[]> => {
+      const result = await api.GET("/items/{id}/versions", {
+        params: { path: { id } },
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+  });
+
+export const diffQuery = (id: string, from: number, to: number) =>
+  queryOptions({
+    queryKey: ["items", id, "diff", from, to],
+    queryFn: async () => {
+      const result = await api.GET("/items/{id}/diff", {
+        params: { path: { id }, query: { from, to } },
+      });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+  });

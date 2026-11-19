@@ -122,5 +122,57 @@ describe("items table", () => {
     expect(safeUrl("javascript:alert(1)")).toBeNull();
     expect(safeUrl("data:text/html,x")).toBeNull();
     expect(safeUrl("https://ok.example/a")).toBe("https://ok.example/a");
+    expect(safeUrl("https://user:pw@ok.example/a")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: /Original page on bsi.example/ }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("items permissions", () => {
+  it.each([[[]], [["users.manage"]]])(
+    "refuses /items and /items/:id without items.read (%j)",
+    async (permissions) => {
+      const api = fakeApi({ "GET /auth/me": [200, { ...ADMIN, permissions }] });
+      renderAt("/items");
+      expect(
+        (await screen.findAllByText(/do not have permission/)).length,
+      ).toBeGreaterThan(0);
+      const rail = screen.getByRole("navigation", { name: "Main" });
+      expect(within(rail).queryByRole("link", { name: "Items" })).toBeNull();
+      vi.unstubAllGlobals();
+      const again = fakeApi({
+        "GET /auth/me": [200, { ...ADMIN, permissions }],
+      });
+      renderAt(`/items/${ITEM.id}`);
+      expect(
+        (await screen.findAllByText(/do not have permission/)).length,
+      ).toBeGreaterThan(0);
+      const asked = [...api.calls, ...again.calls].map((c) => c.key);
+      expect(
+        asked.filter(
+          (k) => k === "POST /search" || k.startsWith("GET /items/"),
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("shows the title when a highlight is not text", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "POST /search": [
+        200,
+        {
+          items: [{ ...ITEM, highlights: { title: [42] } }],
+          total: 1,
+          page: 1,
+          page_size: 25,
+        },
+      ],
+    });
+    renderAt("/items?q=nis2");
+    expect(
+      await screen.findByRole("link", { name: "NIS2 Umsetzung" }),
+    ).toBeInTheDocument();
   });
 });
