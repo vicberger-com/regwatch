@@ -105,6 +105,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | lingua-language-detector 2.2.0 | language detection (M4 Q6; owner approved 2026-11-18; `processing/language.py`). The wheel is about 290 MB (models included, offline); its CycloneDX SBOM lists 131 Rust crates, all Apache-2.0, MIT, Unlicense-or-MIT or Unicode-3.0 | Apache-2.0 | V `d0c8e85`, `754ce21`; wheel 2.2.0 LICENSE and SBOM checked | dependency | M4 |
 | spaCy (optional) | entity extraction | MIT | V `4331199` | dependency | M4 |
 | rapidfuzz 3.14.6 | fuzzy title near-duplicates (M4 Q6; owner approved 2026-11-18; `processing/neardup.py`); wheel about 12 MB | MIT | V `377d0c0`; wheel 3.14.6 License-Expression MIT checked | dependency | M4 |
+| pypdf 7.1.1 | PDF text for body-only items (M4 roadmap 4.5; owner decision 2026-11-19; `processing/pdf.py`, run in the sandboxed `processing.pdf_child` with CPU and memory limits); pure Python, no runtime dependencies (the crypto extras are not installed), about 2 MB | BSD-3-Clause | wheel 7.1.1 License-Expression and LICENSE checked | dependency | M4 |
 | React, React DOM | UI | MIT | V `61aa00d` | dependency | M6 |
 | Vite | build | MIT | V `981f07f` | tooling | M6 |
 | TypeScript, pnpm, Prettier | compiler, package manager, formatter (#27) | Apache-2.0, MIT, MIT | V `c63de15`, `d22a3f6`, `1172b82` | tooling | M0 |

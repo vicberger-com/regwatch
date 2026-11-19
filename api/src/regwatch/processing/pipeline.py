@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.services import values
 from regwatch.capture.models import CaptureJob, CaptureRun, Source
-from regwatch.processing import geotag, neardup, snapshot
+from regwatch.processing import geotag, neardup, pdf, snapshot
 from regwatch.processing.classifier import ModelProvider, classify_by_model, model_provider
 from regwatch.processing.classify import MIN_CONFIDENCE, classify, load_rules
 from regwatch.processing.dates import effective_date
@@ -106,6 +106,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             counts.failed += 1
             continue
         try:
+            row = await pdf.with_text(row, source_id, load)  # PDF and XHTML bodies (4.5)
             got = await ingest(
                 db, source_id, known, row, threshold, kind=kind, credibility=source.credibility
             )

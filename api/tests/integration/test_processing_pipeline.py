@@ -451,3 +451,29 @@ async def test_an_effective_date_is_stored_in_the_items_attributes(
     await process_manifest(db, key, loader(objects))
     item = await db.scalar(select(Item).where(Item.canonical_url == "https://example.org/eff"))
     assert item is not None and item.attributes["effective_date"] == "2027-01-01"
+
+
+async def test_a_publishers_pdf_takes_back_a_planted_summary(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Roadmap 4.5 closes R15 (BL-109 (b)): with the PDF's text, the publisher's fetched PDF
+    speaks for its URL and replaces a feed's planted summary."""
+    from regwatch.processing.models import ItemVersion
+    from tests.unit.test_processing_pdf import make_pdf
+
+    feed, publisher = await made_source(admin), await made_source(admin)
+    url = "https://example.org/docs/rule-49.pdf"
+    key, objects = manifest(feed, uuid.uuid4(), [{"url": url, "text": "Rule 49 repealed. " * 20,
+                                                  "title": "Rule 49 repealed"}])  # fmt: skip
+    await process_manifest(db, key, loader(objects))
+    ref = f"raw/{publisher}/" + "f" * 64
+    key, objects = manifest(publisher, uuid.uuid4(), [{"url": url, "final_url": url,
+                                                       "body_ref": ref, "mime": "application/pdf",
+                                                       "title": "Rule 49"}])  # fmt: skip
+    objects[ref] = make_pdf("Rule 49 on incident reporting stays in force")
+    await process_manifest(db, key, loader(objects))
+    item = await db.scalar(select(Item).where(Item.canonical_url == url))
+    assert item is not None and item.source_id == uuid.UUID(publisher)
+    latest = await db.scalar(select(ItemVersion.content_text).where(ItemVersion.item_id == item.id)
+                             .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
+    assert latest is not None and "stays in force" in latest

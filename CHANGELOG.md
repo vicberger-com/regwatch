@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- M4 PDF and XHTML text (roadmap 4.5, owner decision 2026-11-19): a body-only row whose PDF or XHTML its source stored (at most 20 MB) gets its text before ingest, a PDF through pypdf 7.1.1 in a child process with CPU, memory and wall-clock limits, XHTML through M3's isolated extractor; so such items version and classify, and a publisher's PDF takes back a planted summary (R15) (Refs: REQ-02, BL-107, BL-109).
 - M4 sanitized HTML snapshots (roadmap 4.4, owner decision 2026-11-19): a new or changed version from an HTML body its source stored (at most 5 MB) gets an nh3-sanitized copy at `html/{item}/{version}.html` (`content_html_ref`): text and structure only, no scripts, styles, forms, frames, media or event attributes, links http, https or mailto with `noopener noreferrer nofollow`; not served yet (Refs: REQ-02, BL-106).
 - M4 effective dates (roadmap 4.6, owner decision 2026-11-19): a seeded system facet `effective_date` (value type date); a date right after an applies-from phrase in English, German, French, Spanish, Portuguese or Japanese is stored as `attributes.effective_date` (Refs: REQ-02, REQ-03).
 - CP-20 (owner approved 2026-11-19), migration 0006: indexes `change_event(item_id, severity)` for search pages and the severity filter, and `item(source_id, content_hash)` for ingest's duplicate check (Refs: BL-114, BL-107).
