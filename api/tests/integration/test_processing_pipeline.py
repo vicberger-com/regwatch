@@ -462,6 +462,7 @@ async def test_a_publishers_pdf_takes_back_a_planted_summary(
     from tests.unit.test_processing_pdf import make_pdf
 
     feed, publisher = await made_source(admin), await made_source(admin)
+    await as_kind(db, publisher, "web_crawl")
     url = "https://example.org/docs/rule-49.pdf"
     key, objects = manifest(feed, uuid.uuid4(), [{"url": url, "text": "Rule 49 repealed. " * 20,
                                                   "title": "Rule 49 repealed"}])  # fmt: skip
@@ -477,3 +478,75 @@ async def test_a_publishers_pdf_takes_back_a_planted_summary(
     latest = await db.scalar(select(ItemVersion.content_text).where(ItemVersion.item_id == item.id)
                              .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
     assert latest is not None and "stays in force" in latest
+
+
+async def as_kind(db: AsyncSession, sid: str, kind: str) -> None:
+    from sqlalchemy import update
+
+    from regwatch.capture.models import Source
+
+    await db.execute(update(Source).where(Source.id == uuid.UUID(sid)).values(kind=kind))
+    await db.commit()
+
+
+@pytest.mark.parametrize("planted_first", [False, True])
+async def test_a_feeds_full_page_pdf_never_gets_text(
+    admin: httpx.AsyncClient, db: AsyncSession, planted_first: bool
+) -> None:
+    """Enrichment review N20 (R24, R25): a feed's fetched PDF keeps no text, so with the feed's
+    title it neither owns the document's item nor claims an official feed's summary."""
+    from tests.unit.test_processing_pdf import make_pdf
+
+    official, hostile, publisher = (await made_source(admin), await made_source(admin),
+                                    await made_source(admin))  # fmt: skip
+    await as_kind(db, publisher, "web_crawl")
+    url = f"https://example.org/docs/rule-{70 + planted_first}.pdf"
+    if planted_first:  # R25: an official feed's summary first
+        key, objects = manifest(
+            official,
+            uuid.uuid4(),
+            [{"url": url, "title": "Rule 71", "text": "Rule 71 on reporting. " * 20}],
+        )
+        await process_manifest(db, key, loader(objects))
+    ref = f"raw/{hostile}/" + "a" * 64
+    key, objects = manifest(
+        hostile,
+        uuid.uuid4(),
+        [
+            {
+                "url": url,
+                "final_url": url,
+                "body_ref": ref,
+                "mime": "application/pdf",
+                "title": "Rule withdrawn; firm fined",
+            }
+        ],
+    )
+    objects[ref] = make_pdf("The real rule text stays in force")
+    await process_manifest(db, key, loader(objects))
+    item = await db.scalar(select(Item).where(Item.canonical_url == url))
+    assert item is not None and item.source_id != uuid.UUID(hostile) or item.fetched_host is None
+    # R24: the publisher's own PDF still takes the item, with its own title.
+    pref = f"raw/{publisher}/" + "b" * 64
+    key, objects = manifest(publisher, uuid.uuid4(), [{"url": url, "final_url": url,
+                                                       "body_ref": pref, "mime": "application/pdf",
+                                                       "title": "Rule"}])  # fmt: skip
+    objects[pref] = make_pdf("The real rule text stays in force")
+    await process_manifest(db, key, loader(objects))
+    item = await db.scalar(select(Item).where(Item.canonical_url == url)
+                           .execution_options(populate_existing=True))  # fmt: skip
+    assert item is not None and (item.source_id, item.title) == (uuid.UUID(publisher), "Rule")
+
+
+async def test_a_new_version_naming_no_date_clears_the_effective_date(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """N22: a stale date does not stay."""
+    sid = await made_source(admin)
+    url = "https://example.org/eff-clear"
+    for text in ("Das Gesetz tritt am 1. Januar 2027 in Kraft.\n" + BSI, "Aufgehoben.\n" + BSI * 2):
+        key, objects = manifest(sid, uuid.uuid4(), [{"url": url, "text": text, "title": "G"}])
+        await process_manifest(db, key, loader(objects))
+    item = await db.scalar(select(Item).where(Item.canonical_url == url)
+                           .execution_options(populate_existing=True))  # fmt: skip
+    assert item is not None and "effective_date" not in item.attributes

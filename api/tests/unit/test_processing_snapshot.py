@@ -70,3 +70,36 @@ async def test_only_this_sources_html_is_snapshotted() -> None:
 
     assert await snapshot({"body_ref": keys[0], "mime": "text/html"}, sid, item, 3, broken,
                           store) is None  # fmt: skip
+
+
+def test_relative_links_are_dropped() -> None:
+    """Enrichment review N23: they would resolve against the app's own origin."""
+    out = sanitize(
+        b'<p><a href="/api/v1/auth/logout">a</a><a href="//evil.example/x">b</a>'
+        b'<a href="?q=1">c</a><a href="https://reg.example/ok">d</a></p>'
+    )
+    assert "logout" not in out and "evil.example" not in out and "?q=1" not in out
+    assert 'href="https://reg.example/ok"' in out
+
+
+async def test_a_deeply_nested_page_never_holds_the_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """N19: nh3 runs in the limited child; past its wall clock there is no snapshot."""
+    import time
+
+    from regwatch.processing import pdf
+
+    monkeypatch.setattr(pdf, "WALL_SECONDS", 1.0)
+    sid, item = uuid.uuid4(), uuid.uuid4()
+    ref = f"raw/{sid}/" + "d" * 64
+    body = b"<div>" * 100_000 + b"x" + b"</div>" * 100_000
+
+    async def load(k: str) -> bytes | None:
+        return body
+
+    async def store(k: str, b: bytes) -> None:
+        raise AssertionError("nothing should be stored")
+
+    started = time.monotonic()
+    assert await snapshot({"body_ref": ref, "mime": "text/html"}, sid, item, 1, load,
+                          store) is None  # fmt: skip
+    assert time.monotonic() - started < 5

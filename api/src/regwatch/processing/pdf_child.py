@@ -1,4 +1,4 @@
-"""The PDF text child process: ``python -I -m regwatch.processing.pdf_child``.
+"""The limited child process: ``python -I -m regwatch.processing.pdf_child [pdf|sanitize]``.
 
 As ``capture.extract.child`` does for HTML (ADR-0009 amendment 1), it limits itself before
 reading anything (``RLIMIT_CPU``, ``RLIMIT_AS``), then reads one PDF on stdin and writes one
@@ -57,9 +57,22 @@ def answer(body: bytes) -> dict[str, Any]:
     return {"text": text}
 
 
+def sanitized(body: bytes) -> dict[str, Any]:
+    """nh3 on an HTML body (enrichment review N19: deep nesting costs quadratic time, so it
+    runs here, under the same limits, never in the worker)."""
+    from regwatch.processing.snapshot import sanitize
+
+    try:
+        return {"html": sanitize(body)}
+    except MemoryError:
+        return {"error": "too-large"}
+
+
 def main() -> None:  # pragma: no cover - run as a process by processing.pdf
     _limit()
-    sys.stdout.write(json.dumps(answer(sys.stdin.buffer.read())))
+    body = sys.stdin.buffer.read()
+    mode = sys.argv[1] if len(sys.argv) > 1 else "pdf"
+    sys.stdout.write(json.dumps(sanitized(body) if mode == "sanitize" else answer(body)))
 
 
 if __name__ == "__main__":  # pragma: no cover

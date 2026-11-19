@@ -36,3 +36,17 @@ def test_hostile_text_stays_linear() -> None:
     started = time.monotonic()
     effective_date("t", text)
     assert time.monotonic() - started < 2
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("This Regulation applies to providers. Done at Brussels, 12 March 2026.", None),
+     ("guidance on effective incident handling on 3 April 2026", None),
+     ("Der Eintritt ist am 01.02.2026 frei.", None), ("Zutritt ab 5. Mai 2026", None),
+     ("It enters into force on 1 December 2026 and shall apply from 1 January 2027.",
+      date(2027, 1, 1)),
+     ("本法は2027年4月1日から施行する。It shall apply from 1 May 2027.", date(2027, 5, 1))],
+)  # fmt: skip
+def test_ordinary_words_are_not_triggers(text: str, expected: date | None) -> None:
+    """Enrichment review N22."""
+    assert effective_date("", text) == expected

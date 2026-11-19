@@ -155,6 +155,19 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 | --- | --- | --- | --- |
 | N17 | medium | a fetched item is silenced only by another fetched one; `test_a_feeds_unfetched_copy_never_silences_the_fetched_original` fails without it | pending (completion review) |
 
+## Review 9: enrichment slices (migration 0006, `9589c35`, `d012ea8`): not signed off
+
+Migration 0006 yes; 4.6 effective dates yes (low N22); 4.4 snapshots no (N19); 4.5 PDF and XHTML no (N20, N21). The pypdf row holds (BSD-3, no dependencies); the child's limits bind (20 s CPU, 1 GiB, 30 s wall; Flate bombs, `/Prev` loops, deep trees stop in under 0.3 s).
+
+| # | Severity | Description | Fix | Verified |
+| --- | --- | --- | --- | --- |
+| N19 | high | nh3 ran in the worker; deep nesting costs it quadratic time (100,000 levels: 35 s; 5 MB: about an hour), reachable through a feed's full page. | nh3 runs in the limited child (CPU, memory, wall clock); input capped at 2 MiB | pending |
+| N20 | high | PDF and XHTML text for a feed's full-page row let it own or claim the document's item with the feed's title (N7 reopened). | no text extraction for `rss` sources | pending |
+| N21 | medium | Up to 20 s of CPU per hostile PDF with no total per manifest; re-sends repeat it. | 10 minutes of extraction per manifest; skipping unchanged bodies goes to BL-115 | pending |
+| N22 | low | Ordinary words triggered effective dates ("applies", "effective", "Eintritt"); stale dates stayed. | whole words, no bare words, application phrases first, Japanese last; a version naming no date clears it | pending |
+| N23 | low | Relative links survived the sanitizer. | only absolute http, https and mailto links kept | pending |
+| N24 | info | UTF-16 bodies come out as mojibake; `colspan` uncapped; a snapshot written before a failed commit is orphaned; legislation.gov.uk `application/xml` gets no text. | BL-115 | deferred |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

@@ -31,13 +31,20 @@ MONTHS = {
     **dict.fromkeys(["december", "dezember", "décembre", "decembre", "diciembre", "dezembro"],
                     12),
 }  # fmt: skip
-_TRIGGER = re.compile(
-    r"(enters? into force|entered into force|entry into force|shall apply|applies|apply from"
-    r"|with effect from|effective (?:from|on|as of)?|takes? effect"
-    r"|tritt|in kraft|gilt ab|anzuwenden ab|wirksam ab"
-    r"|entre(?:ra)? en vigueur|s'applique|applicable à partir"
-    r"|entrar[áa] en vigor|entra en vigor|será aplicable|aplicar[áa] a partir"
-    r"|entra(?:rá)? em vigor|aplica-se a partir)",
+# Whole words only, and never an ordinary word alone ("applies", "effective", "Eintritt";
+# enrichment review N22). Application phrases outrank entry-into-force phrases: a text that
+# enters into force on one day and applies from a later one applies from the later one.
+_APPLY = re.compile(
+    r"\b(shall apply from|applies from|apply from|with effect from|effective (?:from|on|as of)"
+    r"|effective date:?|takes? effect (?:on|from)|gilt ab|anzuwenden ab|wirksam ab"
+    r"|s'applique à partir"
+    r"|applicable à partir|será aplicable a partir|aplicar[áa] a partir|aplica-se a partir)\b",
+    re.IGNORECASE,
+)
+_FORCE = re.compile(
+    r"\b(enters? into force|entered into force|entry into force|tritt\b(?=[^\n]{0,80}?\bin kraft\b)"
+    r"|in kraft (?:ab|seit|am)|entre(?:ra)? en vigueur|entrar[áa] en vigor|entra en vigor"
+    r"|entra(?:rá)? em vigor)\b",
     re.IGNORECASE,
 )
 _MONTH = "|".join(sorted(map(re.escape, MONTHS), key=len, reverse=True))
@@ -75,9 +82,9 @@ def _after(text: str, start: int) -> date | None:
 def effective_date(title: str, text: str) -> date | None:
     """The date the document says it applies from, or None."""
     scan = f"{title}\n{text[:SCAN_CHARS]}"
-    if ja := _JA.search(scan):
-        return _read(ja, ("y", "m", "d"))
-    for trigger in _TRIGGER.finditer(scan):
+    for trigger in (*_APPLY.finditer(scan), *_FORCE.finditer(scan)):
         if got := _after(scan, trigger.end()):
             return got
+    if ja := _JA.search(scan):
+        return _read(ja, ("y", "m", "d"))
     return None

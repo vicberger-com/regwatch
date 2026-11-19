@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -66,6 +67,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                            store: Store | None = None) -> Counts:  # fmt: skip
     """Every document of the run whose manifest is ``key``."""
     counts = Counts()
+    started = time.monotonic()
     match = MANIFEST.fullmatch(key)
     if match is None:
         raise ValueError("not a run manifest key")
@@ -108,7 +110,8 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             counts.failed += 1
             continue
         try:
-            row = await pdf.with_text(row, source_id, load)  # PDF and XHTML bodies (4.5)
+            if time.monotonic() - started < pdf.BUDGET_S:  # PDF and XHTML bodies (4.5, N21)
+                row = await pdf.with_text(row, source_id, load, kind)
             got = await ingest(
                 db, source_id, known, row, threshold, kind=kind, credibility=source.credibility
             )
@@ -118,11 +121,13 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 assert item is not None  # noqa: S101 - just made or locked
                 value = row.get("text")
                 text = value if isinstance(value, str) else ""
-                if when := effective_date(item.title, text):  # owner decision 2026-11-19
-                    item.attributes = {
-                        **(item.attributes or {}),
-                        "effective_date": when.isoformat(),
-                    }
+                # Owner decision 2026-11-19; a new version naming no date clears it (N22).
+                attributes = {k: v for k, v in (item.attributes or {}).items()
+                              if k != "effective_date"}  # fmt: skip
+                if when := effective_date(item.title, text):
+                    attributes["effective_date"] = when.isoformat()
+                if attributes != (item.attributes or {}):
+                    item.attributes = attributes
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
                 # Translation before classification, so English rules see it (design notes).

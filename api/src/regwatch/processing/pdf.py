@@ -27,6 +27,8 @@ WALL_SECONDS = 30.0  # over the child's CPU limit (20 s)
 MAX_ANSWER = 8 * 1024 * 1024
 COMMAND = (sys.executable, "-I", "-m", "regwatch.processing.pdf_child")
 PDF = ("application/pdf",)
+NO_TEXT_KINDS = frozenset({"rss"})
+BUDGET_S = 600.0  # extraction per manifest (N21)
 XHTML = ("application/xhtml+xml",)  # not text/html: a feed's fetched page keeps its rules (N7)
 _log = structlog.get_logger(__name__)
 _locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
@@ -35,12 +37,14 @@ _locks: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
 Load = Callable[[str], Awaitable[bytes | None]]
 
 
-async def pdf_text(body: bytes) -> str | None:
+async def run_child(body: bytes, mode: str) -> dict[str, Any] | None:
+    """One limited child (``pdf_child``) for ``body``; its JSON answer, or None."""
     loop = asyncio.get_running_loop()
     async with _locks.setdefault(loop, asyncio.Lock()):
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LC_ALL": "C"}
+        command = COMMAND if COMMAND[-1] != "regwatch.processing.pdf_child" else (*COMMAND, mode)
         child = await asyncio.create_subprocess_exec(
-            *COMMAND, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            *command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL, env=env)  # fmt: skip
         try:
             out, _ = await asyncio.wait_for(child.communicate(body), WALL_SECONDS)
@@ -56,7 +60,12 @@ async def pdf_text(body: bytes) -> str | None:
         got: Any = json.loads(out)
     except ValueError:
         return None
-    text = got.get("text") if isinstance(got, dict) else None
+    return got if isinstance(got, dict) else None
+
+
+async def pdf_text(body: bytes) -> str | None:
+    got = await run_child(body, "pdf")
+    text = got.get("text") if got else None
     return text if isinstance(text, str) and text.strip() else None
 
 
@@ -71,9 +80,14 @@ async def xhtml_text(body: bytes) -> str | None:
     return got.text or None
 
 
-async def with_text(row: dict[str, Any], source_id: uuid.UUID, load: Load) -> dict[str, Any]:
-    """``row`` with ``text`` filled from its stored body when it had none."""
+async def with_text(row: dict[str, Any], source_id: uuid.UUID, load: Load,
+                    kind: str = "") -> dict[str, Any]:  # fmt: skip
+    """``row`` with ``text`` filled from its stored body when it had none. Never for a feed's
+    row (enrichment review N20): its title is the feed's, and text would let it own or claim
+    the document's item (N7)."""
     if isinstance(row.get("text"), str) and row["text"].strip():
+        return row
+    if kind in NO_TEXT_KINDS:
         return row
     ref, mime = row.get("body_ref"), str(row.get("mime") or "").split(";")[0].strip().lower()
     if not isinstance(ref, str) or not re.fullmatch(rf"raw/{source_id}/[0-9a-f]{{64}}", ref):
