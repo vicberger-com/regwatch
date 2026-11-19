@@ -1,6 +1,6 @@
-# M5 Search and query: module status record
+# M5 Search and query: module completion record
 
-**Branch:** `feat/M5-search`, then `feat/M5-map` (stacked on M4). · **Date:** 2026-11-19 · **Status:** acceptance 1 to 4 met: 1, 2 and 4 by tests, 3 by the 1M-item load test on OpenSearch (ADR-0011). The OpenSearch slices wait for their security review; the k6 concurrency run is open.
+**Branch:** `feat/M5-search`, then `feat/M5-map` (stacked on M4). · **Date:** 2026-11-19 · **Status:** acceptance 1 to 4 met: 1, 2 and 4 by tests, 3 by the 1M-item load test on OpenSearch (ADR-0011). **Security:** every M5 slice is signed off (`M5-search-review.md`): search and views, slice 2 (map, export, facets, stemming), and the OpenSearch slices at `f831214`. No high or medium finding is open. The k6 run with 10 concurrent users (BL-118) is open.
 
 ## Acceptance criteria (`docs/modules/M5-search-query.md`)
 
@@ -32,9 +32,14 @@
 - **`GET /map/activity`:** by country or region, for a period, with the search's filters.
 - **`POST /search/export.csv`:** streamed in short transactions, 20 an hour per user, one export at a time per user, audited, with formulas escaped.
 - **Migrations:** 0006 (CP-20 indexes) and 0007 (CP-21 stemmed vector).
+- **The OpenSearch index** (ADR-0011, CP-22; `search/index.py`, `indexed.py`, `tasks.py`):
+  - a Compose service on the internal network with no published port (profile `index`), with the security plugin on, the stack's own CA, and two least-privilege users: `regwatch_search` for the API, read only, and `regwatch_indexer` for the worker;
+  - documents fed from PostgreSQL by the pipeline, reprocessing and tag edits; `python -m regwatch.search.tasks` rebuilds every document;
+  - search, facets and the map run on the index when it is configured; PostgreSQL answers when it is not configured or cannot be reached, and a slow index answers 503 after at most 4 s, with no database connection held while waiting.
 
 ## Decisions
 
+- **ADR-0011 and CP-22:** OpenSearch as a sidecar (owner decision 2026-11-19).
 - **CP-20** (owner approved).
 - **CP-21** (accepted under the owner's standing instruction to take default recommendations; the owner may veto at G2).
 - **Assumptions confirmed by the owner:** websearch syntax, the `total` cap, disabled sources staying searchable, and Europe including the EU and the Council of Europe.
@@ -42,7 +47,8 @@
 
 ## Open
 
-- **BL-118:** acceptance 3, the planner's choices on broad filters and the cost of facet counts.
+- **BL-118:** the k6 run with 10 concurrent users (acceptance 3 was measured sequentially).
+- **BL-120:** index freshness after admin changes outside the pipeline.
 - **BL-113:** a column for `saved_view.q`.
 - **BL-114:** residual search findings.
 - **BL-116:** using `jurisdiction_activity` for unfiltered maps; view by regulation or facet.

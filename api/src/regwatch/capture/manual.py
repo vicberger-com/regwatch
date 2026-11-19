@@ -96,7 +96,8 @@ async def add_document(db: AsyncSession, source_id: uuid.UUID, principal: Princi
         detail: dict[str, object] = {"url": shown}
         upload: tuple[str, bytes] | None = None
     else:
-        assert data is not None  # noqa: S101 - the route passes one of the two
+        if data is None:  # the route passes one of the two
+            raise ValueError("a manual document needs a URL or a file")
         if len(data) > MAX_FILE_BYTES:
             raise ProblemError(413, "payload-too-large", "Files are limited to 10 MB.")
         if not data:

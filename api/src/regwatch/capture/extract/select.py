@@ -18,7 +18,7 @@ There is no backtracking, and no recursion over the tree.
 from __future__ import annotations
 
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 - html5lib builds the trees; no XML is parsed
 from dataclasses import dataclass, field
 
 from regwatch.capture.extract.tree import elements

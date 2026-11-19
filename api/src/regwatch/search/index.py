@@ -84,7 +84,8 @@ class IndexClient:
         url = str(settings.index_url).rstrip("/")
         if not url.startswith("https://"):
             raise IndexFailedError("index-unconfigured", "the index URL must be https")
-        assert settings.index_password is not None and settings.index_ca_b64 is not None  # noqa: S101
+        if settings.index_password is None or settings.index_ca_b64 is None:  # configured()
+            raise IndexFailedError("index-unconfigured", "the index is not configured")
         self.base_url = url
         self.auth = (settings.index_user, settings.index_password.get_secret_value())
         self.verify: ssl.SSLContext | bool = (

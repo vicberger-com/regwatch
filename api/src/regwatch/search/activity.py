@@ -24,7 +24,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,7 +93,7 @@ async def activity(db: AsyncSession, user_id: uuid.UUID | None, period_days: int
                      for r in sorted(hits, key=lambda r: r["code"])]  # fmt: skip
             return MapActivity(period_start=start, period_end=end, view_by=view_by,
                                generated_at=datetime.now(UTC), stale=False, rows=found)  # fmt: skip
-    await db.execute(text(f"SET LOCAL statement_timeout = '{services.STATEMENT_TIMEOUT}'"))
+    await services.statement_timeout(db)
     where = conditions(filters, terms)
     # The region view lists M49 sub-regions, and bodies with no region (EU, COE) by their own
     # code, so no event is dropped (slice 2 S5).

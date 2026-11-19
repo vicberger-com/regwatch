@@ -242,7 +242,7 @@ async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None,
         await finish(db, bad, "failed", error_class="bad-schedule", error_message=message, now=now)
     handed = 0
     for run in [*started, *lost]:
-        jitter = random.uniform(0, JITTER_S)  # noqa: S311 - spacing, not secrecy
+        jitter = random.uniform(0, JITTER_S)  # noqa: S311  # nosec B311 - spacing, not secrecy
         handed += await _handed_over(db, run, enqueue, jitter)
     # Beat's in-memory scheduler first fires the hourly health check an hour after it starts,
     # so a Beat restarted more often would never end a stuck run; every tick sweeps too

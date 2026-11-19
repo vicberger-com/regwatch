@@ -30,7 +30,6 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -163,9 +162,7 @@ async def stream(
         yield ("\ufeff" + buffer.getvalue()).encode("utf-8")
         try:
             async with factory() as db:  # one statement for the ids, then the connection goes
-                await db.execute(
-                    text(f"SET LOCAL statement_timeout = '{services.STATEMENT_TIMEOUT}'")
-                )
+                await services.statement_timeout(db)
                 cap_value = (await values(db, ["search.export_row_cap"]))["search.export_row_cap"]
                 cap = (
                     int(cap_value) if isinstance(cap_value, int) and cap_value > 0 else DEFAULT_CAP
@@ -177,8 +174,7 @@ async def stream(
                 if time.monotonic() > deadline:
                     raise TimeoutError
                 async with factory() as db:  # a short transaction per batch
-                    await db.execute(text(f"SET LOCAL statement_timeout = "
-                                          f"'{services.STATEMENT_TIMEOUT}'"))  # fmt: skip
+                    await services.statement_timeout(db)
                     batch = ids[at : at + BATCH]
                     found = await services.summaries(db, batch, start, end)
                 buffer.seek(0)

@@ -88,16 +88,22 @@ docker run --rm --user 0 --network none \
   -v "$work/in:/in:ro" -v "$root/deploy/opensearch/security:/committed:ro" -v "$out:/out" \
   --entrypoint bash "$image" -c '
     set -euo pipefail
-    hash() { /usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -env "$1" 2>/dev/null | tail -1; }
+    hash() {  # an empty or malformed hash stops the setup
+      got="$(/usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -env "$1" 2>/dev/null | tail -1)"
+      [[ "$got" == \$2* ]] || { echo "hashing $1 failed" >&2; exit 1; }
+      echo "$got"
+    }
+    search_hash="$(hash SEARCH_PW)"
+    indexer_hash="$(hash INDEXER_PW)"
     cp /in/ca.pem /in/node.pem /in/node-key.pem /out/certs/
     cp /committed/*.yml /out/security/
     {
       echo "_meta: { type: internalusers, config_version: 2 }"
       echo "regwatch_search:"
-      echo "  hash: \"$(hash SEARCH_PW)\""
+      echo "  hash: \"$search_hash\""
       echo "  description: the API, read only (role regwatch_search)"
       echo "regwatch_indexer:"
-      echo "  hash: \"$(hash INDEXER_PW)\""
+      echo "  hash: \"$indexer_hash\""
       echo "  description: the worker (role regwatch_indexer)"
     } > /out/security/internal_users.yml
     chown -R 1000:1000 /out/certs /out/security

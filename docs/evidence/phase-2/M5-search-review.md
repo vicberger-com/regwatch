@@ -77,3 +77,30 @@ Checked and found fine: map filter JSON abuse all 400; map cost bounded; map con
 | S8 rest | low | any space, line or paragraph separator, or format character before a formula start | pending |
 
 Also after sign-off: `search_vector_stemmed` now holds the simple lexemes too, so one combined query uses one GIN index (BL-118 tuning).
+
+## OpenSearch slices review (d9675b0, 5e806fa, a28f80d, 69d41b0): not signed off
+
+An independent static review of the index sidecar, its client, the adapter and the indexing tasks (ADR-0011, CP-22). There were two blocking Medium findings:
+- **1:** a slow index held pooled database connections, with no deadline on the index side.
+- **2:** `regwatch_index` was wider than the code needs and was shared by the API and the worker.
+
+There were six Low findings:
+- **3:** passwords appeared on command lines.
+- **4:** `--force` did not rotate passwords on an existing node.
+- **5:** an unneeded internal superuser, and the admin key on the node.
+- **6:** a malformed answer gave a 500.
+- **7:** `title_asc` sorted by date.
+- **8:** some changes never reached the index.
+
+Two were Info: **9**, `index.env` reached beat and migrate; **10**, `or` was rewritten inside phrases.
+
+The review also found these fine: no published port; the security plugin on with no demo configuration; the client's TLS, path allowlist and caps; fixed error texts; JSON-built queries with restricted `simple_query_string` flags; bounded aggregations; and the request cache keyed by the full body.
+
+## OpenSearch re-verification (f831214): signed off
+
+Findings 1 to 7, 9 and 10 are fixed. Finding 8 is BL-120. A live-node test (`test_the_api_reads_and_only_the_worker_writes`) checks the role split.
+
+Remaining, not blocking:
+- **The index name was not bumped.** The mapping gained `title.sort` while the index stays `regwatch-items-v1`. No stack outside the tests has built the index yet (the owner's `index-setup.sh` step is pending), so v1 stands.
+- **Hash failures:** `index-setup.sh` now stops if a hash is empty.
+- **Facet labels:** the label lookup in `_labelled` runs before the statement timeout is set. It is two small indexed queries, accepted.

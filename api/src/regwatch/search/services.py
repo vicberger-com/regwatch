@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Any
 
 import structlog
-from sqlalchemy import func, literal, select, text
+from sqlalchemy import func, literal, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.exc import DBAPIError
@@ -181,6 +181,11 @@ def timed_out(exc: DBAPIError) -> bool:
     return getattr(exc.orig, "sqlstate", None) == "57014"
 
 
+async def statement_timeout(db: AsyncSession) -> None:
+    """``SET LOCAL statement_timeout`` for this transaction, as a bound parameter."""
+    await db.execute(select(func.set_config("statement_timeout", STATEMENT_TIMEOUT, True)))
+
+
 def busy() -> ProblemError:
     return ProblemError(503, "busy", "The search took too long; narrow it and try again.",
                         headers={"Retry-After": "5"})  # fmt: skip
@@ -213,7 +218,7 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
         # No pooled connection waits on the index (review finding 1); nothing here is written.
         await db.commit()
     from_index = await _from_index(db, query)  # ADR-0011: the index when it is configured
-    await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
+    await statement_timeout(db)
     if from_index is not None:
         page_ids, total, facets = from_index
     else:

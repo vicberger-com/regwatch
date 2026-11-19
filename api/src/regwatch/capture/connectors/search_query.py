@@ -101,7 +101,8 @@ class SearchQueryConnector:
 
     async def discover(self, job: JobSettings, ctx: ConnectorContext) -> AsyncIterator[Candidate]:
         config = job.config
-        assert isinstance(config, SearchQueryConfig)  # noqa: S101 - job_settings validated it
+        if not isinstance(config, SearchQueryConfig):  # job_settings validated it
+            raise TypeError("the job's settings are not this connector's")
         check(config)
         if ctx.search is None or ctx.pace is None:
             raise ConnectorError("search-disabled", "internet search is off (the search.internet "
@@ -117,7 +118,7 @@ class SearchQueryConnector:
         seen: set[str] = set()
         taken = 0
         for page in range(1, pages + 1):
-            await ctx.pace("search", PACE_S + random.uniform(0, JITTER_S))  # noqa: S311 - spacing
+            await ctx.pace("search", PACE_S + random.uniform(0, JITTER_S))  # noqa: S311  # nosec B311 - spacing
             try:
                 answer = await ctx.search.get_json("/search", {**params, "pageno": str(page)})
             except InternalError as exc:
@@ -162,7 +163,8 @@ class SearchQueryConnector:
         and credibility is judged on where the page ends up, not on the result's address
         (search review finding 2)."""
         config = job.config
-        assert isinstance(config, SearchQueryConfig)  # noqa: S101 - job_settings validated it
+        if not isinstance(config, SearchQueryConfig):  # job_settings validated it
+            raise TypeError("the job's settings are not this connector's")
 
         def allowed(hop: str) -> bool:
             host = _host(hop)

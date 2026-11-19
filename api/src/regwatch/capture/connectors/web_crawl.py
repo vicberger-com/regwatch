@@ -96,7 +96,8 @@ class WebCrawlConnector:
 
     async def discover(self, job: JobSettings, ctx: ConnectorContext) -> AsyncIterator[Candidate]:
         config = job.config
-        assert isinstance(config, WebCrawlConfig)  # noqa: S101 - job_settings validated it
+        if not isinstance(config, WebCrawlConfig):  # job_settings validated it
+            raise TypeError("the job's settings are not this connector's")
         if job.render_js:
             raise ConnectorError("not-implemented", "JavaScript rendering is not built yet")
         if config.follow_sitemaps:

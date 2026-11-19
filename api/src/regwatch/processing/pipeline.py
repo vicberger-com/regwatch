@@ -121,7 +121,8 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
             counts.add(got.kind)
             if got.kind in ("new", "changed") and got.item_id is not None:
                 item = await db.get(Item, got.item_id)
-                assert item is not None  # noqa: S101 - just made or locked
+                if item is None:  # just made or locked
+                    raise RuntimeError("the item just stored is missing")
                 value = row.get("text")
                 text = value if isinstance(value, str) else ""
                 # Owner decision 2026-11-19; a new version naming no date clears it (N22).

@@ -18,7 +18,7 @@ cut. Scripts are never run: html5lib only builds the tree.
 from __future__ import annotations
 
 import time
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405 - html5lib builds the trees; no XML is parsed
 from dataclasses import dataclass
 from typing import Any
 
