@@ -27,7 +27,10 @@ import { LegalPage } from "@/features/branding/LegalPage";
 import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
+import { AdminHome } from "@/features/admin/AdminHome";
+
 import { AppShell } from "./AppShell";
+import { ADMIN_PERMISSIONS, registerShellCommands } from "./commands";
 import { PublicFrame } from "./PublicFrame";
 
 export interface RouterContext {
@@ -105,6 +108,18 @@ function NotPermitted() {
     </p>
   );
 }
+
+const adminHomeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin",
+  staticData: { title: "Settings" },
+  component: function Admin() {
+    const { me } = authedRoute.useRouteContext();
+    if (!ADMIN_PERMISSIONS.some((p) => hasPermission(me, p)))
+      return <NotPermitted />;
+    return <AdminHome />;
+  },
+});
 
 const usersRoute = createRoute({
   getParentRoute: () => authedRoute,
@@ -231,6 +246,7 @@ export const routeTree = rootRoute.addChildren([
   authedRoute.addChildren([
     homeRoute,
     changePasswordRoute,
+    adminHomeRoute,
     usersRoute,
     taxonomyRoute,
     rolesRoute,
@@ -244,6 +260,7 @@ export const routeTree = rootRoute.addChildren([
 ]);
 
 export function createAppRouter(queryClient: QueryClient) {
+  registerShellCommands();
   return createRouter({ routeTree, context: { queryClient } });
 }
 

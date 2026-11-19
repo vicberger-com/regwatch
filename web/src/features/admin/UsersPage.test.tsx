@@ -43,7 +43,7 @@ describe("users screen", () => {
       within(other).getByRole("button", { name: "Disable vic@example.org" }),
     ).toBeEnabled();
     expect(within(other).getByText("never")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument(); // the rail
   });
 
   it("creates a user with roles and shows the temporary password once", async () => {
@@ -148,7 +148,7 @@ describe("users screen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "do not have permission",
     );
-    expect(screen.queryByRole("link", { name: "Users" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
   });
 
   it("does nothing when a confirmation is cancelled, and offers no reset on one's own row", async () => {

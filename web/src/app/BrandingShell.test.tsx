@@ -38,7 +38,7 @@ describe("branding in the shell", () => {
   it("shows the logo, title, colour and footer", async () => {
     fakeApi(BASE);
     renderAt("/");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
+    const nav = await screen.findByRole("banner"); // the header holds the brand
     expect(await within(nav).findByText("Policy Watch")).toBeInTheDocument();
     expect(nav.querySelector("img")).toHaveAttribute("src", BRANDING.logo_url);
     expect(document.title).toBe("Home · Policy Watch"); // screen, then site title (U-M0-4)
@@ -66,7 +66,7 @@ describe("branding in the shell", () => {
       ],
     });
     renderAt("/");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
+    const nav = await screen.findByRole("banner"); // the header holds the brand
     await vi.waitFor(() => {
       expect(
         document.documentElement.style.getPropertyValue("--brand-accent"),

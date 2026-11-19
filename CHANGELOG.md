@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Added
+- M6 shell (screens.md layout grid): a 56 px header with the brand, theme, user and sign-out; a left rail of commands from the new command registry (`web/src/app/commands.ts`: modules register `{id, label, icon, permission, shortcut, to or run}`), icon links whose labels show on hover and focus or stay visible when pinned; the admin links move to the `/admin` settings home (cards for each area the user may open); Inter self-hosted (latin and latin-ext variable font, OFL-1.1) and lucide-react icons (ISC) (Refs: REQ-06, REQ-17).
+
 ## [G2] - 2026-11-19
 
 ### Added

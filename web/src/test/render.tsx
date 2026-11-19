@@ -7,9 +7,11 @@ import {
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 
+import { registerShellCommands } from "@/app/commands";
 import { routeTree } from "@/app/router";
 
 export function renderAt(path: string) {
+  registerShellCommands(); // as createAppRouter does
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

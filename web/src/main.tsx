@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { createAppRouter } from "@/app/router";
 import { applyTheme, readStoredTheme } from "@/app/theme";
 
+import "@/styles/fonts.css";
 import "@/styles/index.css";
 
 applyTheme(readStoredTheme());

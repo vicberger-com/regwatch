@@ -1,16 +1,15 @@
-import {
-  Link,
-  Outlet,
-  useNavigate,
-  useRouteContext,
-} from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouteContext } from "@tanstack/react-router";
 
-import { hasPermission, useLogout } from "@/lib/auth/session";
+import { useLogout } from "@/lib/auth/session";
 
 import { BrandMark, Footer } from "./BrandingShell";
+import { LeftRail } from "./LeftRail";
 import { ThemeSwitch } from "./ThemeSwitch";
 
-/** The signed-in frame: skip link, header with brand, user and sign-out, the page and footer. */
+/**
+ * The signed-in frame (screens.md layout grid): skip link, a 56 px header with the brand, theme,
+ * user and sign-out, the left rail of commands, the page and the footer.
+ */
 export function AppShell() {
   const { me } = useRouteContext({ from: "/authed" });
   const logout = useLogout();
@@ -24,37 +23,8 @@ export function AppShell() {
       >
         Skip to main content
       </a>
-      <header className="flex items-center justify-between gap-4 border-b border-border bg-surface px-4 py-2">
-        <nav aria-label="Main" className="flex items-center gap-4">
-          <BrandMark />
-          {hasPermission(me, "users.manage") && (
-            <Link to="/admin/users">Users</Link>
-          )}
-          {hasPermission(me, "roles.manage") && (
-            <Link to="/admin/roles">Roles</Link>
-          )}
-          {hasPermission(me, "settings.manage") && (
-            <Link to="/admin/settings">Settings</Link>
-          )}
-          {hasPermission(me, "settings.manage") && (
-            <Link to="/admin/branding">Branding</Link>
-          )}
-          {hasPermission(me, "settings.manage") && (
-            <Link to="/admin/flags">Flags</Link>
-          )}
-          {hasPermission(me, "audit.read") && (
-            <Link to="/admin/audit">Audit</Link>
-          )}
-          {hasPermission(me, "taxonomy.read") && (
-            <Link to="/admin/taxonomy">Taxonomy</Link>
-          )}
-          {hasPermission(me, "taxonomy.read") && (
-            <Link to="/admin/jurisdictions">Jurisdictions</Link>
-          )}
-          {hasPermission(me, "sources.read") && (
-            <Link to="/admin/sources">Sources</Link>
-          )}
-        </nav>
+      <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-4">
+        <BrandMark />
         <div className="flex items-center gap-3">
           <ThemeSwitch />
           <span className="text-text-muted">{me.display_name}</span>
@@ -83,9 +53,12 @@ export function AppShell() {
           failing, close the browser.
         </p>
       )}
-      <main id="main" className="flex-1 p-6">
-        <Outlet />
-      </main>
+      <div className="flex flex-1">
+        <LeftRail />
+        <main id="main" className="min-w-0 flex-1 p-6">
+          <Outlet />
+        </main>
+      </div>
       <Footer />
     </div>
   );

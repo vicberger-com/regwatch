@@ -170,7 +170,7 @@ describe("taxonomy screen", () => {
     renderAt("/admin/taxonomy");
     await screen.findByRole("list", { name: "Terms of Topic" });
     expect(screen.queryByRole("form")).toBeNull();
-    expect(screen.getByRole("link", { name: "Taxonomy" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument(); // the rail
   });
 
   it("refuses users without taxonomy.read", async () => {
