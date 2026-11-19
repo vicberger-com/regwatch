@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- M6 map (acceptance 1 and 5): `/` shows the world in Equal Earth from Natural Earth 1:50m (`scripts/build-map-data.sh`, pre-projected at build time, ADR-0004 amendment 1). Jurisdictions with changes in the period are shaded on five token steps, coloured by recency, number of changes or highest severity, and the others stay neutral. Disputed areas are drawn neutral with a dashed outline and their note on hover. A period selector, a legend and a live result count sit beside the map, and so does a keyboard listbox of the same jurisdictions, newest first, which syncs selection with the map. MapLibre GL JS 6.19.0 is lazy-loaded on this route only (Refs: REQ-06, REQ-18).
 - M6 shell (screens.md layout grid): a 56 px header with the brand, theme, user and sign-out; a left rail of commands from the new command registry (`web/src/app/commands.ts`: modules register `{id, label, icon, permission, shortcut, to or run}`), icon links whose labels show on hover and focus or stay visible when pinned; the admin links move to the `/admin` settings home (cards for each area the user may open); Inter self-hosted (latin and latin-ext variable font, OFL-1.1) and lucide-react icons (ISC) (Refs: REQ-06, REQ-17).
 
 ## [G2] - 2026-11-19

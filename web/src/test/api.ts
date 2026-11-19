@@ -6,7 +6,21 @@ export type Routes = Record<
   [number, unknown] | ((body: unknown) => [number, unknown])
 >;
 
-export function fakeApi(routes: Routes) {
+/** Answers every test gets unless it routes the request itself: the map on `/` (M6). */
+const DEFAULTS: Routes = {
+  "GET /map/activity": [
+    200,
+    {
+      period_start: "2026-10-20T00:00:00Z",
+      period_end: "2026-11-19T00:00:00Z",
+      view_by: "country",
+      rows: [],
+    },
+  ],
+};
+
+export function fakeApi(given: Routes) {
+  const routes: Routes = { ...DEFAULTS, ...given };
   const calls: { key: string; body: unknown; origin: string | null }[] = [];
   const fetch = vi.fn(async (request: Request) => {
     const url = new URL(request.url);
@@ -39,7 +53,7 @@ export const ADMIN = {
   status: "active",
   roles: ["admin"],
   must_change_password: false,
-  permissions: ["users.manage", "taxonomy.manage"],
+  permissions: ["users.manage", "taxonomy.manage", "items.read"],
 };
 
 export function problem(status: number, detail?: string) {

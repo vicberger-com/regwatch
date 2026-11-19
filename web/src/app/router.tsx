@@ -28,6 +28,7 @@ import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AdminHome } from "@/features/admin/AdminHome";
+import { MapPage } from "@/features/map/MapPage";
 
 import { AppShell } from "./AppShell";
 import { ADMIN_PERMISSIONS, registerShellCommands } from "./commands";
@@ -75,18 +76,11 @@ const authedRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/",
-  staticData: { title: "Home" },
+  staticData: { title: "Map" },
   component: function Home() {
     const { me } = authedRoute.useRouteContext();
-    return (
-      <>
-        <h1 className="text-2xl font-semibold">Regulatory monitor</h1>
-        <p className="mt-2 text-text-muted">
-          Signed in as {me.display_name}. The map and item screens arrive with
-          M6.
-        </p>
-      </>
-    );
+    if (!hasPermission(me, "items.read")) return <NotPermitted />;
+    return <MapPage />;
   },
 });
 

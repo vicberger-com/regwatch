@@ -41,7 +41,7 @@ describe("branding in the shell", () => {
     const nav = await screen.findByRole("banner"); // the header holds the brand
     expect(await within(nav).findByText("Policy Watch")).toBeInTheDocument();
     expect(nav.querySelector("img")).toHaveAttribute("src", BRANDING.logo_url);
-    expect(document.title).toBe("Home · Policy Watch"); // screen, then site title (U-M0-4)
+    expect(document.title).toBe("Map · Policy Watch"); // screen, then site title (U-M0-4)
     expect(
       document.documentElement.style.getPropertyValue("--brand-accent"),
     ).toBe("#123ABC");

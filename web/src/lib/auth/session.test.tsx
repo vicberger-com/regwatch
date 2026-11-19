@@ -53,7 +53,9 @@ describe("sign-out", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "still signed in",
     );
-    expect(screen.getByText(/Signed in as Ada Admin/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Map" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in" })).toBeNull();
   });
 
@@ -128,7 +130,7 @@ describe("sign-in", () => {
     await user.type(await screen.findByLabelText("Email"), "b@example.org");
     await user.type(screen.getByLabelText("Password"), "b password here");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
-    await screen.findByText(/Signed in as Bea/);
+    await screen.findByText("Bea");
     await router.navigate({ to: "/admin/users" });
     await screen.findByRole("heading", { name: "Users" });
     expect(screen.queryByText("secret-a@example.org")).toBeNull();

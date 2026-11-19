@@ -30,7 +30,7 @@ describe("sign-in flow", () => {
     expect(router.state.location.search).toEqual({ next: "/" });
     await signIn();
     expect(
-      await screen.findByText(/Signed in as Ada Admin/),
+      await screen.findByRole("heading", { level: 1, name: "Map" }),
     ).toBeInTheDocument();
     const login = api.calls.find((c) => c.key === "POST /auth/login");
     expect(login?.body).toEqual({
@@ -95,7 +95,7 @@ describe("sign-in flow", () => {
     );
     await user.click(screen.getByRole("button", { name: "Change password" }));
     expect(
-      await screen.findByText(/Signed in as Ada Admin/),
+      await screen.findByRole("heading", { level: 1, name: "Map" }),
     ).toBeInTheDocument();
   });
 
@@ -171,7 +171,9 @@ describe("guard", () => {
     fakeApi({ "GET /auth/me": [200, ADMIN] });
     renderAt("/");
     await waitFor(() => {
-      expect(screen.getByText(/Signed in as Ada Admin/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Map" }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -185,9 +187,7 @@ describe("AppShell", () => {
     expect(
       screen.getByRole("link", { name: /skip to main content/i }),
     ).toHaveAttribute("href", "#main");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Regulatory monitor",
-    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Map");
     expect(screen.getByRole("button", { name: /theme:/i })).toBeInTheDocument();
   });
 });
