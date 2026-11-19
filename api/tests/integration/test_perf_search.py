@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.db import create_engine, session_factory
+from regwatch.core.errors import ProblemError
 from regwatch.search import export, services
 from regwatch.search.activity import activity
 from regwatch.search.schemas import Query
@@ -54,20 +55,39 @@ WORDS = ("regulation directive incident reporting cybersecurity data protection 
          "Regeln Pflichten Betreiber Anlagen Behörde données règlement autorité protección "
          "datos seguridad proteção dados segurança").split()  # fmt: skip
 LANGUAGES = ("en", "en", "en", "de", "fr", "es", "pt", "ja", "zh")
+REALISTIC = os.environ.get("REGWATCH_PERF_DATA", "corpus") == "corpus"
+
+
+def corpus_vocabulary(size: int = 5000) -> list[str]:
+    """The corpus's own words, most frequent first (BL-118: a realistic distribution)."""
+    import collections
+    import json
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "corpus"
+    counts: collections.Counter[str] = collections.Counter()
+    for path in root.glob("[0-9]*.json"):
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        counts.update(
+            w.lower() for w in re.findall(r"[^\W\d_]{3,}", doc["title"] + " " + doc["text"])
+        )
+    return [w.replace("'", "") for w, _ in counts.most_common(size) if "'" not in w]
 
 
 async def populate(db: AsyncSession, source_id: str) -> None:
-    vocabulary = "ARRAY[" + ",".join(f"'{w}'" for w in WORDS) + "]"
+    words = corpus_vocabulary() if REALISTIC else list(WORDS)
+    vocabulary = "ARRAY[" + ",".join(f"'{w}'" for w in words) + "]"
+    # A skewed pick (frequent words far more often, as in text): index n * random()^3.
+    pick = f"({vocabulary})[1 + floor({len(words)} * power(random(), 3))::int]"
     languages = "ARRAY[" + ",".join(f"'{lang}'" for lang in LANGUAGES) + "]"
     started = time.monotonic()
     await db.execute(text(f"""
         INSERT INTO item (source_id, canonical_url, url_hash, title, summary, language,
                           published_at, last_changed_at, discovered_at, content_hash, status)
         SELECT :sid, 'https://perf.example/' || g, md5('perf' || g),
-               (SELECT string_agg(({vocabulary})[1 + floor(random() * {len(WORDS)})::int], ' ')
-                  FROM generate_series(1, 8 + (g % 3))),
-               (SELECT string_agg(({vocabulary})[1 + floor(random() * {len(WORDS)})::int], ' ')
-                  FROM generate_series(1, 40 + (g % 20))),
+               (SELECT string_agg({pick}, ' ') FROM generate_series(1, 8 + (g % 3))),
+               (SELECT string_agg({pick}, ' ') FROM generate_series(1, 40 + (g % 20))),
                ({languages})[1 + (g % {len(LANGUAGES)})],
                now() - (g % 3650) * interval '1 day', now() - (g % 365) * interval '1 day',
                now() - (g % 365) * interval '1 day', md5('c' || g), 'new'
@@ -76,7 +96,7 @@ async def populate(db: AsyncSession, source_id: str) -> None:
         WITH j AS (SELECT array_agg(id ORDER BY code) AS ids, count(*) AS n FROM jurisdiction
                    WHERE kind = 'country' AND active)
         INSERT INTO item_jurisdiction (item_id, jurisdiction_id, assigned_by, confidence)
-        SELECT i.id, j.ids[1 + (abs(hashtext(i.id::text)::bigint) % j.n)::int], 'rule', 0.8
+        SELECT i.id, j.ids[1 + floor(j.n * power(random(), 2))::int], 'rule', 0.8
           FROM item i, j WHERE i.source_id = :sid"""), {"sid": source_id})  # fmt: skip
     await db.execute(text("""
         INSERT INTO change_event (item_id, jurisdiction_id, kind, severity, occurred_at, summary)
@@ -145,14 +165,20 @@ async def test_search_map_and_export_at_scale(
             services.searches._hits.clear()
             services._facet_cache.clear()
             started = time.monotonic()
-            await services.search(db, Query.model_validate(body), uuid.uuid4())
+            try:
+                await services.search(db, Query.model_validate(body), uuid.uuid4())
+            except ProblemError:  # past the 5 s timeout: counted as 5 s, the run goes on
+                await db.rollback()
             await db.commit()
             timings.append((time.monotonic() - started) * 1000)
             if _round == 0:
                 bare = Query.model_validate({**body, "facet_counts": False, "highlight": False})
                 services.searches._hits.clear()
                 again = time.monotonic()
-                await services.search(db, bare, uuid.uuid4())
+                try:
+                    await services.search(db, bare, uuid.uuid4())
+                except ProblemError:
+                    await db.rollback()
                 await db.commit()
                 print(f"  {timings[-1]:7.0f} ms ({(time.monotonic() - again) * 1000:5.0f} ms"
                       f" without facets) {body}")  # fmt: skip
@@ -161,7 +187,10 @@ async def test_search_map_and_export_at_scale(
     for days in (7, 30, 90, 365) * 10:
         services.searches._hits.clear()
         started = time.monotonic()
-        await activity(db, uuid.uuid4(), days, None, None, None, "country")
+        try:
+            await activity(db, uuid.uuid4(), days, None, None, None, "country")
+        except ProblemError:
+            await db.rollback()
         await db.commit()
         maps.append((time.monotonic() - started) * 1000)
     print(f"map: p50 {statistics.median(maps):.0f} ms, p95 {p95(maps):.0f} ms")
