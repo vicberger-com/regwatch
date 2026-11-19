@@ -18,6 +18,7 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime
+from typing import Any
 
 import structlog
 from sqlalchemy import func, select, text
@@ -33,12 +34,16 @@ from regwatch.processing.schemas import ItemJurisdiction as PlaceOut
 from regwatch.processing.schemas import ItemSummary, TermAssignment
 from regwatch.search.query import WORD, check, compile_query, period, resolve_terms
 from regwatch.search.query import words as query_words
-from regwatch.search.schemas import Query, SearchResult
+from regwatch.search.schemas import FacetCount, Query, SearchResult
 from regwatch.taxonomy.models import Facet, Jurisdiction, Term
 
 SEARCH_RATE = 60  # per user and minute (08 security 8.2)
 STATEMENT_TIMEOUT = "5s"
 MAX_TOTAL = 10_000
+FACET_VALUES = 50
+FACET_TTL = 30.0
+FACET_CACHE_KEYS = 1000
+_facet_cache: dict[str, tuple[float, dict[str, list[FacetCount]]]] = {}
 searches = SlidingWindow(60.0)
 SNIPPET = 300
 _RANK = {"info": 0, "notable": 1, "major": 2}
@@ -117,6 +122,41 @@ async def summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | No
     }  # fmt: skip
 
 
+async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, list[FacetCount]]:  # noqa: ANN401
+    """Per facet shown in the filters, and for jurisdictions: the matching items each value has
+    (never an ``incorrect`` term), at most ``FACET_VALUES`` values a facet, most first; over at
+    most ``MAX_TOTAL`` matches; cached ``FACET_TTL`` seconds per query (M5 design notes)."""
+    key = query_hash(query.model_copy(update={"page": 1, "page_size": 1, "sort": "relevance",
+                                              "highlight": False}))  # fmt: skip
+    now = time.monotonic()
+    if (hit := _facet_cache.get(key)) is not None and now - hit[0] < FACET_TTL:
+        return hit[1]
+    matched = ids.order_by(None).limit(MAX_TOTAL).subquery()
+    out: dict[str, list[FacetCount]] = {}
+    terms = await db.execute(
+        select(Facet.key, Term.key, Term.label, func.count(func.distinct(ItemTerm.item_id)))
+        .join(Term, Term.id == ItemTerm.term_id).join(Facet, Facet.id == Term.facet_id)
+        .where(ItemTerm.item_id.in_(select(matched.c.id)), Facet.show_in_filters,
+               ItemTerm.feedback.is_distinct_from("incorrect"))
+        .group_by(Facet.key, Term.key, Term.label))  # fmt: skip
+    for facet, term, label, count in terms.tuples().all():
+        out.setdefault(facet, []).append(FacetCount(key=term, label=label, count=count))
+    places = await db.execute(
+        select(Jurisdiction.code, Jurisdiction.name,
+               func.count(func.distinct(ItemJurisdiction.item_id)))
+        .join(ItemJurisdiction, ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
+        .where(ItemJurisdiction.item_id.in_(select(matched.c.id)))
+        .group_by(Jurisdiction.code, Jurisdiction.name))  # fmt: skip
+    out["jurisdictions"] = [FacetCount(key=c, label=n, count=k) for c, n, k in places.tuples()]
+    for values_ in out.values():
+        values_.sort(key=lambda f: (-f.count, f.key))
+        del values_[FACET_VALUES:]
+    if len(_facet_cache) >= FACET_CACHE_KEYS:
+        _facet_cache.clear()
+    _facet_cache[key] = (now, out)
+    return out
+
+
 def limited(user_id: uuid.UUID | None) -> None:
     key = str(user_id)
     if searches.count(key) >= SEARCH_RATE:
@@ -174,8 +214,9 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
                     lit[field] = got
             summary.highlights = lit
         items.append(summary)
+    facets = await facet_counts(db, compiled.ids, query) if query.facet_counts else {}
     took = int((time.monotonic() - started) * 1000)
     _log.info("search", query_hash=query_hash(query),
               user_id=str(user_id) if user_id else None, took_ms=took, total=total)  # fmt: skip
     return SearchResult(items=items, total=min(total, MAX_TOTAL), page=query.page,
-                        page_size=query.page_size, facets={}, took_ms=took)  # fmt: skip
+                        page_size=query.page_size, facets=facets, took_ms=took)  # fmt: skip

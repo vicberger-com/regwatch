@@ -28,6 +28,7 @@ def clear_search_rate() -> None:
     from regwatch.search import services
 
     services.searches._hits.clear()
+    services._facet_cache.clear()
 
 
 async def corpus(admin: httpx.AsyncClient, db: AsyncSession) -> str:
@@ -297,3 +298,26 @@ async def test_a_user_without_items_read_is_refused(admin: httpx.AsyncClient) ->
         assert (await nobody.post(_api("/search"), json={})).status_code == 403
     finally:
         await nobody.aclose()
+
+
+async def test_facet_counts_for_the_matching_items(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M5 design notes: one grouped count per facet, never an incorrect term; cached."""
+    from sqlalchemy import select
+
+    from regwatch.processing.models import Item
+    from regwatch.processing.pipeline import reprocess_item
+    from regwatch.taxonomy.models import Term
+    from tests.integration.test_processing_classify import term
+
+    await corpus(admin, db)
+    rule = await term(admin, {"keywords": ["NIS2"]})
+    key = await db.scalar(select(Term.key).where(Term.id == rule))
+    for item in (await db.scalars(select(Item).where(Item.title.like(f"{TAG}%")))).all():
+        await reprocess_item(db, item.id)
+    body = (await admin.post(_api("/search"), json={"q": TAG})).json()
+    assert {f["key"]: f["count"] for f in body["facets"]["jurisdictions"]} == {"DE": 3}
+    assert {f["key"]: f["count"] for f in body["facets"]["topic"]}[key] == 2
+    none = (await admin.post(_api("/search"), json={"q": TAG, "facet_counts": False})).json()
+    assert none["facets"] == {}
