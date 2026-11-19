@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+## [G2] - 2026-11-19
+
 ### Added
 - M5 search and map on the index (ADR-0011): with the index configured, `POST /search` takes ids, totals and facet counts from OpenSearch (BM25 over title, summary, per-language stems and translations; the same filters, websearch syntax, severity-in-period and region meaning as PostgreSQL) and `GET /map/activity` its nested aggregation; PostgreSQL still gives the rows and highlights, and answers alone when the index is not configured or cannot be reached; a timeout is a 503 (Refs: BL-118, BL-119, REQ-03).
 - M5 index documents (ADR-0011): `search.index_items` and `search.reindex` (on the `process` queue) write one OpenSearch document per item from PostgreSQL (text with per-language stems, filters, terms as `facet:key`, events nested), queued after each manifest, reprocessing and tag change, and nothing while the index is not configured; the index client allows only its named paths, https with the stack's CA and the `regwatch` user (Refs: BL-119, REQ-03).

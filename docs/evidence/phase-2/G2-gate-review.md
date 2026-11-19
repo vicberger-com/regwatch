@@ -1,6 +1,6 @@
 # Gate G2 review: Phase 2 Capture and processing (M3, M4, M5)
 
-**Prepared by:** lead session · **Build under review:** `feat/M5-map` (top of the Phase 2 stack) at the commit that adds this record · **Date:** 2026-11-19 · **Decision:** **pending the owner**. Mirror the decision as the comment `approved` on the `Gate G2` issue (docs/06-process.md 6.1).
+**Prepared by:** lead session · **Build under review:** `feat/M5-map` (top of the Phase 2 stack) at the commit that adds this record · **Date:** 2026-11-19 · **Decision:** **approved by the owner on 2026-11-19** in the lead session. Acceptance 3 is judged sequentially (met). The 10-user concurrency work continues under BL-118 before go-live. Mirror the decision as the comment `approved` on the `Gate G2` issue (docs/06-process.md 6.1).
 
 **Exit criterion (6.1):**
 - starter sources produce tagged, deduplicated items;
@@ -22,7 +22,7 @@
 | License scan clean; register and notices updated | **Yes** | `scripts/license-scan.sh`: 574 allowed, 1 by reviewed exception, 0 failing. The register has rows for lingua, rapidfuzz, pypdf and the OpenSearch sidecar (ADR-0011). |
 | CHANGELOG release section cut; BACKLOG decisions recorded; CP issues summarised | **At the gate:** the release section is cut when the owner approves; the CPs are below | `CHANGELOG.md` Unreleased |
 | Questioning-period issues closed or assumptions recorded | **Recorded:** M3, M4 and M5 assumptions are confirmed by the owner or accepted under the standing instruction of 2026-11-19; the bank issues still need opening on GitHub | `docs/decisions/ASSUMPTIONS.md` |
-| Owner comment `approved` | **Pending** | |
+| Owner comment `approved` | **Approved 2026-11-19** in the lead session; to be mirrored on the `Gate G2` issue | |
 
 ## Owner demonstration (exit criterion)
 

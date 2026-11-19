@@ -8,7 +8,7 @@
 | --- | --- |
 | P0 Discovery | done: G0 approved |
 | P1 Foundation (M0, M1, M2) | done: G1 approved 2026-11-16 |
-| P2 Capture and processing (M3, M4, M5) | M3, M4 and M5 complete and signed off for security; M5 acceptance 3 met on OpenSearch (ADR-0011). **G2 evidence ready** (`docs/evidence/phase-2/G2-gate-review.md`); waiting on the owner's pushes, demonstration and approval. |
+| P2 Capture and processing (M3, M4, M5) | done: G2 approved 2026-11-19 (acceptance 3 judged sequentially; the 10-user run continues under BL-118) |
 | P3 to P6 | not started |
 
 ## 1. Owner actions (now)
