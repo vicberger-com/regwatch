@@ -1,6 +1,6 @@
 # regwatch roadmap: remaining actions
 
-**As of:** 2026-11-18, branch `feat/M4-items` at `45f0d49`. Phases, gates and modules follow `docs/06-process.md` 6.1. Every item below cites its module spec, backlog row or review record. Sizes: S is one PR, M two or three, L four or more (each PR about 400 lines).
+**As of:** 2026-11-19 (updated), branch `feat/M5-map`. Phases, gates and modules follow `docs/06-process.md` 6.1. Every item below cites its module spec, backlog row or review record. Sizes: S is one PR, M two or three, L four or more (each PR about 400 lines).
 
 ## Where things stand
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | P0 Discovery | done: G0 approved |
 | P1 Foundation (M0, M1, M2) | done: G1 approved 2026-11-16 |
-| P2 Capture and processing (M3, M4, M5) | M3 complete and signed off. M4 partly done: items, versions, jurisdictions, events, rule classification and the pipeline are signed off after five re-verifications. M5 not started. |
+| P2 Capture and processing (M3, M4, M5) | M3 and M4 complete and signed off (`M4-module-summary.md`). M5: everything built and signed off for security; acceptance 3 (latency at 1M items) open, BL-118 (`M5-module-summary.md`). |
 | P3 to P6 | not started |
 
 ## 1. Owner actions (now)
@@ -70,4 +70,4 @@ Starter sources produce tagged, deduplicated items, and search and map activity 
 
 ## Next action
 
-Slice 4.1: item routes, with the N8 fix.
+BL-118 (M5 acceptance 3), then the G2 gate: owner review of the phase-2 evidence, pushes in stack order, and `make migrate` (0004 to 0007).
