@@ -267,3 +267,33 @@ async def test_a_term_filter_matches_and_an_incorrect_term_never_does(
     hit = next(i for i in shown["items"] if i["id"] == str(target.id))
     assert str(rule) not in {t["term_id"] for t in hit["terms"]}
     assert hit["highlights"]["title_en"] == ["<mark>Zebrafish</mark> scope"]
+
+
+async def test_a_search_past_its_timeout_is_a_503(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-verification 1, N2: the statement timeout answers busy, not 500."""
+    from sqlalchemy import text
+
+    from regwatch.search import services
+
+    real = services.compile_query
+
+    def slow(*args: Any, **kwargs: Any) -> Any:
+        made = real(*args, **kwargs)
+        return type(made)(made.ids.where(text("pg_sleep(0.3) IS NOT NULL")), made.tsquery)
+
+    monkeypatch.setattr(services, "compile_query", slow)
+    monkeypatch.setattr(services, "STATEMENT_TIMEOUT", "50ms")
+    await corpus(admin, db)
+    got = await admin.post(_api("/search"), json={"q": TAG})
+    assert got.status_code == 503 and got.headers["retry-after"] == "5"
+
+
+async def test_a_user_without_items_read_is_refused(admin: httpx.AsyncClient) -> None:
+    """Re-verification 1, #15's remaining gap (M5 test plan: users without items.read get 403)."""
+    nobody = await _as_new_user(admin, f"none-{uuid.uuid4().hex[:8]}@example.org", [])
+    try:
+        assert (await nobody.post(_api("/search"), json={})).status_code == 403
+    finally:
+        await nobody.aclose()

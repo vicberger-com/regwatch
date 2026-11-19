@@ -21,6 +21,7 @@ from datetime import datetime
 
 import structlog
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.models import Source
@@ -30,7 +31,7 @@ from regwatch.identity.services import SlidingWindow
 from regwatch.processing.models import ChangeEvent, Item, ItemJurisdiction, ItemTerm
 from regwatch.processing.schemas import ItemJurisdiction as PlaceOut
 from regwatch.processing.schemas import ItemSummary, TermAssignment
-from regwatch.search.query import check, compile_query, period, resolve_terms
+from regwatch.search.query import WORD, check, compile_query, period, resolve_terms
 from regwatch.search.query import words as query_words
 from regwatch.search.schemas import Query, SearchResult
 from regwatch.taxonomy.models import Facet, Jurisdiction, Term
@@ -54,7 +55,8 @@ def highlight(value: str | None, found: list[str], snippet: bool = False) -> lis
     if not value or not found:
         return []
     value = unicodedata.normalize("NFC", value)  # an accent stays with its letter (finding 11)
-    pattern = re.compile(r"(?<!\w)(" + "|".join(map(re.escape, found)) + r")(?!\w)",
+    edge = WORD.removesuffix("+")
+    pattern = re.compile(rf"(?<!{edge})(" + "|".join(map(re.escape, found)) + rf")(?!{edge})",
                          re.IGNORECASE)  # fmt: skip
     first = pattern.search(value)
     if first is None:
@@ -140,9 +142,20 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     compiled = compile_query(query, await resolve_terms(db, query.filters))
     counted = compiled.ids.order_by(None).limit(MAX_TOTAL + 1).subquery()
-    total = int(await db.scalar(select(func.count()).select_from(counted)) or 0)
     paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
-    page_ids = list((await db.scalars(paged)).all())
+    try:
+        total = int(await db.scalar(select(func.count()).select_from(counted)) or 0)
+        page_ids = list((await db.scalars(paged)).all())
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) != "57014":  # query_canceled: the timeout
+            raise
+        await db.rollback()
+        raise ProblemError(
+            503,
+            "busy",
+            "The search took too long; narrow it and try again.",
+            headers={"Retry-After": "5"},
+        ) from None  # N2
     start, end = period(query.filters)
     found = await _summaries(db, page_ids, start, end) if page_ids else {}
     marks = words(query.q or "") if query.highlight else []

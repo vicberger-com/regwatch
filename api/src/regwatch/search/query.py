@@ -51,6 +51,7 @@ MAX_FACETS = 10
 MAX_VALUES = 50
 MAX_WINDOW = 10_000  # page * page_size
 MAX_WORDS = 20
+RANK_CANDIDATES = 10_000
 # UN M49 regions over the sub-regions jurisdictions carry (``taxonomy.services.M49_REGIONS``):
 # filtering by Europe (150) means its four sub-regions (acceptance 2).
 CONTINENTS = {
@@ -130,8 +131,20 @@ def regions(codes: list[str]) -> set[str]:
     return out
 
 
+_MARKS = "\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f"
+WORD = rf"[\w{_MARKS}]+"  # a word keeps its combining marks (re-verification 1, #11)
+
+
 def words(q: str) -> list[str]:
-    return list(dict.fromkeys(re.findall(r"\w+", q.lower())))[:MAX_WORDS]
+    """The words ``q`` looks for, as written (case is matched later, ignoring it); in websearch
+    syntax neither ``or`` nor an excluded ``-word`` is a word looked for (N3)."""
+    if _WEBSEARCH.search(q):
+        q = re.sub(r'(^|\s)-("[^"]*"|\S+)', " ", q)
+        q = re.sub(r"\bor\b", " ", q, flags=re.IGNORECASE)
+    seen: dict[str, str] = {}
+    for word in re.findall(WORD, q):
+        seen.setdefault(word.lower(), word)
+    return list(seen.values())[:MAX_WORDS]
 
 
 def tsquery(q: str) -> ColumnElement[Any]:
@@ -221,12 +234,16 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
         where.append(Item.search_vector.op("@@")(found))
     ids = ids.where(and_(*where)) if where else ids
     if query.sort == "relevance" and found is not None:
+        # Ranking costs per row, so only the first ``RANK_CANDIDATES`` matches are ranked (the
+        # most ``total`` ever says; re-verification 1, N1).
+        candidates = ids.limit(RANK_CANDIDATES).subquery()
         matched = sum((case((Item.search_vector.op("@@")(
             func.plainto_tsquery(_REGCONFIG, w)), 1), else_=0) for w in words(text)),
             start=cast(literal_column("0"), Integer))  # fmt: skip
         rank = func.ts_rank_cd(Item.search_vector, found)
-        ids = ids.order_by(matched.desc(), rank.desc(), Item.last_changed_at.desc(),
-                           Item.id.desc())  # fmt: skip
+        ids = (select(Item.id).where(Item.id.in_(select(candidates.c.id)))
+               .order_by(matched.desc(), rank.desc(), Item.last_changed_at.desc(),
+                         Item.id.desc()))  # fmt: skip
     else:
         ids = ids.order_by(*_ORDER.get(query.sort, _ORDER["last_changed_desc"]))
     return Compiled(ids, found)

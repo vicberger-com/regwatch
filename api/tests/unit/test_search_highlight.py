@@ -41,3 +41,18 @@ def test_case_and_normal_forms_still_highlight() -> None:
     nfd = unicodedata.normalize("NFD", "le café et l'école")
     (got,) = highlight(nfd, words(unicodedata.normalize("NFD", "école café")))
     assert got == "le <mark>café</mark> et l&#x27;<mark>école</mark>"
+
+
+def test_websearch_operators_are_not_words() -> None:
+    """Search re-verification 1, N3."""
+    assert words('"incident reporting" or nis2 -guidance -"old text"') == [
+        "incident", "reporting", "nis2"]  # fmt: skip
+    assert words("NIS2 or incident") == ["NIS2", "incident"]
+
+
+def test_dotted_capitals_and_combining_marks_stay_whole() -> None:
+    """Re-verification 1, #11 leftovers."""
+    assert highlight("İstanbul rules", words("İstanbul")) == ["<mark>İstanbul</mark> rules"]
+    assert words("İstanbul") == ["İstanbul"]
+    (got,) = highlight("the q̃uick fox", words("q̃uick"))
+    assert got == "the <mark>q̃uick</mark> fox"
