@@ -64,3 +64,16 @@ Bound parameters everywhere (the regconfig is a constant); no operator ever esca
 Checked and found fine: map filter JSON abuse all 400; map cost bounded; map contract shape; export format, BOM, CRLF, escaping, memory (12.4 MB peak for 50,000 rows) and client disconnect cleanup; the cursor timeout; index definitions and BitmapOr plans; 7,565 fuzzed queries across the configurations with no error; facet cost and cache.
 
 **Sign-off at review:** not signed off (S1 to S4 blocking).
+
+## Slice 2 re-verification (04a377e): signed off
+
+**Signed off for security and correctness.** S1 to S11 fixed (S8 and S9 with small leftovers). Fixed after sign-off:
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| R1 | medium | relevance candidates: the newest matches with every word plus the newest with any word; relevance `total` and paging are that set (ASSUMPTIONS row) | pending (M5 completion review) |
+| R2 | low | each export frees its own slot | pending |
+| R3 | info | ASSUMPTIONS wording | done |
+| S8 rest | low | any space, line or paragraph separator, or format character before a formula start | pending |
+
+Also after sign-off: `search_vector_stemmed` now holds the simple lexemes too, so one combined query uses one GIN index (BL-118 tuning).

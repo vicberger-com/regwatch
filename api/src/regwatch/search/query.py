@@ -35,8 +35,8 @@ from sqlalchemy import (
     exists,
     func,
     literal_column,
-    or_,
     select,
+    union,
 )
 from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,22 +68,31 @@ _REGCONFIG: ColumnElement[Any] = literal_column(f"'{CONFIG}'::regconfig")  # a c
 STEMMED = {"en": "english", "de": "german", "fr": "french", "es": "spanish", "pt": "portuguese"}
 
 
-def _query_for(config: str, q: str, words_only: bool = False) -> ColumnElement[Any]:
-    reg: ColumnElement[Any] = literal_column(f"'{config}'::regconfig")  # a STEMMED constant
+def _query_for(config: str, q: str, words_only: bool = False,
+               every_word: bool = False) -> ColumnElement[Any]:  # fmt: skip
+    reg: ColumnElement[Any] = literal_column(f"'{config}'::regconfig")  # a constant, never input
     if _WEBSEARCH.search(q) and not words_only:
         return func.websearch_to_tsquery(reg, q)
+    if every_word:
+        return func.plainto_tsquery(reg, q)
     return func.replace(cast(func.plainto_tsquery(reg, q), Text), " & ", " | ").cast(TSQUERY)
 
 
 def matches(q: str, found: ColumnElement[Any], words_only: bool = False) -> ColumnElement[bool]:
-    """The simple-configuration match, or the stemmed one in the item's own language. The
-    language patterns are constants, so the planner can use the index in any plan (S10)."""
-    stemmed = [
-        and_(Item.language.like(literal_column(f"'{code}%'")),
-             Item.search_vector_stemmed.op("@@")(_query_for(config, q, words_only)))
-        for code, config in STEMMED.items()
-    ]  # fmt: skip
-    return or_(Item.search_vector.op("@@")(found), *stemmed)
+    """``search_vector_stemmed`` holds the simple lexemes and the item's own stems (CP-21), so
+    one combined query (simple, or any language's stems) through one GIN index matches."""
+    combined = found
+    for config in STEMMED.values():
+        combined = combined.op("||")(_query_for(config, q, words_only))
+    return Item.search_vector_stemmed.op("@@")(combined)
+
+
+def matches_all(q: str) -> ColumnElement[bool]:
+    """Every word, as written or stemmed, in one configuration (a best-match candidate)."""
+    combined = _query_for(CONFIG, q, every_word=True)
+    for config in STEMMED.values():
+        combined = combined.op("||")(_query_for(config, q, every_word=True))
+    return Item.search_vector_stemmed.op("@@")(combined)
 
 
 @dataclass(frozen=True)
@@ -93,6 +102,9 @@ class Compiled:
     # Every match, newest change first: what counts and facets read a bounded prefix of, so the
     # planner can walk the date index and stop (the 1M-item load test, acceptance 3).
     matches: Select[Any] | None = None
+    ranked: bool = (
+        False  # relevance: ``matches`` is the candidate set, at most twice RANK_CANDIDATES
+    )
 
 
 def _bad(field: str, message: str) -> ProblemError:
@@ -267,7 +279,11 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
     if query.sort == "relevance" and found is not None:
         # Ranking costs per row, so only the ``RANK_CANDIDATES`` most recently changed matches
         # are ranked (re-verification 1, N1; the 1M-item load test).
-        candidates = newest.limit(RANK_CANDIDATES).subquery()
+        # Candidates: the newest matches with every word, and the newest with any (re-verification
+        # R1: an old item with every word is still found); relevance pages only through them.
+        best = ids.where(matches_all(text)).order_by(Item.last_changed_at.desc(), Item.id.desc())
+        candidates = union(newest.limit(RANK_CANDIDATES),
+                           best.limit(RANK_CANDIDATES)).subquery()  # fmt: skip
         # A word counts when it matches as written or by its stem in the item's language.
         matched = sum((case((matches(w, func.plainto_tsquery(_REGCONFIG, w), True), 1), else_=0)
                        for w in words(text)[:RANK_WORDS]),
@@ -278,4 +294,6 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
                          Item.id.desc()))  # fmt: skip
     else:
         ids = ids.order_by(*_ORDER.get(query.sort, _ORDER["last_changed_desc"]))
+    if query.sort == "relevance" and found is not None:
+        return Compiled(ids, found, select(candidates.c.id), ranked=True)
     return Compiled(ids, found, newest)

@@ -342,3 +342,31 @@ async def test_words_match_their_stems_in_the_items_language(
     exact = (await admin.post(_api("/search"), json={"q": "Anlage reports", "filters": {
         "sources": [sid]}})).json()  # fmt: skip
     assert exact["total"] == 2  # each by its own language's stemmer
+
+
+async def test_an_old_item_with_every_word_is_still_the_best_match(
+    admin: httpx.AsyncClient, db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-verification R1: candidates include the newest matches with every word, so an old
+    item with both words is found though newer one-word matches fill the any-word set."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import update
+
+    from regwatch.processing.models import Item
+    from regwatch.search import query
+
+    monkeypatch.setattr(query, "RANK_CANDIDATES", 2)
+    sid = await made_source(admin)
+    tag = uuid.uuid4().hex[:8]
+    rows = [{"url": f"https://example.org/{tag}/{n}", "text": f"{n}. " + BSI,
+             "title": f"{tag} regulations {'zebra' if n == 0 else 'update'} {n}"}
+            for n in range(5)]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    await process_manifest(db, key, loader(objects))
+    await db.execute(update(Item).where(Item.canonical_url == f"https://example.org/{tag}/0")
+                     .values(last_changed_at=datetime(2001, 1, 1, tzinfo=UTC)))  # fmt: skip
+    await db.commit()
+    got = (await admin.post(_api("/search"), json={"q": f"{tag} zebra"})).json()
+    assert got["items"][0]["title"].startswith(f"{tag} regulations zebra")
+    assert got["total"] == len(got["items"]) <= 4  # relevance pages through its candidates

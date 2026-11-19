@@ -24,9 +24,12 @@ depends_on = None
 DOCUMENT = "coalesce(title, '') || ' ' || coalesce(summary, '')"
 CONFIGS = (("en", "english"), ("de", "german"), ("fr", "french"), ("es", "spanish"),
            ("pt", "portuguese"))  # fmt: skip
-STEMMED = ("CASE " + " ".join(f"WHEN language LIKE '{c}%' THEN to_tsvector('{g}'::regconfig, "
-                              f"{DOCUMENT})" for c, g in CONFIGS)
-           + f" ELSE to_tsvector('simple'::regconfig, {DOCUMENT}) END")  # fmt: skip
+# The simple lexemes and the stems of the item's own language, in one vector, so one GIN index
+# and one combined query serve every language (the 1M-item load test, BL-118).
+STEMMED = (f"to_tsvector('simple'::regconfig, {DOCUMENT}) || CASE "
+           + " ".join(f"WHEN language LIKE '{c}%' THEN to_tsvector('{g}'::regconfig, {DOCUMENT})"
+                      for c, g in CONFIGS)
+           + " ELSE ''::tsvector END")  # fmt: skip
 
 
 def upgrade() -> None:

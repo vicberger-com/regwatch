@@ -92,7 +92,7 @@ def cell(value: Any) -> str:  # noqa: ANN401 - any field
         return ""
     out = _CONTROL.sub("", value.isoformat() if hasattr(value, "isoformat") else str(value))
     at = 0
-    while at < len(out) and (out[at] in " \u00a0\u3000" or unicodedata.category(out[at]) == "Cf"):
+    while at < len(out) and unicodedata.category(out[at]) in ("Zs", "Zl", "Zp", "Cf"):
         at += 1
     return "'" + out if out[at:].startswith(_FORMULA) else out
 
@@ -115,7 +115,7 @@ def ordered(query: Query) -> Query:
 
 
 async def prepare(db: AsyncSession, query: Query, user_id: uuid.UUID | None,
-                  ip: str | None = None) -> tuple[str, ...]:  # fmt: skip
+                  ip: str | None = None) -> tuple[tuple[str, ...], float]:  # fmt: skip
     """Everything that can refuse, before the stream starts (a 400 or 429, never a broken file)."""
     check(query.model_copy(update={"page": 1, "page_size": 1}))
     wanted = columns(query)
@@ -133,15 +133,17 @@ async def prepare(db: AsyncSession, query: Query, user_id: uuid.UUID | None,
           after={"query_hash": services.query_hash(query), "columns": list(wanted)})  # fmt: skip
     await db.commit()
     _running.setdefault(key, []).append(time.monotonic())
-    return wanted
+    return wanted, _running[key][-1]
 
 
-def release(user_id: uuid.UUID | None) -> None:
+def release(user_id: uuid.UUID | None, slot: float | None = None) -> None:
+    """Free this export's own slot (re-verification R2: never another export's)."""
     key = str(user_id)
-    if _running.get(key):
-        _running[key].pop(0)
-        if not _running[key]:
-            del _running[key]
+    held = _running.get(key, [])
+    if slot in held:
+        held.remove(slot)
+    if key in _running and not held:
+        del _running[key]
 
 
 async def stream(
@@ -149,6 +151,7 @@ async def stream(
     query: Query,
     wanted: tuple[str, ...],
     user_id: uuid.UUID | None = None,
+    slot: float | None = None,
 ) -> AsyncIterator[bytes]:
     """The file, batch by batch; releases the export's slot however it ends."""
     query = ordered(query)
@@ -189,4 +192,4 @@ async def stream(
                 raise
             yield b"#export stopped: it took too long; narrow the query\r\n"  # S9
     finally:
-        release(user_id)
+        release(user_id, slot)
