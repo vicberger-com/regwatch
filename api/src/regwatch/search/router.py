@@ -1,6 +1,7 @@
 """Search, CSV export, map activity and saved view routes; mounted under /api/v1.
 
-``POST /search`` is implemented (M5); the others answer 501 until their slice.
+Search and saved views are implemented (M5); export and map activity answer 501 until their
+slice.
 """
 
 from __future__ import annotations
@@ -9,12 +10,13 @@ from datetime import datetime
 from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request, Response
 
 from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, spec
 from regwatch.identity.permissions import CurrentPrincipal
-from regwatch.search import services
+from regwatch.identity.services import client_ip
+from regwatch.search import services, views
 from regwatch.search.schemas import MapActivity, SavedView, SavedViewWrite, SearchResult
 from regwatch.search.schemas import Query as SearchQuery
 
@@ -47,24 +49,32 @@ async def map_activity(
     not_implemented()
 
 
-@router.get("/views", **spec(list[SavedView], desc="Own and shared views", perm=READ))
-async def list_views() -> NoReturn:
-    not_implemented()
+@router.get("/views", **spec(list[SavedView], desc="Own and shared views", perm=READ, stub=False))
+async def list_views(principal: CurrentPrincipal, db: DbSession) -> list[SavedView]:
+    return await views.list_views(db, principal)
 
 
-@router.post("/views", **spec(SavedView, status=201, desc="Created", perm=READ))
-async def create_view(body: SavedViewWrite) -> NoReturn:
-    not_implemented()
+@router.post("/views", **spec(SavedView, status=201, desc="Created", perm=READ, stub=False))
+async def create_view(
+    body: SavedViewWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> SavedView:
+    return await views.create_view(db, body, principal, client_ip(request))
 
 
 @router.patch(
     "/views/{id}",
-    **spec(SavedView, desc="Updated (shared views need views.manage_shared)", perm=READ),
-)
-async def update_view(id: UUID, body: SavedViewWrite) -> NoReturn:
-    not_implemented()
+    **spec(SavedView, desc="Updated (shared views need views.manage_shared)", perm=READ,
+           stub=False),
+)  # fmt: skip
+async def update_view(
+    id: UUID, body: SavedViewWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> SavedView:
+    return await views.update_view(db, id, body, principal, client_ip(request))
 
 
-@router.delete("/views/{id}", **spec(status=204, desc="Deleted", perm=READ))
-async def delete_view(id: UUID) -> NoReturn:
-    not_implemented()
+@router.delete("/views/{id}", **spec(status=204, desc="Deleted", perm=READ, stub=False))
+async def delete_view(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await views.delete_view(db, id, principal, client_ip(request))
+    return Response(status_code=204)
