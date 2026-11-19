@@ -47,7 +47,10 @@ __all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns", "opensearch"]
 
 ITEMS = int(os.environ.get("REGWATCH_PERF_ITEMS", "1000000"))
 EXPLAIN = bool(os.environ.get("REGWATCH_PERF_EXPLAIN"))
-USERS = int(os.environ.get("REGWATCH_PERF_USERS", "10"))  # ADR-0002 decision 5: 10 concurrent
+USERS = int(os.environ.get("REGWATCH_PERF_USERS", "10"))
+PROFILE = bool(
+    os.environ.get("REGWATCH_PERF_PROFILE")
+)  # BL-118: where concurrent time goes  # ADR-0002 decision 5: 10 concurrent
 ON_INDEX = bool(
     os.environ.get("REGWATCH_PERF_INDEX")
 )  # ADR-0011: measure on OpenSearch  # read at import: fixtures reset the env
@@ -279,6 +282,32 @@ async def concurrently(db_url: str, users: int) -> tuple[list[float], list[float
     factory = session_factory(engine)
     searched: list[float] = []
     mapped: list[float] = []
+    parts: dict[str, list[float]] = {}
+    undo: list[tuple[Any, str, Any]] = []
+    if PROFILE:  # time the index round trip and the PostgreSQL steps inside each search
+        from regwatch.search import indexed
+
+        for owner, name in ((indexed, "search"), (indexed, "activity"),
+                            (services, "summaries"), (services, "_labelled"),
+                            (services, "resolve_terms")):  # fmt: skip
+            original = getattr(owner, name)
+
+            async def timed_part(
+                *a: Any,
+                _o: Any = original,
+                _n: str = name,  # noqa: ANN401
+                **k: Any,
+            ) -> Any:  # noqa: ANN401
+                begun = time.monotonic()
+                try:
+                    return await _o(*a, **k)
+                finally:
+                    parts.setdefault(_n, []).append((time.monotonic() - begun) * 1000)
+
+            setattr(owner, name, timed_part)
+            undo.append((owner, name, original))
+        cpu_before = time.process_time()
+        wall_before = time.monotonic()
 
     async def timed(out: list[float], run: Any) -> None:  # noqa: ANN401 - a coroutine factory
         async with factory() as db:
@@ -306,4 +335,13 @@ async def concurrently(db_url: str, users: int) -> tuple[list[float], list[float
         await asyncio.gather(*(one(n) for n in range(users)))
     finally:
         await engine.dispose()
+        for owner, name, original in undo:
+            setattr(owner, name, original)
+    if PROFILE:
+        wall = time.monotonic() - wall_before
+        print(f"  test process: {time.process_time() - cpu_before:.1f} s CPU in {wall:.1f} s "
+              f"wall (1.0 per second means one core saturated)")  # fmt: skip
+        for name, samples in sorted(parts.items()):
+            print(f"  {name}: n {len(samples)}, p50 {statistics.median(samples):.0f} ms, "
+                  f"p95 {p95(samples):.0f} ms")  # fmt: skip
     return searched, mapped
