@@ -16,7 +16,7 @@ from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.search import services, views
+from regwatch.search import activity, services, views
 from regwatch.search.schemas import MapActivity, SavedView, SavedViewWrite, SearchResult
 from regwatch.search.schemas import Query as SearchQuery
 
@@ -38,15 +38,21 @@ async def export_csv(body: SearchQuery) -> NoReturn:
     not_implemented()
 
 
-@router.get("/map/activity", **spec(MapActivity, desc="Per-jurisdiction activity", perm=READ))
+@router.get(
+    "/map/activity",
+    **spec(MapActivity, desc="Per-jurisdiction activity", perm=READ, stub=False),
+)
 async def map_activity(
+    principal: CurrentPrincipal,
+    db: DbSession,
     period_days: Annotated[int, Query(ge=1, le=3660)] = 30,
     from_: Annotated[datetime | None, Query(alias="from")] = None,
     to: datetime | None = None,
     filters: Annotated[str | None, Query(description="URL-encoded JSON of Query.filters")] = None,
     view_by: str = "country",
-) -> NoReturn:
-    not_implemented()
+) -> MapActivity:
+    return await activity.activity(db, principal.user.id, period_days, from_, to, filters,
+                                   view_by)  # fmt: skip
 
 
 @router.get("/views", **spec(list[SavedView], desc="Own and shared views", perm=READ, stub=False))

@@ -73,7 +73,7 @@ def highlight(value: str | None, found: list[str], snippet: bool = False) -> lis
     return ["".join(out)]
 
 
-async def _summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | None = None,
+async def summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | None = None,
                      end: datetime | None = None) -> dict[uuid.UUID, ItemSummary]:  # fmt: skip
     items = {i.id: i for i in (await db.scalars(select(Item).where(Item.id.in_(ids)))).all()}
     names = dict((await db.execute(select(Source.id, Source.name).where(
@@ -117,7 +117,7 @@ async def _summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | N
     }  # fmt: skip
 
 
-def _limited(user_id: uuid.UUID | None) -> None:
+def limited(user_id: uuid.UUID | None) -> None:
     key = str(user_id)
     if searches.count(key) >= SEARCH_RATE:
         raise ProblemError(429, "rate-limited", "Too many searches; try again shortly.",
@@ -138,7 +138,7 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     statement (finding 1), an exact total up to ``MAX_TOTAL`` (finding 5)."""
     started = time.monotonic()
     check(query)
-    _limited(user_id)
+    limited(user_id)
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     compiled = compile_query(query, await resolve_terms(db, query.filters))
     counted = compiled.ids.order_by(None).limit(MAX_TOTAL + 1).subquery()
@@ -157,7 +157,7 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
             headers={"Retry-After": "5"},
         ) from None  # N2
     start, end = period(query.filters)
-    found = await _summaries(db, page_ids, start, end) if page_ids else {}
+    found = await summaries(db, page_ids, start, end) if page_ids else {}
     marks = words(query.q or "") if query.highlight else []
     items = []
     for item_id in page_ids:
