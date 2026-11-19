@@ -35,6 +35,7 @@ from sqlalchemy import (
     exists,
     func,
     literal_column,
+    or_,
     select,
 )
 from sqlalchemy.dialects.postgresql import TSQUERY
@@ -52,6 +53,7 @@ MAX_VALUES = 50
 MAX_WINDOW = 10_000  # page * page_size
 MAX_WORDS = 20
 RANK_CANDIDATES = 10_000
+RANK_WORDS = 8  # words counted for ranking: each costs a stemmed test per candidate
 # UN M49 regions over the sub-regions jurisdictions carry (``taxonomy.services.M49_REGIONS``):
 # filtering by Europe (150) means its four sub-regions (acceptance 2).
 CONTINENTS = {
@@ -61,6 +63,27 @@ CONTINENTS = {
 SUPRANATIONAL = {"150": {"EU", "COE"}}  # bodies a continent includes, though they carry no region
 _WEBSEARCH = re.compile(r'"|(^|\s)-\w|\bor\b', re.IGNORECASE)
 _REGCONFIG: ColumnElement[Any] = literal_column(f"'{CONFIG}'::regconfig")  # a constant, never input
+# Stemmed matching per item language (Q1), with the expression migration 0007 indexes.
+STEMMED = {"en": "english", "de": "german", "fr": "french", "es": "spanish", "pt": "portuguese"}
+_DOCUMENT = "coalesce(item.title, '') || ' ' || coalesce(item.summary, '')"
+
+
+def _query_for(config: str, q: str) -> ColumnElement[Any]:
+    reg: ColumnElement[Any] = literal_column(f"'{config}'::regconfig")  # a STEMMED constant
+    if _WEBSEARCH.search(q):
+        return func.websearch_to_tsquery(reg, q)
+    return func.replace(cast(func.plainto_tsquery(reg, q), Text), " & ", " | ").cast(TSQUERY)
+
+
+def matches(q: str, found: ColumnElement[Any]) -> ColumnElement[bool]:
+    """The simple-configuration match, or a stemmed one in the item's own language."""
+    stemmed = [
+        and_(Item.language.like(f"{code}%"),
+             func.to_tsvector(literal_column(f"'{config}'::regconfig"),
+                              literal_column(_DOCUMENT)).op("@@")(_query_for(config, q)))
+        for code, config in STEMMED.items()
+    ]  # fmt: skip
+    return or_(Item.search_vector.op("@@")(found), *stemmed)
 
 
 @dataclass(frozen=True)
@@ -231,15 +254,16 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
     found = tsquery(text) if text else None
     ids = select(Item.id)
     if found is not None:
-        where.append(Item.search_vector.op("@@")(found))
+        where.append(matches(text, found))
     ids = ids.where(and_(*where)) if where else ids
     if query.sort == "relevance" and found is not None:
         # Ranking costs per row, so only the first ``RANK_CANDIDATES`` matches are ranked (the
         # most ``total`` ever says; re-verification 1, N1).
         candidates = ids.limit(RANK_CANDIDATES).subquery()
-        matched = sum((case((Item.search_vector.op("@@")(
-            func.plainto_tsquery(_REGCONFIG, w)), 1), else_=0) for w in words(text)),
-            start=cast(literal_column("0"), Integer))  # fmt: skip
+        # A word counts when it matches as written or by its stem in the item's language.
+        matched = sum((case((matches(w, func.plainto_tsquery(_REGCONFIG, w)), 1), else_=0)
+                       for w in words(text)[:RANK_WORDS]),
+                      start=cast(literal_column("0"), Integer))  # fmt: skip
         rank = func.ts_rank_cd(Item.search_vector, found)
         ids = (select(Item.id).where(Item.id.in_(select(candidates.c.id)))
                .order_by(matched.desc(), rank.desc(), Item.last_changed_at.desc(),

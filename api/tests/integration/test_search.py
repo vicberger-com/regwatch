@@ -321,3 +321,24 @@ async def test_facet_counts_for_the_matching_items(
     assert {f["key"]: f["count"] for f in body["facets"]["topic"]}[key] == 2
     none = (await admin.post(_api("/search"), json={"q": TAG, "facet_counts": False})).json()
     assert none["facets"] == {}
+
+
+async def test_words_match_their_stems_in_the_items_language(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """M5 Q1: German and English stemming, per item language (migration 0007)."""
+    sid = await made_source(admin)
+    tag = uuid.uuid4().hex[:8]
+    rows = [{"url": f"https://example.org/{tag}/de", "text": "A. " + BSI, "language": "de",
+             "title": f"{tag} Pflichten für Betreiber kritischer Anlagen"},
+            {"url": f"https://example.org/{tag}/en", "text": "B. " + BSI, "language": "en",
+             "title": f"{tag} Operators reporting incidents"}]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    await process_manifest(db, key, loader(objects))
+    german = (await admin.post(_api("/search"), json={"q": f"{tag} Anlage"})).json()
+    assert [i["title"] for i in german["items"]][0].endswith("kritischer Anlagen")
+    english = (await admin.post(_api("/search"), json={"q": f"{tag} reports"})).json()
+    assert [i["title"] for i in english["items"]][0].endswith("reporting incidents")
+    exact = (await admin.post(_api("/search"), json={"q": "Anlage reports", "filters": {
+        "sources": [sid]}})).json()  # fmt: skip
+    assert exact["total"] == 2  # each by its own language's stemmer

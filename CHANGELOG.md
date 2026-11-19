@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- M5 per-language search (Q1), migration 0007: partial GIN expression indexes on title and summary for English, German, French, Spanish and Portuguese items; a query word matches as written or by its stem in the item's language, and stemmed matches count for ranking (Refs: REQ-03, M5).
 - M5 facet counts: `POST /search` returns, per facet shown in the filters and for jurisdictions, the matching items per value (never an `incorrect` term), at most 50 values each, over at most 10,000 matches, cached 30 seconds per query (Refs: REQ-03, M5).
 - M5 CSV export (roadmap 5.5, Q2): `POST /search/export.csv` streams the search's results, up to `search.export_row_cap` (50,000), through a server-side cursor in batches of 500, as UTF-8 with a BOM; metadata and summary only; cells that could be read as formulas are prefixed with `'`; chosen `columns` from a fixed list; everything that can refuse does so as a 400 before the first byte (Refs: REQ-03, M5).
 - M5 map activity (roadmap 5.3, acceptance 2): `GET /map/activity` per jurisdiction or M49 sub-region for a period (`from`, `to` or `period_days`): items with a change event there that match the `Query.filters` JSON (checked as search checks it), the latest event, the highest severity and a severity breakdown; the search's timeout and per-user rate (Refs: REQ-03, BL-116, M5).
