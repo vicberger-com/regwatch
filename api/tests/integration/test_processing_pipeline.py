@@ -389,3 +389,25 @@ async def test_the_time_limit_or_memory_stops_the_manifest_unmarked(
     with pytest.raises((SoftTimeLimitExceeded, MemoryError)):
         await process_manifest(db, key, loader(objects), store)
     assert pipeline.marker_key(key) not in objects
+
+
+async def test_a_feeds_unfetched_copy_never_silences_the_fetched_original(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Re-verification 8, N17 (R23): both sources at the default credibility; the feed's copy
+    (no final URL) comes first, the publisher's fetched item still raises its event."""
+    feed, eurlex = await made_source(admin), await made_source(admin)
+    title = ("Commission Implementing Regulation (EU) 2026/1300 of 13 November 2026 "
+             "on incident reporting templates")  # fmt: skip
+    key, objects = manifest(feed, uuid.uuid4(), [{"url": "https://news.example/copy",
+                                                  "text": "Copied. Repealed soon. " + BSI,
+                                                  "title": title}])  # fmt: skip
+    await process_manifest(db, key, loader(objects))
+    url = "https://example.org/reg-1300"
+    key, objects = manifest(eurlex, uuid.uuid4(), [{"url": url, "final_url": url,
+                                                    "text": BSI, "title": title}])  # fmt: skip
+    counts = await process_manifest(db, key, loader(objects))
+    assert "near_duplicate" not in counts.by_kind
+    real = await db.scalar(select(Item).where(Item.canonical_url == url))
+    assert real is not None and real.needs_review is False and real.fetched_host
+    assert await db.scalar(select(ChangeEvent.id).where(ChangeEvent.item_id == real.id))

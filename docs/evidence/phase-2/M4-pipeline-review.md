@@ -147,6 +147,14 @@ Fixed: N6, the provider rule (fixed endpoints, constant provider names, `kind` f
 | N15 | low | One-letter evidence passed; `.lower()` missed `casefold` and compatibility forms. | at least 15 characters, NFKC and case-folded | pending |
 | N16 | info | CJK titles never compare; rewrites of different length are missed. | BL-112 (e) | deferred |
 
+## Re-verification 8 (984a55e): signed off
+
+**Signed off for the pipeline additions `a2abdd4` to `984a55e`.** N13 to N15 fixed; the BL-107 residual fixes hold. Open at sign-off, medium: N17 (an unfetched feed copy at equal credibility silenced the publisher's fetched item), fixed after sign-off below, to be re-checked in the M4 completion review. Info N18 (non-ASCII digits never match) and the residuals (no `.handed` marker from `execute()`, so one early re-send; U+061C and U+180E not stripped; a row that always runs out of memory stops its manifest on each re-send) go to BL-112.
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| N17 | medium | a fetched item is silenced only by another fetched one; `test_a_feeds_unfetched_copy_never_silences_the_fetched_original` fails without it | pending (completion review) |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

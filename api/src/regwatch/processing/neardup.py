@@ -12,7 +12,7 @@ A new item is a near-duplicate (the same news under another address) of an earli
 - they come from different sources (one source's distinct URLs are distinct documents);
 - they share a jurisdiction, the earlier one was discovered in the last ``WINDOW_DAYS`` days,
   and its source is at least as credible as the new item's (a news feed never silences an
-  official source).
+  official source), and a fetched item is silenced only by another fetched one.
 
 It is kept and marked ``needs_review``, and raises no ``new_item`` event, so one story is not
 announced twice. The comparison is symmetric; at most ``MAX_CANDIDATES`` recent items are
@@ -79,7 +79,10 @@ async def near_duplicate(db: AsyncSession, item: Item, jurisdiction_ids: list[uu
         .join(Source, Source.id == Item.source_id)
         .where(ItemJurisdiction.jurisdiction_id.in_(jurisdiction_ids), Item.id != item.id,
                Item.source_id != item.source_id,  # a source's own URLs are its own documents
-               Item.discovered_at >= since, Source.credibility.in_(standing))
+               Item.discovered_at >= since, Source.credibility.in_(standing),
+               # an item only listed (a feed's copy) never silences one fetched from its host
+               # (re-verification 8, N17)
+               *([Item.fetched_host.is_not(None)] if item.fetched_host is not None else []))
         .order_by(Item.id.desc()).limit(MAX_CANDIDATES))  # fmt: skip
     for other_id, title in rows.tuples().all():
         if similar(item.title, title) >= max(ratio, 80.0):
