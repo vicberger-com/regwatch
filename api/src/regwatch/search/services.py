@@ -20,7 +20,9 @@ import uuid
 from datetime import datetime
 
 import structlog
-from sqlalchemy import func, select, text
+from sqlalchemy import func, literal, select, text
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,22 +138,33 @@ async def facet_counts(db: AsyncSession, ids: list[uuid.UUID],
     if not ids:
         return {}
     out: dict[str, list[FacetCount]] = {}
-    terms = await db.execute(
-        select(Facet.key, Term.key, Term.label, func.count(func.distinct(ItemTerm.item_id)))
-        .join(Term, Term.id == ItemTerm.term_id).join(Facet, Facet.id == Term.facet_id)
-        .where(ItemTerm.item_id.in_(ids), Facet.show_in_filters,
-               ItemTerm.feedback.is_distinct_from("incorrect"))
-        .group_by(Facet.key, Term.key, Term.label))  # fmt: skip
-    for facet, term, label, count in terms.tuples().all():
-        out.setdefault(facet, []).append(FacetCount(key=term, label=label, count=count))
-    places = await db.execute(
-        select(Jurisdiction.code, Jurisdiction.name,
-               func.count(func.distinct(ItemJurisdiction.item_id)))
-        .join(ItemJurisdiction, ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
-        .where(ItemJurisdiction.item_id.in_(ids))
-        .group_by(Jurisdiction.code, Jurisdiction.name))  # fmt: skip
+    # Driven from the ids (``unnest``) through each table's primary key: an ``IN`` list made the
+    # planner scan by term and filter every tag (BL-118: 487 ms a facet query at 1M items).
+    sample = (func.unnest(literal(ids, ARRAY(PG_UUID(as_uuid=True)))).table_valued("id")
+              .render_derived(name="s"))  # fmt: skip
+    # Counted per id straight from the list through each table's primary key, then labelled:
+    # joining terms first made the planner loop terms times ids (BL-118: 1.2 s at 1M items).
+    by_term = dict((await db.execute(
+        select(ItemTerm.term_id, func.count()).select_from(sample)
+        .join(ItemTerm, ItemTerm.item_id == sample.c.id)
+        .where(ItemTerm.feedback.is_distinct_from("incorrect"))
+        .group_by(ItemTerm.term_id))).tuples().all())  # fmt: skip
+    if by_term:
+        labels = await db.execute(
+            select(Term.id, Facet.key, Term.key, Term.label).join(Facet, Facet.id == Term.facet_id)
+            .where(Term.id.in_(list(by_term)), Facet.show_in_filters))  # fmt: skip
+        for term_id, facet, term, label in labels.tuples().all():
+            out.setdefault(facet, []).append(
+                FacetCount(key=term, label=label, count=by_term[term_id]))  # fmt: skip
+    by_place = dict((await db.execute(
+        select(ItemJurisdiction.jurisdiction_id, func.count()).select_from(sample)
+        .join(ItemJurisdiction, ItemJurisdiction.item_id == sample.c.id)
+        .group_by(ItemJurisdiction.jurisdiction_id))).tuples().all())  # fmt: skip
+    places = await db.execute(select(Jurisdiction.id, Jurisdiction.code, Jurisdiction.name)
+                              .where(Jurisdiction.id.in_(list(by_place))))  # fmt: skip
     # The contract's name for it (slice 2 S11); a facet may not be called that.
-    out["jurisdiction"] = [FacetCount(key=c, label=n, count=k) for c, n, k in places.tuples()]
+    out["jurisdiction"] = [FacetCount(key=c, label=n, count=by_place[j])
+                           for j, c, n in places.tuples().all()]  # fmt: skip
     for values_ in out.values():
         values_.sort(key=lambda f: (-f.count, f.key))
         del values_[FACET_VALUES:]
@@ -194,15 +207,24 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     check(query)
     limited(user_id)
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
-    compiled = compile_query(query, await resolve_terms(db, query.filters))
-    # The newest matching ids, read once: their number is ``total`` and their first
-    # ``FACET_SAMPLE`` are what facets count (BL-118: the match query ran three times).
-    newest = (compiled.matches if compiled.matches is not None else compiled.ids).limit(
-        MAX_TOTAL + 1)  # fmt: skip
-    paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
+    terms = await resolve_terms(db, query.filters)
+    compiled = compile_query(query, terms)
+    # First every match, unordered, up to MAX_TOTAL + 1: cheap however rare the words (an
+    # ordered read walks the date index and, for a rare word, all of it; BL-118). If they all
+    # fit, the page, its order, the total and the facets come from that list; if not, the
+    # matches are many, and the ordered reads stop early.
     try:
-        matched_ids = list((await db.scalars(newest)).all())
-        total = len(matched_ids)
+        found_ids = list((await db.scalars(compiled.every.limit(MAX_TOTAL + 1))).all())
+        if len(found_ids) <= MAX_TOTAL:
+            matched_ids, total = found_ids, len(found_ids)
+            compiled = compile_query(query, terms, within=found_ids)
+        elif compiled.ranked:  # many matches: relevance pages through its candidates (R1)
+            matched_ids = list((await db.scalars(compiled.matches)).all())
+            total = len(matched_ids)
+        else:
+            matched_ids = list((await db.scalars(compiled.matches.limit(FACET_SAMPLE))).all())
+            total = MAX_TOTAL + 1
+        paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
         page_ids = list((await db.scalars(paged)).all())
     except DBAPIError as exc:
         if not timed_out(exc):

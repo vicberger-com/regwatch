@@ -282,7 +282,14 @@ async def test_a_search_past_its_timeout_is_a_503(
 
     def slow(*args: Any, **kwargs: Any) -> Any:
         made = real(*args, **kwargs)
-        return type(made)(made.ids.where(text("pg_sleep(0.3) IS NOT NULL")), made.tsquery)
+        slow_ = text("pg_sleep(0.3) IS NOT NULL")
+        return type(made)(
+            made.ids.where(slow_),
+            made.tsquery,
+            made.matches.where(slow_),
+            made.every.where(slow_),
+            made.ranked,
+        )
 
     monkeypatch.setattr(services, "compile_query", slow)
     monkeypatch.setattr(services, "STATEMENT_TIMEOUT", "50ms")
@@ -369,4 +376,4 @@ async def test_an_old_item_with_every_word_is_still_the_best_match(
     await db.commit()
     got = (await admin.post(_api("/search"), json={"q": f"{tag} zebra"})).json()
     assert got["items"][0]["title"].startswith(f"{tag} regulations zebra")
-    assert got["total"] == len(got["items"]) <= 4  # relevance pages through its candidates
+    assert got["total"] == len(got["items"])  # all matches fit: each is ranked and paged

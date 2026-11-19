@@ -34,11 +34,13 @@ from sqlalchemy import (
     cast,
     exists,
     func,
+    literal,
     literal_column,
     select,
     union,
 )
-from sqlalchemy.dialects.postgresql import TSQUERY
+from sqlalchemy.dialects.postgresql import ARRAY, TSQUERY
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -101,10 +103,10 @@ class Compiled:
     tsquery: ColumnElement[Any] | None
     # Every match, newest change first: what counts and facets read a bounded prefix of, so the
     # planner can walk the date index and stop (the 1M-item load test, acceptance 3).
-    matches: Select[Any] | None = None
-    ranked: bool = (
-        False  # relevance: ``matches`` is the candidate set, at most twice RANK_CANDIDATES
-    )
+    matches: Select[Any]
+    every: Select[Any]  # every match, unordered: the cheap first read (BL-118)
+    # relevance: ``matches`` is the candidate set, at most twice RANK_CANDIDATES
+    ranked: bool = False
 
 
 def _bad(field: str, message: str) -> ProblemError:
@@ -267,33 +269,52 @@ _ORDER: dict[str, tuple[Any, ...]] = {
 }
 
 
-def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = None) -> Compiled:
+def among(ids: list[uuid.UUID]) -> ColumnElement[bool]:
+    """``item.id`` in an id list, driven from the list (``unnest``) through the primary key."""
+    sample = (func.unnest(literal(ids, ARRAY(PG_UUID(as_uuid=True)))).table_valued("id")
+              .render_derived(name="s"))  # fmt: skip
+    return Item.id.in_(select(sample.c.id))
+
+
+def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = None,
+                  within: list[uuid.UUID] | None = None) -> Compiled:  # fmt: skip
+    """``within``: every match is already known (at most ``MAX_TOTAL``), so the ordered ids are
+    taken from that list, without running the match again (BL-118)."""
     where = conditions(query.filters, term_ids or {})
     text = (query.q or "").strip()
     found = tsquery(text) if text else None
     ids = select(Item.id)
     if found is not None:
         where.append(matches(text, found))
+    if within is not None:
+        where = [among(within)]
     ids = ids.where(and_(*where)) if where else ids
+    every = ids
     newest = ids.order_by(Item.last_changed_at.desc(), Item.id.desc())
     if query.sort == "relevance" and found is not None:
         # Ranking costs per row, so only the ``RANK_CANDIDATES`` most recently changed matches
         # are ranked (re-verification 1, N1; the 1M-item load test).
         # Candidates: the newest matches with every word, and the newest with any (re-verification
         # R1: an old item with every word is still found); relevance pages only through them.
-        best = ids.where(matches_all(text)).order_by(Item.last_changed_at.desc(), Item.id.desc())
-        candidates = union(newest.limit(RANK_CANDIDATES),
-                           best.limit(RANK_CANDIDATES)).subquery()  # fmt: skip
+        if within is not None:
+            pool = among(within)
+            candidates = None
+        else:
+            best = ids.where(matches_all(text)).order_by(Item.last_changed_at.desc(),
+                                                         Item.id.desc())  # fmt: skip
+            candidates = union(newest.limit(RANK_CANDIDATES),
+                               best.limit(RANK_CANDIDATES)).subquery()  # fmt: skip
+            pool = Item.id.in_(select(candidates.c.id))
         # A word counts when it matches as written or by its stem in the item's language.
         matched = sum((case((matches(w, func.plainto_tsquery(_REGCONFIG, w), True), 1), else_=0)
                        for w in words(text)[:RANK_WORDS]),
                       start=cast(literal_column("0"), Integer))  # fmt: skip
         rank = func.ts_rank_cd(Item.search_vector, found)
-        ids = (select(Item.id).where(Item.id.in_(select(candidates.c.id)))
-               .order_by(matched.desc(), rank.desc(), Item.last_changed_at.desc(),
-                         Item.id.desc()))  # fmt: skip
-    else:
-        ids = ids.order_by(*_ORDER.get(query.sort, _ORDER["last_changed_desc"]))
-    if query.sort == "relevance" and found is not None:
-        return Compiled(ids, found, select(candidates.c.id), ranked=True)
-    return Compiled(ids, found, newest)
+        ranked = (select(Item.id).where(pool)
+                  .order_by(matched.desc(), rank.desc(), Item.last_changed_at.desc(),
+                            Item.id.desc()))  # fmt: skip
+        return Compiled(ranked, found,
+                        select(candidates.c.id) if candidates is not None else newest,
+                        every, ranked=True)  # fmt: skip
+    ids = ids.order_by(*_ORDER.get(query.sort, _ORDER["last_changed_desc"]))
+    return Compiled(ids, found, newest, every)
