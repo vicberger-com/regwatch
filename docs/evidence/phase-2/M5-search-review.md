@@ -15,7 +15,7 @@ Read against the contract, the M5 spec and `docs/08-security-compliance.md`; pro
 | 3 | medium | Unbounded lists and `page` gave 500s (bind-parameter limit, int8 offset). | at most 50 values a list, a 10,000-result window, 400 | pending |
 | 4 | medium | Deep paging cost scaled with the offset. | the window cap; keyset paging later (BL-114 (c)) | pending |
 | 5 | medium | The count kept the ORDER BY and ranked every match. | `order_by(None)`, capped at 10,001 | pending |
-| 6 | medium | No `change_event(item_id)` index. | CP proposal, BL-114 (a) | deferred (owner) |
+| 6 | medium | No `change_event(item_id)` index. | CP-20 (owner approved), migration 0006 | pending |
 | 7 | medium | Repeating one word outranked having both. | matched distinct words first, then `ts_rank_cd` | pending |
 | 8 | medium | `q` ignored the contract's websearch syntax. | websearch when the query uses it, else any-word; ASSUMPTIONS row | pending |
 | 9 | medium | Severity ignored the query period. | events inside `filters.changed`, for the filter and the output | pending |

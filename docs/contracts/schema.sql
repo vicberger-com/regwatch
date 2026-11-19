@@ -195,6 +195,7 @@ CREATE INDEX ix_item_search ON item USING gin (search_vector);
 CREATE INDEX ix_item_last_changed ON item(last_changed_at DESC);
 CREATE INDEX ix_item_published ON item(published_at DESC);
 CREATE INDEX ix_item_title_trgm ON item USING gin (title gin_trgm_ops);
+CREATE INDEX ix_item_source_content ON item(source_id, content_hash); -- CP-20 (migration 0006)
 
 CREATE TABLE item_version (
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(),
@@ -262,6 +263,7 @@ CREATE TABLE change_event (
 );
 CREATE INDEX ix_change_event_j_time ON change_event(jurisdiction_id, occurred_at DESC);
 CREATE INDEX ix_change_event_time ON change_event(occurred_at DESC);
+CREATE INDEX ix_change_event_item ON change_event(item_id, severity); -- CP-20 (migration 0006)
 
 CREATE TABLE saved_view ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
