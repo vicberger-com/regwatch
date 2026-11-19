@@ -131,28 +131,38 @@ describe("items table", () => {
 
 describe("items permissions", () => {
   it.each([[[]], [["users.manage"]]])(
-    "refuses /items and /items/:id without items.read (%j)",
+    "refuses /items without items.read (%j)",
     async (permissions) => {
       const api = fakeApi({ "GET /auth/me": [200, { ...ADMIN, permissions }] });
-      renderAt("/items");
-      expect(
-        (await screen.findAllByText(/do not have permission/)).length,
-      ).toBeGreaterThan(0);
+      const router = renderAt("/items");
+      await waitFor(() => {
+        expect(router.state.status).toBe("idle");
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "do not have permission",
+      );
       const rail = screen.getByRole("navigation", { name: "Main" });
       expect(within(rail).queryByRole("link", { name: "Items" })).toBeNull();
-      vi.unstubAllGlobals();
-      const again = fakeApi({
-        "GET /auth/me": [200, { ...ADMIN, permissions }],
+      expect(api.calls.map((c) => c.key)).not.toContain("POST /search");
+    },
+  );
+
+  it.each([[[]], [["users.manage"]]])(
+    "refuses /items/:id without items.read (%j)",
+    async (permissions) => {
+      const api = fakeApi({ "GET /auth/me": [200, { ...ADMIN, permissions }] });
+      const router = renderAt(`/items/${ITEM.id}`);
+      await waitFor(() => {
+        expect(router.state.status).toBe("idle");
       });
-      renderAt(`/items/${ITEM.id}`);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "do not have permission",
+      );
       expect(
-        (await screen.findAllByText(/do not have permission/)).length,
-      ).toBeGreaterThan(0);
-      const asked = [...api.calls, ...again.calls].map((c) => c.key);
+        screen.queryByRole("heading", { level: 1, name: "NIS2 Umsetzung" }),
+      ).toBeNull();
       expect(
-        asked.filter(
-          (k) => k === "POST /search" || k.startsWith("GET /items/"),
-        ),
+        api.calls.map((c) => c.key).filter((k) => k.startsWith("GET /items/")),
       ).toEqual([]);
     },
   );

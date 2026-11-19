@@ -45,9 +45,57 @@ describe("diff parsing", () => {
     ]);
     expect(parseDiff("")).toEqual([]);
   });
+
+  it("keeps changed lines that start with dashes or pluses, and marks a cut diff", () => {
+    const tricky =
+      "--- previous\r\n+++ current\r\n@@ -1,2 +1,2 @@\r\n----\r\n+++x\r\n--- signature\r\n... (diff cut at 64 KB)";
+    expect(parseDiff(tricky)).toEqual([
+      { kind: "hunk", text: "@@ -1,2 +1,2 @@" },
+      { kind: "remove", text: "---" },
+      { kind: "add", text: "++x" },
+      { kind: "remove", text: "-- signature" },
+      { kind: "cut", text: "The diff was cut at 64 KB." },
+    ]);
+  });
 });
 
 describe("item tabs", () => {
+  it("offers only versions that exist, and asks for a diff once, on Compare", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      [`GET /items/${ID}`]: [200, { ...ITEM, current_version_no: 9 }],
+      [`GET /items/${ID}/versions`]: [
+        200,
+        [{ version_no: 2 }, { version_no: 5 }, { version_no: 9 }],
+      ],
+      [`GET /items/${ID}/diff`]: [200, { unified_diff: DIFF }],
+    });
+    renderAt(`/items/${ID}`);
+    await userEvent.click(await screen.findByRole("tab", { name: "Versions" }));
+    expect(
+      await screen.findByRole("button", { name: "Compare with version 5" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    const from = await screen.findByLabelText("From version");
+    expect(
+      within(from)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["9", "5", "2"]);
+    const diffs = () =>
+      api.calls.filter((c) => c.key === `GET /items/${ID}/diff`).length;
+    await waitFor(() => {
+      expect(diffs()).toBe(1); // 5 to 9 by default
+    });
+    await userEvent.selectOptions(from, "2");
+    await userEvent.selectOptions(screen.getByLabelText("To version"), "5");
+    expect(diffs()).toBe(1); // nothing until Compare
+    await userEvent.click(screen.getByRole("button", { name: "Compare" }));
+    await waitFor(() => {
+      expect(diffs()).toBe(2);
+    });
+  });
+
   it("moves between tabs by keyboard and shows tags, content and its translation", async () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
@@ -128,11 +176,10 @@ describe("item tabs", () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
       [`GET /items/${ID}`]: [200, { ...ITEM, current_version_no: 1 }],
+      [`GET /items/${ID}/versions`]: [200, [{ version_no: 1 }]],
     });
     renderAt(`/items/${ID}`);
     await userEvent.click(await screen.findByRole("tab", { name: "Diff" }));
-    expect(screen.getByRole("tabpanel")).toHaveTextContent(
-      "nothing to compare",
-    );
+    expect(await screen.findByText(/nothing to compare/)).toBeInTheDocument();
   });
 });

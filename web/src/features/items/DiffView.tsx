@@ -4,20 +4,36 @@
  * a text node; captured text never becomes markup.
  */
 export interface DiffLine {
-  kind: "add" | "remove" | "context" | "hunk";
+  kind: "add" | "remove" | "context" | "hunk" | "cut";
   text: string;
 }
 
+/** The marker `processing/versioning.py` appends when it cuts a diff at 64 KB. */
+export const CUT = "... (diff cut at 64 KB)";
+
+/**
+ * Lines of a `difflib.unified_diff`. The `---` and `+++` file headers come only before the
+ * first hunk: after it, a line starting with `---` is a removed line that began with `--`, and
+ * one starting with `+++` an added line that began with `++` (review finding 1: a page must not
+ * hide a change by starting a line with dashes).
+ */
 export function parseDiff(unified: string): DiffLine[] {
   const out: DiffLine[] = [];
-  for (const line of unified.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue; // file headers
-    if (line.startsWith("@@")) out.push({ kind: "hunk", text: line });
+  let inHunks = false;
+  for (const raw of unified.split("\n")) {
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    if (line.startsWith("@@")) {
+      inHunks = true;
+      out.push({ kind: "hunk", text: line });
+    } else if (!inHunks) {
+      continue; // the file headers, and anything else before the first hunk
+    } else if (line === CUT)
+      out.push({ kind: "cut", text: "The diff was cut at 64 KB." });
     else if (line.startsWith("+"))
       out.push({ kind: "add", text: line.slice(1) });
     else if (line.startsWith("-"))
       out.push({ kind: "remove", text: line.slice(1) });
-    else if (line || out.length)
+    else
       out.push({
         kind: "context",
         text: line.startsWith(" ") ? line.slice(1) : line,
@@ -39,6 +55,11 @@ const STYLE: Record<
   },
   context: { marker: " ", label: "", className: "" },
   hunk: { marker: "", label: "", className: "text-text-muted" },
+  cut: {
+    marker: "",
+    label: "Notice",
+    className: "font-sans italic text-warning",
+  },
 };
 
 export function DiffView({

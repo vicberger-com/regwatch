@@ -211,6 +211,20 @@ function Content({ item }: { item: ItemDetail }) {
   );
 }
 
+/** At most this many versions are offered for comparison (a broken answer cannot hang the tab). */
+const MAX_VERSIONS = 500;
+
+/** The item's version numbers, newest first, from the versions list itself (gaps allowed). */
+function useVersionNumbers(id: string) {
+  const versions = useQuery(versionsQuery(id));
+  const numbers = (versions.data ?? [])
+    .map((v) => v.version_no)
+    .filter((n): n is number => Number.isInteger(n) && (n ?? 0) > 0)
+    .sort((a, b) => b - a)
+    .slice(0, MAX_VERSIONS);
+  return { versions, numbers };
+}
+
 function Versions({
   id,
   onCompare,
@@ -218,21 +232,20 @@ function Versions({
   id: string;
   onCompare: (from: number, to: number) => void;
 }) {
-  const versions = useQuery(versionsQuery(id));
+  const { versions, numbers } = useVersionNumbers(id);
   if (versions.isPending) return <p role="status">Loading versions…</p>;
-  if (versions.isError)
+  if (versions.isError) {
     return (
       <p role="alert" className="text-critical">
         {problemText(versions.error, "The versions could not be loaded.")}
       </p>
     );
-  const list = [...versions.data].sort(
-    (a, b) => (b.version_no ?? 0) - (a.version_no ?? 0),
-  );
+  }
+  const byNumber = new Map(versions.data.map((v) => [v.version_no, v]));
   return (
     <table className="w-full text-left">
       <caption className="mb-2 text-left text-sm text-text-muted">
-        {String(list.length)} versions, newest first
+        {String(numbers.length)} versions, newest first
       </caption>
       <thead>
         <tr className="border-b border-border">
@@ -251,30 +264,34 @@ function Versions({
         </tr>
       </thead>
       <tbody>
-        {list.map((v) => (
-          <tr key={v.version_no} className="border-b border-border">
-            <td className="py-1 pr-4">{v.version_no}</td>
-            <td className="py-1 pr-4">{date(v.created_at)}</td>
-            <td className="py-1 pr-4">
-              {v.changed_pct == null
-                ? "—"
-                : `${String(Math.round(v.changed_pct * 10) / 10)}%`}
-            </td>
-            <td className="py-1">
-              {(v.version_no ?? 1) > 1 && (
-                <button
-                  type="button"
-                  className="text-accent underline"
-                  onClick={() => {
-                    onCompare((v.version_no ?? 2) - 1, v.version_no ?? 2);
-                  }}
-                >
-                  Compare with version {String((v.version_no ?? 2) - 1)}
-                </button>
-              )}
-            </td>
-          </tr>
-        ))}
+        {numbers.map((n, i) => {
+          const v = byNumber.get(n);
+          const previous = numbers[i + 1]; // the previous version that exists
+          return (
+            <tr key={n} className="border-b border-border">
+              <td className="py-1 pr-4">{String(n)}</td>
+              <td className="py-1 pr-4">{date(v?.created_at)}</td>
+              <td className="py-1 pr-4">
+                {typeof v?.changed_pct === "number"
+                  ? `${String(Math.round(v.changed_pct * 10) / 10)}%`
+                  : "—"}
+              </td>
+              <td className="py-1">
+                {previous !== undefined && (
+                  <button
+                    type="button"
+                    className="text-accent underline"
+                    onClick={() => {
+                      onCompare(previous, n);
+                    }}
+                  >
+                    Compare with version {String(previous)}
+                  </button>
+                )}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -285,26 +302,40 @@ function Diff(props: {
   chosen: { from: number; to: number } | null;
   onChoose: (c: { from: number; to: number }) => void;
 }) {
-  const latest = props.item.current_version_no ?? 1;
-  const chosen = props.chosen ?? { from: Math.max(1, latest - 1), to: latest };
+  const { versions, numbers } = useVersionNumbers(props.item.id);
+  const fallback =
+    numbers.length >= 2 ? { from: numbers[1] ?? 0, to: numbers[0] ?? 0 } : null;
+  const chosen = props.chosen ?? fallback;
+  // The selects change a draft; one request goes out on Compare (the API limits diffs a minute).
+  const [draft, setDraft] = useState<{ from: number; to: number } | null>(null);
+  const shown = draft ?? chosen;
+  const ready = chosen !== null && chosen.from < chosen.to;
   const diff = useQuery({
-    ...diffQuery(props.item.id, chosen.from, chosen.to),
-    enabled: latest > 1 && chosen.from < chosen.to,
+    ...diffQuery(props.item.id, chosen?.from ?? 0, chosen?.to ?? 0),
+    enabled: ready,
   });
-  if (latest <= 1)
+  if (versions.isPending) return <p role="status">Loading versions…</p>;
+  if (versions.isError) {
+    return (
+      <p role="alert" className="text-critical">
+        {problemText(versions.error, "The versions could not be loaded.")}
+      </p>
+    );
+  }
+  if (!shown || numbers.length < 2) {
     return (
       <p className="text-text-muted">
         This item has one version, so there is nothing to compare.
       </p>
     );
-  const numbers = Array.from({ length: latest }, (_, i) => i + 1);
+  }
   const pick = (field: "from" | "to") => (
     <label className="flex flex-col text-sm">
       {field === "from" ? "From version" : "To version"}
       <select
-        value={chosen[field]}
+        value={shown[field]}
         onChange={(e) => {
-          props.onChoose({ ...chosen, [field]: Number(e.target.value) });
+          setDraft({ ...shown, [field]: Number(e.target.value) });
         }}
         className="mt-1 rounded border border-border bg-surface px-2 py-1"
       >
@@ -318,17 +349,28 @@ function Diff(props: {
   );
   return (
     <>
-      <div
-        role="group"
+      <form
         aria-label="Versions to compare"
-        className="mb-3 flex gap-4"
+        className="mb-3 flex items-end gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (draft) props.onChoose(draft);
+          setDraft(null);
+        }}
       >
         {pick("from")}
         {pick("to")}
-      </div>
-      {chosen.from >= chosen.to ? (
+        <button
+          type="submit"
+          disabled={shown.from >= shown.to}
+          className="rounded border border-border px-3 py-1 disabled:opacity-50"
+        >
+          Compare
+        </button>
+      </form>
+      {shown.from >= shown.to ? (
         <p className="text-text-muted">Choose an earlier version first.</p>
-      ) : diff.isPending ? (
+      ) : !ready || diff.isPending ? (
         <p role="status">Loading the changes…</p>
       ) : diff.isError ? (
         <p role="alert" className="text-critical">

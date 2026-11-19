@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build the map's boundary files (--accept writes an output whose hash differs from the recorded one) (ADR-0004, R-05) from Natural Earth v5.1.2. Run when the data
-# or the simplification changes; the output is committed, so the web build needs no network.
+# Build the map's boundary files (ADR-0004, R-05) from Natural Earth v5.1.2 (--accept: write output
+# whose hashes differ from the recorded ones). Run when the data or the simplification changes;
+# the output is committed, so the web build needs no network.
 #
 # Writes web/public/map/countries.geojson (fields id = ADM0_A3, iso = ISO_A2_EH, name) and
 # web/public/map/disputed.geojson (id, name, note = NOTE_BRK), simplified with mapshaper
@@ -36,16 +37,19 @@ pnpm dlx "$mapshaper" ne/geojson/ne_50m_admin_0_breakaway_disputed_areas.geojson
   -filter-fields ADM0_A3,NAME,NOTE_BRK -rename-fields id=ADM0_A3,name=NAME,note=NOTE_BRK \
   -simplify 25% keep-shapes -o disputed.geojson format=geojson precision=0.001
 status=0
-for f in countries disputed; do
+for f in countries disputed; do  # both are checked before either is written
   node "$root/scripts/project-equal-earth.mjs" "$f.geojson" "$work/$f.out.geojson"
   got="$(sha256sum "$work/$f.out.geojson" | cut -d' ' -f1)"
   want="expected_$f"
   echo "$f.geojson: $(stat -c %s "$work/$f.out.geojson") bytes, $(gzip -9 -c "$work/$f.out.geojson" | wc -c) gzip, sha256 $got"
-  if [[ "$got" == "${!want}" || "${1:-}" == "--accept" ]]; then
-    cp "$work/$f.out.geojson" "$out/$f.geojson"
-  else
-    echo "  differs from the committed file (${!want}); not written. Review it, then rerun with --accept and update the hash here" >&2
+  if [[ "$got" != "${!want}" ]]; then
+    echo "  differs from the committed file (${!want})" >&2
     status=1
   fi
 done
-exit "$status"
+if [[ "$status" -ne 0 && "${1:-}" != "--accept" ]]; then
+  echo "nothing written: review the output, then rerun with --accept and update the hashes here" >&2
+  exit 1
+fi
+cp "$work/countries.out.geojson" "$out/countries.geojson"
+cp "$work/disputed.out.geojson" "$out/disputed.geojson"

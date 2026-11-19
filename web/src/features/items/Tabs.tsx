@@ -73,6 +73,9 @@ export function Tabs(props: {
         <div
           id={`${base}-panel-${current.id}`}
           role="tabpanel"
+          // APG: the panel takes focus when its content has nothing focusable (review finding 5)
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={0}
           aria-labelledby={`${base}-tab-${current.id}`}
           className="pt-4"
         >
