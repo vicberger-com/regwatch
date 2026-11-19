@@ -1,0 +1,5 @@
+_meta: { type: rolesmapping, config_version: 2 }
+regwatch_index:
+  users: [regwatch]
+all_access:
+  users: [admin]

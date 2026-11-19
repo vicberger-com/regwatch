@@ -1,6 +1,6 @@
 # ADR-0011: A search engine beside PostgreSQL for M5 latency (ADR-0002 decision 5)
 
-**Status:** proposed, waiting for an owner decision · **Date:** 2026-11-19 · **Requirements:** REQ-03, REQ-09 · **Backlog:** BL-118, BL-07
+**Status:** accepted 2026-11-19 by the owner: option 1 in the owner's numbering, OpenSearch (option 2 below) · **Date:** 2026-11-19 · **Requirements:** REQ-03, REQ-09 · **Backlog:** BL-118, BL-07
 **Research:** `tests/integration/test_perf_search.py` (1M items, corpus-derived distribution); `BACKLOG.md` BL-118; ADR-0002; ADR-0003; `docs/03-architecture.md` 3.5
 
 ## Context
@@ -59,3 +59,21 @@ Option 1 is not recommended until Meilisearch documents a production build witho
 
 - **Option 1 or 2:** a register row, a Compose CP (an internal network only, published nowhere; the builder-security rules apply), an indexing task in M4's pipeline, a reindex command, and an M5 adapter behind `search.services`.
 - **Option 3:** an amendment to M5 acceptance 3 in `docs/modules/M5-search-query.md`, and a facets route or flag in a CP.
+
+## Decision (owner, 2026-11-19)
+
+**OpenSearch as a sidecar**, the recommended option.
+- **Image:** `opensearchproject/opensearch:3.9.0`, pinned by digest `sha256:3bf4fe26aeb9f7b03c0ebcb1302bb24e855ee6b89fd926d26a71a83ef6f7e076` (read from Docker Hub on 2026-11-19).
+- **Licenses:** Apache-2.0 for the core (tag 3.9.0, `4ee42a9`), the security plugin and the distribution build. The image's bundled JDK (OpenJDK, GPL-2.0 with the Classpath Exception) ships inside an unmodified separate service, which 3.5 permits.
+- **Network (CP-22):** the internal `regwatch` network only, with no published port.
+- **Security plugin:** never disabled.
+  - TLS on HTTP and transport, using the stack's own CA from `scripts/index-setup.sh`, never the demo certificates.
+  - HTTP basic authentication, with no anonymous access.
+  - The API and worker use the least-privilege `regwatch` user, whose role `regwatch_index` covers `regwatch-*` only.
+- **Smoke test** (throwaway node, published on 127.0.0.1 only):
+  - anonymous: 401;
+  - `regwatch`: 200 on cluster health and on its own index;
+  - 403 on any other index and on the security API;
+  - a wrong password: 401;
+  - TLS without the CA: refused.
+- **Roles of the two stores:** PostgreSQL stays the system of record. Search, facets and map aggregations move to the index behind `search.services` in the slices that follow. When `REGWATCH_INDEX_URL` is unset, search runs on PostgreSQL as now.

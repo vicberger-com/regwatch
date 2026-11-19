@@ -19,3 +19,5 @@ coverage.json
 htmlcov/
 coverage/
 .schemathesis/
+deploy/index.env
+deploy/opensearch/generated/

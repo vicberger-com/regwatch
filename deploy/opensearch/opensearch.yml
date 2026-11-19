@@ -1,0 +1,26 @@
+# OpenSearch for M5 search (ADR-0011, CP-22). Mounted read-only into the index container.
+# The container joins only the internal `regwatch` network and publishes no port, so the
+# wildcard bind below is reachable from the stack's own containers only (builder-security: the
+# publish is the boundary).
+cluster.name: regwatch-index
+node.name: index
+network.host: 0.0.0.0
+discovery.type: single-node
+bootstrap.memory_lock: false
+
+# The security plugin stays on: TLS on HTTP and transport with the stack's own CA, and HTTP
+# basic authentication for the API's least-privilege `regwatch` user (never the demo config).
+plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
+plugins.security.ssl.transport.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/ca.pem
+plugins.security.ssl.transport.enforce_hostname_verification: false
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.http.pemcert_filepath: certs/node.pem
+plugins.security.ssl.http.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/ca.pem
+plugins.security.authcz.admin_dn: ["CN=regwatch-index-admin,O=regwatch"]
+plugins.security.nodes_dn: ["CN=index,O=regwatch"]
+plugins.security.allow_default_init_securityindex: true
+plugins.security.restapi.roles_enabled: []
+plugins.security.audit.type: noop
+plugins.security.check_snapshot_restore_write_privileges: true

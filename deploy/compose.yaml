@@ -8,7 +8,12 @@ x-app: &app
     context: ../api
     target: dev
   image: regwatch-api:dev
-  env_file: .env
+  env_file:
+    - .env
+    # The index sidecar's URL, user, password and CA (scripts/index-setup.sh; ADR-0011). Optional:
+    # without it search runs on PostgreSQL alone.
+    - path: index.env
+      required: false
   networks: [regwatch]
   restart: unless-stopped
 
@@ -202,6 +207,35 @@ services:
       retries: 3
       start_period: 300s
 
+  # OpenSearch for M5 search and map aggregations (ADR-0011, CP-22). Prepared by
+  # scripts/index-setup.sh; profile `index`. Internal network only and no published port: the
+  # API and worker reach it at https://index:9200 with TLS (the stack's own CA) and the
+  # least-privilege `regwatch` user; the security plugin is never disabled.
+  # Tag 3.9.0, read from Docker Hub on 2026-11-19.
+  index:
+    image: opensearchproject/opensearch@sha256:3bf4fe26aeb9f7b03c0ebcb1302bb24e855ee6b89fd926d26a71a83ef6f7e076
+    profiles: [index]
+    networks: [regwatch]
+    environment:
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+    volumes:
+      - ./opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml:ro
+      - ./opensearch/generated/certs:/usr/share/opensearch/config/certs:ro
+      - ./opensearch/generated/security:/usr/share/opensearch/config/opensearch-security:ro
+      - index-data:/usr/share/opensearch/data
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    mem_limit: 2g
+    healthcheck:
+      # Any HTTP answer over TLS means the node is up; 401 is expected without credentials.
+      test: ["CMD-SHELL", "curl -s -o /dev/null --cacert config/certs/ca.pem https://index:9200/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
   # print-bridge (profile `print`) is deferred: ADR-0001 decision 6, BL-13, BL-15.
   # Nothing is built for it until a CP issue settles the print path.
 
@@ -224,3 +258,4 @@ volumes:
   pgdata:
   objectstore:
   caddy-data:
+  index-data:

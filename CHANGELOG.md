@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- ADR-0011 accepted (OpenSearch) and CP-22: the `index` sidecar (OpenSearch 3.9.0, profile `index`) on the internal network only, with its security plugin on (the stack's own CA, basic authentication, a least-privilege `regwatch` user on `regwatch-*`), prepared by `scripts/index-setup.sh`; index settings in `env.example`. Search still runs on PostgreSQL until the adapter lands (Refs: BL-118, BL-119, REQ-03).
 - M5 load test (roadmap 5.6): `tests/integration/test_perf_search.py` builds 1M synthetic items and measures search, map and export; counts, ranking and facets now read bounded prefixes of the newest matches (total up to 10,000; ranking over the 2,000 most recently changed matches; facets over 2,000). Acceptance 4 met; acceptance 3 not yet (BL-118) (Refs: REQ-03, M5).
 - M4 corpus quality (roadmap 4.9): over the 200-document fixture corpus, jurisdiction detection reaches precision 0.974 and recall 0.925, and representative keyword rules precision 0.846 (floor 0.8, M4 test plan); asserted in the suite and recorded in `docs/evidence/phase-2/M4-corpus-quality.md` (Refs: REQ-02, M4).
 - M5 per-language search (Q1), CP-21, migration 0007: a stored generated `item.search_vector_stemmed` (title and summary in the item's language's configuration: English, German, French, Spanish, Portuguese, else simple) with a GIN index; a query word matches as written or by its stem in the item's language, and stemmed matches count for ranking (Refs: REQ-03, M5).

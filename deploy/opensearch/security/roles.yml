@@ -1,0 +1,21 @@
+# regwatch_index: what the API and worker need, on the regwatch indexes only (least privilege).
+_meta: { type: roles, config_version: 2 }
+regwatch_index:
+  cluster_permissions:
+    - cluster:monitor/health
+    - cluster:monitor/main
+    - indices:data/read/scroll/clear
+  index_permissions:
+    - index_patterns: ["regwatch-*"]
+      allowed_actions:
+        - indices:admin/create
+        - indices:admin/mapping/put
+        - indices:admin/get
+        - indices:admin/exists
+        - indices:admin/aliases
+        - indices:admin/aliases/get
+        - indices:admin/delete
+        - indices:admin/refresh
+        - indices:data/read/*
+        - indices:data/write/*
+        - indices:monitor/stats
