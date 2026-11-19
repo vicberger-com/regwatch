@@ -6,6 +6,7 @@ inside the container (psql, pg_dump), so the host needs no PostgreSQL client.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 import uuid
@@ -18,6 +19,9 @@ from alembic import command
 from alembic.config import Config
 
 API_DIR = Path(__file__).resolve().parents[2]
+# Server settings for the load test (BL-118), e.g. "-c shared_buffers=2GB -c work_mem=32MB";
+# empty for every other test run.
+PG_ARGS = tuple(os.environ.get("REGWATCH_PG_ARGS", "").split())
 PG_IMAGE = "postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a"
 PASSWORD = "it-only"  # noqa: S105 - throwaway container bound to 127.0.0.1
 APP_PASSWORD = "it-app-only"  # noqa: S105 - regwatch_api, as deploy/db-init creates it
@@ -70,7 +74,7 @@ def postgres() -> Iterator[Postgres]:
     name = f"regwatch-it-{uuid.uuid4().hex[:8]}"
     _docker(
         "run", "-d", "--rm", "--name", name, "-e", f"POSTGRES_PASSWORD={PASSWORD}",
-        "-p", "127.0.0.1::5432", PG_IMAGE,
+        "-p", "127.0.0.1::5432", PG_IMAGE, *PG_ARGS,
     )  # fmt: skip
     try:
         port = int(_docker("port", name, "5432/tcp").splitlines()[0].rsplit(":", 1)[1])

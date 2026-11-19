@@ -18,7 +18,6 @@ import time
 import unicodedata
 import uuid
 from datetime import datetime
-from typing import Any
 
 import structlog
 from sqlalchemy import func, select, text
@@ -123,7 +122,8 @@ async def summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | No
     }  # fmt: skip
 
 
-async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, list[FacetCount]]:  # noqa: ANN401
+async def facet_counts(db: AsyncSession, ids: list[uuid.UUID],
+                       query: Query) -> dict[str, list[FacetCount]]:  # fmt: skip
     """Per facet shown in the filters, and for jurisdictions: the matching items each value has
     (never an ``incorrect`` term), at most ``FACET_VALUES`` values a facet, most first; over the
     ``FACET_SAMPLE`` most recently changed matches; cached ``FACET_TTL`` seconds per query (M5
@@ -133,12 +133,13 @@ async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, li
     now = time.monotonic()
     if (hit := _facet_cache.get(key)) is not None and now - hit[0] < FACET_TTL:
         return hit[1]
-    matched = ids.limit(FACET_SAMPLE).subquery()
+    if not ids:
+        return {}
     out: dict[str, list[FacetCount]] = {}
     terms = await db.execute(
         select(Facet.key, Term.key, Term.label, func.count(func.distinct(ItemTerm.item_id)))
         .join(Term, Term.id == ItemTerm.term_id).join(Facet, Facet.id == Term.facet_id)
-        .where(ItemTerm.item_id.in_(select(matched.c.id)), Facet.show_in_filters,
+        .where(ItemTerm.item_id.in_(ids), Facet.show_in_filters,
                ItemTerm.feedback.is_distinct_from("incorrect"))
         .group_by(Facet.key, Term.key, Term.label))  # fmt: skip
     for facet, term, label, count in terms.tuples().all():
@@ -147,7 +148,7 @@ async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, li
         select(Jurisdiction.code, Jurisdiction.name,
                func.count(func.distinct(ItemJurisdiction.item_id)))
         .join(ItemJurisdiction, ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
-        .where(ItemJurisdiction.item_id.in_(select(matched.c.id)))
+        .where(ItemJurisdiction.item_id.in_(ids))
         .group_by(Jurisdiction.code, Jurisdiction.name))  # fmt: skip
     # The contract's name for it (slice 2 S11); a facet may not be called that.
     out["jurisdiction"] = [FacetCount(key=c, label=n, count=k) for c, n, k in places.tuples()]
@@ -194,11 +195,14 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     limited(user_id)
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     compiled = compile_query(query, await resolve_terms(db, query.filters))
-    counted = (compiled.matches if compiled.matches is not None else compiled.ids).limit(
-        MAX_TOTAL + 1).subquery()  # fmt: skip
+    # The newest matching ids, read once: their number is ``total`` and their first
+    # ``FACET_SAMPLE`` are what facets count (BL-118: the match query ran three times).
+    newest = (compiled.matches if compiled.matches is not None else compiled.ids).limit(
+        MAX_TOTAL + 1)  # fmt: skip
     paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
     try:
-        total = int(await db.scalar(select(func.count()).select_from(counted)) or 0)
+        matched_ids = list((await db.scalars(newest)).all())
+        total = len(matched_ids)
         page_ids = list((await db.scalars(paged)).all())
     except DBAPIError as exc:
         if not timed_out(exc):
@@ -231,8 +235,7 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     facets: dict[str, list[FacetCount]] = {}
     if query.facet_counts:
         try:
-            facets = await facet_counts(db, compiled.matches if compiled.matches is not None
-                                        else compiled.ids, query)  # fmt: skip
+            facets = await facet_counts(db, matched_ids[:FACET_SAMPLE], query)
         except DBAPIError as exc:  # past the timeout: the results without counts (S9)
             if not timed_out(exc):
                 raise
