@@ -1,6 +1,6 @@
 # M4 Processing and enrichment: module completion record
 
-**Branches:** `feat/M4-items` (items, pipeline, item routes), `feat/M4-enrichment` (language, near-duplicates, classifier, snapshots, dates, PDF and XHTML, translation), both stacked under `feat/M5-map`. · **Date:** 2026-11-19 · **Status:** acceptance 1 to 6 met by tests. The fixes made after sign-off are listed below; they wait for the M4 completion review.
+**Branches:** `feat/M4-items` (items, pipeline, item routes), `feat/M4-enrichment` (language, near-duplicates, classifier, snapshots, dates, PDF and XHTML, translation), both stacked under `feat/M5-map`. · **Date:** 2026-11-19 · **Status:** acceptance 1 to 6 met by tests. **M4 completion review signed off 2026-11-19 at `dca0392`**: every fix after the earlier sign-offs holds; CP-21 adds about 0.33 ms per insert; no high or medium finding open.
 
 ## Acceptance criteria (`docs/modules/M4-processing-enrichment.md`)
 
@@ -23,7 +23,7 @@
 | Enrichment: snapshots, effective dates, PDF and XHTML, translation, SafeFetcher POST | `9589c35` to `bf3f55a`, `ad97c7a` | `M4-pipeline-review.md` (9, 10) | yes (10) |
 | Corpus quality report | `1cd1ebe` | n/a (a test) | n/a |
 
-**Fixed after sign-off, waiting for the M4 completion review:**
+**Fixed after sign-off, verified in the M4 completion review:**
 - N17: an unfetched copy never silences a fetched item.
 - `76fe9c8`: the event kind no longer shadows the source kind.
 - N25 to N29 (`bb672a2`):
@@ -32,6 +32,8 @@
   - the translation budget and failure stop;
   - redaction;
   - https for the translator.
+
+Notes from the completion review (info): rule recall over the corpus is 0.283 (supply-chain-security 0.00, incident-reporting 0.11); the plan sets only a precision floor. The corpus test runs geotag and the rule engine, not the end-to-end chain.
 
 ## Decisions made during M4
 
