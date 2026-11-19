@@ -1,6 +1,6 @@
 """Search, CSV export, map activity and saved view routes; mounted under /api/v1.
 
-Stubs answer 501 until M5.
+``POST /search`` is implemented (M5); the others answer 501 until their slice.
 """
 
 from __future__ import annotations
@@ -11,7 +11,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
+from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, spec
+from regwatch.identity.permissions import CurrentPrincipal
+from regwatch.search import services
 from regwatch.search.schemas import MapActivity, SavedView, SavedViewWrite, SearchResult
 from regwatch.search.schemas import Query as SearchQuery
 
@@ -19,9 +22,9 @@ router = APIRouter(tags=["search"])
 READ = "items.read"
 
 
-@router.post("/search", **spec(SearchResult, desc="Results", perm=READ, errors=(400,)))
-async def search(body: SearchQuery) -> NoReturn:
-    not_implemented()
+@router.post("/search", **spec(SearchResult, desc="Results", perm=READ, errors=(400,), stub=False))
+async def search(body: SearchQuery, principal: CurrentPrincipal, db: DbSession) -> SearchResult:
+    return await services.search(db, body, principal.user.id)
 
 
 @router.post(
