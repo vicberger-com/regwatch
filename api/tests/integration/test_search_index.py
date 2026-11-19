@@ -159,7 +159,8 @@ async def test_admin_changes_that_alter_documents_queue_them(
         monkeypatch.setenv(key, value)
     get_settings.cache_clear()
     sent: list[tuple[str, str]] = []
-    monkeypatch.setattr(tasks, "_send_matching", lambda kind, key: sent.append((kind, key)))
+    monkeypatch.setattr(tasks, "_send_matching",
+                        lambda kind, key, countdown=None: sent.append((kind, key)))  # fmt: skip
     monkeypatch.setattr(tasks, "queue_index", _nothing)  # the tag edit below: not under test
     sid = await made_source(admin)
     rows = [{"url": f"https://example.org/bl120/{n}", "text": f"{n}. " + BSI,
@@ -227,7 +228,10 @@ async def test_admin_changes_that_alter_documents_queue_them(
     async with db.bind.connect() as other_session:  # type: ignore[union-attr]
         async with other_session.begin():
             await other_session.execute(select(func.pg_advisory_xact_lock(tasks.REBUILD_LOCK)))
-            assert await tasks._reindex() == 0  # another rebuild holds the lock
+            assert await tasks._reindex() == tasks.BUSY  # another rebuild holds the lock
+            sent.clear()
+            assert await tasks._index_matching("source", uuid.UUID(sid)) == tasks.BUSY
+            assert sent == [("source", sid)]  # retried after the running rebuild
     assert rebuilt == [True]
 
 

@@ -33,6 +33,8 @@ from regwatch.search import index
 MAX_IDS = 2000  # one task; more are split
 FULL_REINDEX_OVER = 50_000  # an admin change touching more items rebuilds everything instead
 REBUILD_LOCK = 0x5EA2C4  # one rebuild at a time; no other code takes this advisory lock
+BUSY = -1  # _reindex: another rebuild holds the lock
+RETRY_BUSY_S = 600  # an admin change's rebuild waits this long for a running one, then retries
 PENDING_S = 900  # a pending request for one object coalesces the next ones for this long
 KINDS = ("source", "jurisdiction", "term")
 _PUBLISHERS = anyio.CapacityLimiter(4)
@@ -59,13 +61,13 @@ def index_items(item_ids: list[str]) -> None:
 
 
 async def _reindex() -> int:
-    """Every document, unless another rebuild holds the lock (then 0)."""
+    """Every document, unless another rebuild holds the lock (then ``BUSY``)."""
     engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
     try:
         async with session_factory(engine)() as db:
             if not await db.scalar(select(func.pg_try_advisory_xact_lock(REBUILD_LOCK))):
                 _log.info("reindex_skipped", reason="a rebuild is running")
-                return 0
+                return BUSY
             client = index.IndexClient()
             await index.ensure(client)
             await index.bulk_mode(client, True)
@@ -89,10 +91,11 @@ def _send(item_ids: list[str]) -> None:
     celery_app().send_task("search.index_items", args=[item_ids], queue="process")
 
 
-def _send_matching(kind: str, key: str) -> None:
+def _send_matching(kind: str, key: str, countdown: float | None = None) -> None:
     from regwatch.core.worker import celery_app
 
-    celery_app().send_task("search.index_matching", args=[kind, key], queue="process")
+    celery_app().send_task("search.index_matching", args=[kind, key], queue="process",
+                           countdown=countdown)  # fmt: skip
 
 
 def _pending(kind: str, key: str) -> str:
@@ -129,7 +132,10 @@ async def _index_matching(kind: str, key: uuid.UUID) -> int:
                 return await index.index_items(db, ids, writer)
     finally:
         await engine.dispose()
-    return await _reindex()
+    done = await _reindex()
+    if done == BUSY:  # the running rebuild may have passed these items: run again after it
+        _send_matching(kind, str(key), countdown=RETRY_BUSY_S)
+    return done
 
 
 @shared_task(name="search.index_matching", queue="process")  # type: ignore[untyped-decorator]
@@ -178,11 +184,12 @@ async def queue_matching(kind: str, key: uuid.UUID) -> None:
                                                    limiter=_PUBLISHERS,
                                                    abandon_on_cancel=True)  # fmt: skip
                 except BaseException:  # nothing was queued: let the next change try
-                    retry = _valkey()
-                    try:
-                        await retry.delete(_pending(kind, str(key)))
-                    finally:
-                        await retry.aclose()
+                    with anyio.CancelScope(shield=True):  # even when the deadline cancelled us
+                        retry = _valkey()
+                        try:
+                            await retry.delete(_pending(kind, str(key)))
+                        finally:
+                            await retry.aclose()
                     raise
     except Exception as exc:  # noqa: BLE001 - indexing never fails the change itself
         _log.warning("index_queue_failed", error=type(exc).__name__, kind=kind)

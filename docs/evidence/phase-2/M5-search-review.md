@@ -104,3 +104,30 @@ Remaining, not blocking:
 - **The index name was not bumped.** The mapping gained `title.sort` while the index stays `regwatch-items-v1`. No stack outside the tests has built the index yet (the owner's `index-setup.sh` step is pending), so v1 stands.
 - **Hash failures:** `index-setup.sh` now stops if a hash is empty.
 - **Facet labels:** the label lookup in `_labelled` runs before the statement timeout is set. It is two small indexed queries, accepted.
+
+## BL-120 index freshness review (ae554ef): not signed off
+
+One blocking Medium finding:
+- **1:** nothing debounced the indexing an admin change queued. Toggling a large source's credibility queued back-to-back full rebuilds on the 2-slot worker shared with capture and processing.
+
+Two Low findings and one Info:
+- **2 (Low):** rebuilding in place hides live writes and can leave refresh off.
+- **3 (Low):** the request waited on publishing.
+- **4 (Info):** the catch-up never removes documents.
+
+The review also found these fine: transaction and session safety, hook coverage, privilege, and leaks.
+
+## BL-120 re-verification (160c3ac): signed off
+
+Findings 1 and 3 are fixed:
+- one coalesced `search.index_matching` is published per changed object (Valkey `SET NX`);
+- the worker selects the items;
+- one rebuild runs at a time (advisory lock).
+
+Findings 2 and 4, and a separate index queue, are BL-121.
+
+Two Low points were fixed after the sign-off, in the commit after `160c3ac`:
+- **(1)** a change whose rebuild finds another running is retried after 10 minutes, rather than waiting for the nightly run;
+- **(2)** the pending key's cleanup after a failed publish runs shielded from the deadline's cancellation.
+
+One Info point is accepted until BL-121: the rebuild holds one transaction open for its whole run.
