@@ -76,9 +76,9 @@ export function createEngine(
         { id: "background", type: "background", paint: { "background-color": "rgba(0,0,0,0)" } },
         { id: "fill", type: "fill", source: "countries", paint: { "fill-color": fill(colours) as never } },
         { id: "border", type: "line", source: "countries", paint: { "line-color": colours.border, "line-width": 0.5 } },
+        { id: "selected", type: "line", source: "countries", filter: ["==", ["get", "iso"], ""], paint: { "line-color": colours.selected, "line-width": 2 } },
         { id: "disputed", type: "fill", source: "disputed", paint: { "fill-color": colours.disputed } },
         { id: "disputed-line", type: "line", source: "disputed", paint: { "line-color": colours.border, "line-dasharray": [2, 2] } },
-        { id: "selected", type: "line", source: "countries", filter: ["==", ["get", "iso"], ""], paint: { "line-color": colours.selected, "line-width": 2 } },
       ],
     },
     attributionControl: false,
@@ -115,6 +115,9 @@ export function createEngine(
   });
   map.on("resize", fit); // until then, changes are kept and applied on load
   map.on("click", "fill", (e: MapLayerMouseEvent) => {
+    // A disputed area drawn on top is nobody's to select (ADR-0004 decision 5).
+    if (map.queryRenderedFeatures(e.point, { layers: ["disputed"] }).length > 0)
+      return;
     const iso = e.features?.[0]?.properties.iso as string | undefined;
     if (iso && /^[A-Z]{2}$/.test(iso)) on.onSelect(iso);
   });

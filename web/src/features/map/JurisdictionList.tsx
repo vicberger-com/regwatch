@@ -22,6 +22,14 @@ export function JurisdictionList(props: {
   const [active, setActive] = useState(0);
   const { entries } = props;
   const at = Math.min(active, Math.max(0, entries.length - 1));
+  // A selection made on the map moves the active option too (state adjusted during render,
+  // as React recommends over an effect).
+  const [seen, setSeen] = useState(props.selected);
+  if (props.selected !== seen) {
+    setSeen(props.selected);
+    const index = entries.findIndex((e) => e.code === props.selected);
+    if (index >= 0) setActive(index);
+  }
 
   const move = (to: number) => {
     const next = Math.min(entries.length - 1, Math.max(0, to));

@@ -4,29 +4,10 @@ import { useMemo, useState } from "react";
 import { problemText } from "@/lib/auth/session";
 
 import { activityQuery, PERIODS } from "./api";
+import { jurisdictionName } from "./names";
 import { JurisdictionList } from "./JurisdictionList";
-import { legend, steps as stepsOf, type Encoding } from "./scale";
+import { legend, steps as stepsOf, wellFormed, type Encoding } from "./scale";
 import { WorldMap } from "./WorldMap";
-
-const names = new Intl.DisplayNames(["en"], {
-  type: "region",
-  fallback: "code",
-});
-const SUPRANATIONAL: Record<string, string> = {
-  EU: "European Union",
-  COE: "Council of Europe",
-  OECD: "OECD",
-  UN: "United Nations",
-  INTL: "International",
-};
-export function jurisdictionName(code: string): string {
-  if (SUPRANATIONAL[code]) return SUPRANATIONAL[code];
-  try {
-    return /^[A-Z]{2}$/.test(code) ? (names.of(code) ?? code) : code;
-  } catch {
-    return code;
-  }
-}
 
 const ENCODINGS: { value: Encoding; label: string }[] = [
   { value: "recency", label: "Recency" },
@@ -43,7 +24,8 @@ export function MapPage() {
   const [encoding, setEncoding] = useState<Encoding>("recency");
   const [selected, setSelected] = useState<string | null>(null);
   const activity = useQuery(activityQuery(period));
-  const rows = useMemo(() => activity.data?.rows ?? [], [activity.data]);
+  // Only well-formed rows: a broken answer must not take the page down.
+  const rows = useMemo(() => wellFormed(activity.data?.rows), [activity.data]);
 
   const steps = useMemo(() => {
     if (!activity.data) return new Map();
@@ -86,7 +68,7 @@ export function MapPage() {
       <h1 className="text-2xl font-semibold">Map</h1>
       <div
         className="mt-4 flex flex-wrap items-end gap-4"
-        role="toolbar"
+        role="group"
         aria-label="Map options"
       >
         <label className="flex flex-col text-sm">
@@ -127,7 +109,11 @@ export function MapPage() {
           ? "Loading activity…"
           : activity.isError
             ? ""
-            : `${plural(entries.length, "jurisdiction", "jurisdictions")} with changes in ${periodText}`}
+            : `${plural(entries.length, "jurisdiction", "jurisdictions")} with changes in ${periodText}${
+                selected
+                  ? `. Selected: ${jurisdictionName(selected)}, ${describe(selected)}`
+                  : ""
+              }`}
       </p>
       {activity.isError && (
         <p role="alert" className="mt-2 text-critical">
@@ -155,6 +141,10 @@ export function MapPage() {
               </li>
             ))}
           </ol>
+          <p className="mt-1 text-sm text-text-muted">
+            Boundaries from Natural Earth; disputed areas are drawn neutral. The
+            map implies no endorsement of any boundary or claim.
+          </p>
         </div>
         <JurisdictionList
           label={`Jurisdictions with changes in ${periodText}, newest first`}

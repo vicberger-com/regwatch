@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { legend, step, steps, type ActivityRow } from "./scale";
+import { legend, step, steps, wellFormed, type ActivityRow } from "./scale";
 
 const period = {
   start: new Date("2026-10-20T00:00:00Z"),
@@ -73,5 +73,21 @@ describe("map colour steps", () => {
   it("labels five steps for every encoding", () => {
     for (const e of ["recency", "count", "severity"] as const)
       expect(legend(e)).toHaveLength(5);
+  });
+});
+
+describe("answer checks", () => {
+  it("keeps only rows of the documented shape", () => {
+    const good = { code: "DE", count: 1, max_severity: "info" };
+    expect(wellFormed({ rows: [] })).toEqual([]);
+    expect(
+      wellFormed([
+        good,
+        null,
+        { code: "__proto__", count: 1, max_severity: "info" },
+        { code: "FR", count: "1", max_severity: "info" },
+        { code: "IT", count: 1, max_severity: "x" },
+      ]),
+    ).toEqual([good]);
   });
 });

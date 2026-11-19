@@ -65,3 +65,22 @@ export function legend(encoding: Encoding): string[] {
     return ["No change", "Fewest", "", "", "Most changes"];
   return ["No change", "Oldest in period", "", "", "Most recent"];
 }
+
+const SEVERITIES = new Set(["none", "info", "notable", "major"]);
+
+/** The rows of an answer that have the documented shape (openapi-fetch checks nothing). */
+export function wellFormed(rows: unknown): ActivityRow[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r: unknown): r is ActivityRow => {
+    if (typeof r !== "object" || r === null) return false;
+    const row = r as Record<string, unknown>;
+    return (
+      typeof row.code === "string" &&
+      /^[A-Z0-9_-]{2,16}$/.test(row.code) &&
+      typeof row.count === "number" &&
+      Number.isFinite(row.count) &&
+      typeof row.max_severity === "string" &&
+      SEVERITIES.has(row.max_severity)
+    );
+  });
+}
