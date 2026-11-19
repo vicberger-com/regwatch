@@ -54,7 +54,20 @@ describe("command registry", () => {
     }).toThrow(/exactly one/);
   });
 
-  it("registering again replaces the command", () => {
+  it("refuses a different command under a taken id", () => {
+    registerShellCommands();
+    expect(() => {
+      registerCommand({
+        id: "nav.settings",
+        label: "Settings",
+        icon: Map,
+        to: "/admin",
+        order: 60,
+      });
+    }).toThrow(/already registered/);
+  });
+
+  it("registering the shell commands again is harmless", () => {
     registerShellCommands();
     registerShellCommands();
     expect(commandsFor(withPermissions(["users.manage"]))).toHaveLength(2);

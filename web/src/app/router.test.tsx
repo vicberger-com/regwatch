@@ -156,6 +156,8 @@ describe("session helpers", () => {
     expect(safeNext("//evil.example")).toBe("/");
     expect(safeNext("https://evil.example")).toBe("/");
     expect(safeNext(undefined)).toBe("/");
+    expect(safeNext("/\\evil.example")).toBe("/");
+    expect(safeNext("/ok\tthen")).toBe("/");
   });
 
   it("reads permissions from the signed-in user", () => {

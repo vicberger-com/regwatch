@@ -34,7 +34,22 @@ export function registerCommand(command: Command): void {
       `command ${command.id}: give exactly one of "to" and "run"`,
     );
   }
+  const taken = registry.get(command.id);
+  if (taken && taken !== command && !sameCommand(taken, command)) {
+    throw new Error(`command ${command.id} is already registered`);
+  }
   registry.set(command.id, command);
+}
+
+function sameCommand(a: Command, b: Command): boolean {
+  return (
+    a.label === b.label &&
+    a.to === b.to &&
+    a.permission === b.permission &&
+    String(a.anyPermission) === String(b.anyPermission) &&
+    a.order === b.order &&
+    a.icon === b.icon
+  );
 }
 
 export function allowed(command: Command, me: Me | null | undefined): boolean {
@@ -65,15 +80,69 @@ export function railCommands(me: Me | null | undefined): Command[] {
   );
 }
 
+/** The admin areas of the settings home (screens.md `/admin`), each with the permission its
+ * route checks. */
+export const ADMIN_AREAS = [
+  {
+    to: "/admin/users",
+    title: "Users",
+    text: "Accounts, roles and temporary passwords.",
+    permission: "users.manage",
+  },
+  {
+    to: "/admin/roles",
+    title: "Roles",
+    text: "Permissions grouped by module.",
+    permission: "roles.manage",
+  },
+  {
+    to: "/admin/settings",
+    title: "Settings",
+    text: "Application settings by area.",
+    permission: "settings.manage",
+  },
+  {
+    to: "/admin/branding",
+    title: "Branding and legal",
+    text: "Logo, title, colour and the legal page.",
+    permission: "settings.manage",
+  },
+  {
+    to: "/admin/flags",
+    title: "Feature flags",
+    text: "Optional features and providers.",
+    permission: "settings.manage",
+  },
+  {
+    to: "/admin/audit",
+    title: "Audit log",
+    text: "Who changed what, with before and after.",
+    permission: "audit.read",
+  },
+  {
+    to: "/admin/taxonomy",
+    title: "Taxonomy",
+    text: "Facets, terms and match rules.",
+    permission: "taxonomy.read",
+  },
+  {
+    to: "/admin/jurisdictions",
+    title: "Jurisdictions",
+    text: "Countries, regions and bodies.",
+    permission: "taxonomy.read",
+  },
+  {
+    to: "/admin/sources",
+    title: "Sources",
+    text: "Capture sources, schedules and runs.",
+    permission: "sources.read",
+  },
+] as const;
+
 /** Every admin permission that opens an area of the settings home. */
 export const ADMIN_PERMISSIONS = [
-  "users.manage",
-  "roles.manage",
-  "settings.manage",
-  "audit.read",
-  "taxonomy.read",
-  "sources.read",
-] as const;
+  ...new Set(ADMIN_AREAS.map((a) => a.permission)),
+];
 
 /**
  * The shell's own commands. Items (20), Reports (30), Outputs (40) and User (50) register

@@ -27,10 +27,12 @@ export function AppShell() {
         <BrandMark />
         <div className="flex items-center gap-3">
           <ThemeSwitch />
-          <span className="text-text-muted">{me.display_name}</span>
+          <span className="max-w-48 truncate text-text-muted">
+            {me.display_name}
+          </span>
           <button
             type="button"
-            className="rounded border border-border px-2 py-1"
+            className="shrink-0 rounded border border-border px-2 py-1"
             disabled={logout.isPending}
             onClick={() => {
               logout.mutate(undefined, {

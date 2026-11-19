@@ -118,8 +118,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Tailwind CSS | styling | MIT | V `c2b24dd` | dependency | M6 |
 | shadcn/ui, Radix UI | accessible components | MIT | V `96da9cc`, `9aebdd4` | vendored (by design) | M6 |
 | MapLibre GL JS | map rendering | BSD-3 | V `538a768` | dependency | M6 |
-| lucide-react 1.76.0 | toolbar and rail icons (screens.md component conventions; owner approved 2026-11-19 on recommendation); no runtime dependencies | ISC | V `de8d11a` (tag 1.76.0) | dependency | M6 |
-| Inter variable font 4.1 (latin and latin-ext woff2, taken from @fontsource-variable/inter 5.3.0) | the design brief's typeface, self-hosted in `web/src/styles/fonts/` with its license (no font CDN); owner approved 2026-11-19 on recommendation | OFL-1.1 (allowed for fonts, 3.5) | V `e3a3d4c` (rsms/inter v4.1); fontsource `5a72889` (untagged HEAD, 2026-11-19) | vendored font files | M6 |
+| lucide-react 1.76.0 | toolbar and rail icons (screens.md component conventions; owner approved 2026-11-19 on recommendation); no runtime dependencies; notices in `web/THIRD_PARTY_NOTICES.md` | ISC AND MIT (Feather-derived icons) | V `de8d11a` (tag 1.76.0) | dependency | M6 |
+| Inter variable font 4.1 (latin and latin-ext woff2, taken from @fontsource-variable/inter 5.3.0) | the design brief's typeface, self-hosted in `web/src/styles/fonts/` with its license (no font CDN; sha256 in `web/THIRD_PARTY_NOTICES.md`); owner approved 2026-11-19 on recommendation | OFL-1.1 (allowed for fonts, 3.5) | V `e3a3d4c` (rsms/inter v4.1); fontsource `5a72889` (untagged HEAD, 2026-11-19) | vendored font files | M6 |
 | Natural Earth 1:50m admin-0 | country boundaries and disputed-areas overlay (v5.1.2, built to GeoJSON by script; R-05, ADR-0004) | Public domain | V `f1890d9` | vendored data | M6 |
 | world-atlas / topojson-client | simplified topology | ISC | V `a912c0a`, `71e5bd6` | reject: GeoJSON built from Natural Earth instead (R-05, BL-12) | M6 |
 | mapshaper | build-time boundary simplification and conversion | MPL-2.0 | V `b44c0fa` | tooling | M6 |

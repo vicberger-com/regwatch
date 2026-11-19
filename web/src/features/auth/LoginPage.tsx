@@ -82,6 +82,14 @@ export function LoginPage({ next }: { next?: string | undefined }) {
 
 /** Only same-site paths are followed after sign-in (no open redirect). */
 export function safeNext(next: string | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  // "/\\host" reads as "//host" in browsers; control characters are never part of a path.
+  if (
+    !next ||
+    !next.startsWith("/") ||
+    next.startsWith("//") ||
+    /[\\\u0000-\u001f\u007f]/.test(next)
+  ) {
+    return "/";
+  }
   return next;
 }
