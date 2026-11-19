@@ -31,3 +31,13 @@ def test_only_mark_tags_ever_appear(value: str, q: str) -> None:
     for out in highlight(value, words(q), snippet=True):
         stripped = out.replace("<mark>", "").replace("</mark>", "")
         assert "<" not in stripped and ">" not in stripped
+
+
+def test_case_and_normal_forms_still_highlight() -> None:
+    """Search review finding 11."""
+    import unicodedata
+
+    assert highlight("Die Straße ist", words("Straße")) == ["Die <mark>Straße</mark> ist"]
+    nfd = unicodedata.normalize("NFD", "le café et l'école")
+    (got,) = highlight(nfd, words(unicodedata.normalize("NFD", "école café")))
+    assert got == "le <mark>café</mark> et l&#x27;<mark>école</mark>"

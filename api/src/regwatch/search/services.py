@@ -11,31 +11,41 @@ captured (hostile) text, only ``<mark>`` and ``</mark>`` around escaped words.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import html
 import re
 import time
+import unicodedata
 import uuid
+from datetime import datetime
 
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.models import Source
+from regwatch.core.errors import ProblemError
+from regwatch.core.settings import get_settings
+from regwatch.identity.services import SlidingWindow
 from regwatch.processing.models import ChangeEvent, Item, ItemJurisdiction, ItemTerm
 from regwatch.processing.schemas import ItemJurisdiction as PlaceOut
 from regwatch.processing.schemas import ItemSummary, TermAssignment
-from regwatch.search.query import compile_query
+from regwatch.search.query import check, compile_query, period, resolve_terms
+from regwatch.search.query import words as query_words
 from regwatch.search.schemas import Query, SearchResult
 from regwatch.taxonomy.models import Facet, Jurisdiction, Term
 
-MAX_WORDS = 20
+SEARCH_RATE = 60  # per user and minute (08 security 8.2)
+STATEMENT_TIMEOUT = "5s"
+MAX_TOTAL = 10_000
+searches = SlidingWindow(60.0)
 SNIPPET = 300
 _RANK = {"info": 0, "notable": 1, "major": 2}
 _log = structlog.get_logger(__name__)
 
 
 def words(q: str) -> list[str]:
-    return list(dict.fromkeys(re.findall(r"\w+", q.casefold())))[:MAX_WORDS]
+    return query_words(unicodedata.normalize("NFC", q))
 
 
 def highlight(value: str | None, found: list[str], snippet: bool = False) -> list[str]:
@@ -43,7 +53,9 @@ def highlight(value: str | None, found: list[str], snippet: bool = False) -> lis
     ``snippet``. Empty if nothing matches."""
     if not value or not found:
         return []
-    pattern = re.compile(r"\b(" + "|".join(map(re.escape, found)) + r")\b", re.IGNORECASE)
+    value = unicodedata.normalize("NFC", value)  # an accent stays with its letter (finding 11)
+    pattern = re.compile(r"(?<!\w)(" + "|".join(map(re.escape, found)) + r")(?!\w)",
+                         re.IGNORECASE)  # fmt: skip
     first = pattern.search(value)
     if first is None:
         return []
@@ -59,7 +71,8 @@ def highlight(value: str | None, found: list[str], snippet: bool = False) -> lis
     return ["".join(out)]
 
 
-async def _summaries(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, ItemSummary]:
+async def _summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | None = None,
+                     end: datetime | None = None) -> dict[uuid.UUID, ItemSummary]:  # fmt: skip
     items = {i.id: i for i in (await db.scalars(select(Item).where(Item.id.in_(ids)))).all()}
     names = dict((await db.execute(select(Source.id, Source.name).where(
         Source.id.in_({i.source_id for i in items.values()})))).tuples().all())  # fmt: skip
@@ -85,7 +98,9 @@ async def _summaries(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, 
     levels: dict[uuid.UUID, str] = {}
     for item_id, level in (await db.execute(
             select(ChangeEvent.item_id, ChangeEvent.severity).distinct()
-            .where(ChangeEvent.item_id.in_(ids)))).tuples():  # fmt: skip
+            .where(ChangeEvent.item_id.in_(ids),
+                   *([ChangeEvent.occurred_at >= start] if start else []),
+                   *([ChangeEvent.occurred_at <= end] if end else [])))).tuples():  # fmt: skip
         if _RANK.get(level, -1) > _RANK.get(levels.get(item_id, ""), -1):
             levels[item_id] = level
     return {
@@ -100,28 +115,54 @@ async def _summaries(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, 
     }  # fmt: skip
 
 
+def _limited(user_id: uuid.UUID | None) -> None:
+    key = str(user_id)
+    if searches.count(key) >= SEARCH_RATE:
+        raise ProblemError(429, "rate-limited", "Too many searches; try again shortly.",
+                           headers={"Retry-After": str(searches.retry_after(key))})  # fmt: skip
+    searches.hit(key)
+
+
+def query_hash(query: Query) -> str:
+    """Keyed, so a log reader cannot confirm a guessed query (finding 13); stable, so the facet
+    cache can key on it."""
+    key = get_settings().secret_key.get_secret_value().encode()
+    body = query.model_dump_json(exclude_unset=True).encode()
+    return hmac.new(key, body, hashlib.sha256).hexdigest()[:16]
+
+
 async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> SearchResult:
+    """One search: at most ``SEARCH_RATE`` a minute per user (8.2), ``STATEMENT_TIMEOUT`` per
+    statement (finding 1), an exact total up to ``MAX_TOTAL`` (finding 5)."""
     started = time.monotonic()
-    compiled = compile_query(query)
-    total = int(await db.scalar(select(func.count()).select_from(compiled.ids.subquery())) or 0)
+    check(query)
+    _limited(user_id)
+    await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
+    compiled = compile_query(query, await resolve_terms(db, query.filters))
+    counted = compiled.ids.order_by(None).limit(MAX_TOTAL + 1).subquery()
+    total = int(await db.scalar(select(func.count()).select_from(counted)) or 0)
     paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
     page_ids = list((await db.scalars(paged)).all())
-    found = await _summaries(db, page_ids) if page_ids else {}
+    start, end = period(query.filters)
+    found = await _summaries(db, page_ids, start, end) if page_ids else {}
     marks = words(query.q or "") if query.highlight else []
     items = []
     for item_id in page_ids:
-        summary = found[item_id]
+        summary = found.get(item_id)
+        if summary is None:  # removed meanwhile (finding 16)
+            continue
         if marks:
             lit: dict[str, list[str]] = {}
             for field, value, snip in (("title", summary.title, False),
-                                       ("summary", summary.summary, True)):  # fmt: skip
+                                       ("summary", summary.summary, True),
+                                       ("title_en", summary.title_en, False),
+                                       ("summary_en", summary.summary_en, True)):  # fmt: skip
                 if got := highlight(value, marks, snip):
                     lit[field] = got
             summary.highlights = lit
         items.append(summary)
     took = int((time.monotonic() - started) * 1000)
-    digest = hashlib.sha256(query.model_dump_json(exclude_unset=True).encode()).hexdigest()[:16]
-    _log.info("search", query_hash=digest, user_id=str(user_id) if user_id else None,
-              took_ms=took, total=total)  # fmt: skip
-    return SearchResult(items=items, total=total, page=query.page, page_size=query.page_size,
-                        facets={}, took_ms=took)  # fmt: skip
+    _log.info("search", query_hash=query_hash(query),
+              user_id=str(user_id) if user_id else None, took_ms=took, total=total)  # fmt: skip
+    return SearchResult(items=items, total=min(total, MAX_TOTAL), page=query.page,
+                        page_size=query.page_size, facets={}, took_ms=took)  # fmt: skip

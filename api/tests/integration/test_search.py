@@ -23,6 +23,13 @@ __all__ = ["admin", "clear_limits", "db", "db_url", "fixed_dns"]  # shared fixtu
 TAG = uuid.uuid4().hex[:8]  # a word only this module's items carry
 
 
+@pytest.fixture(autouse=True)
+def clear_search_rate() -> None:
+    from regwatch.search import services
+
+    services.searches._hits.clear()
+
+
 async def corpus(admin: httpx.AsyncClient, db: AsyncSession) -> str:
     sid = await made_source(admin)
     rows = [
@@ -86,7 +93,7 @@ async def test_filters_sort_and_paging(admin: httpx.AsyncClient, db: AsyncSessio
 @pytest.mark.parametrize(
     "q",
     ["'; DROP TABLE item; --", "NIS2 & | ! :* <-> (", "\\x00", "' OR 1=1 --", "%_%",
-     "nis2:* & !incident"],
+     "nis2:* & !incident", '"unterminated -', "a OR OR -", '""'],
 )  # fmt: skip
 async def test_hostile_queries_are_words_not_syntax(
     admin: httpx.AsyncClient, db: AsyncSession, q: str
@@ -96,11 +103,13 @@ async def test_hostile_queries_are_words_not_syntax(
         _api("/search"),
         json={
             "q": q,
-            "filters": {"jurisdictions": ["DE' OR '1'='1"], "terms": {"topic' --": ["x"]}},
+            "filters": {"jurisdictions": ["DE' OR '1'='1"], "terms": {"topic": ["x' OR '1"]}},
         },
     )
     assert got.status_code == 200, got.text
     assert got.json()["total"] == 0
+    hostile_facet = {"q": q, "filters": {"terms": {"topic' --": ["x"]}}}
+    assert (await admin.post(_api("/search"), json=hostile_facet)).status_code == 400
 
 
 @pytest.mark.parametrize(
@@ -118,3 +127,143 @@ async def test_an_anonymous_caller_searches_nothing(admin: httpx.AsyncClient) ->
                                   headers=ORIGIN)  # fmt: skip
     async with anonymous:
         assert (await anonymous.post(_api("/search"), json={})).status_code == 401
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"filters": {"terms": {f"f{n}": ["t"] for n in range(11)}}},
+     {"filters": {"languages": ["en"] * 51}}, {"filters": {"status": ["new"] * 51}},
+     {"page": 51, "page_size": 200}, {"page": 10**17},
+     {"filters": {"terms": {"no-such-facet": ["x"]}}}],
+)  # fmt: skip
+async def test_queries_past_the_limits_are_400s_not_500s(
+    admin: httpx.AsyncClient, body: dict[str, Any]
+) -> None:
+    """Search review findings 1, 3 and 14: a cheap 400 before any database work."""
+    got = await admin.post(_api("/search"), json=body)
+    assert got.status_code == 400, got.text
+
+
+async def test_searches_are_rate_limited_per_user(admin: httpx.AsyncClient) -> None:
+    """08 security 8.2: 60 a minute per user (finding 2)."""
+    from regwatch.search import services
+
+    for _ in range(services.SEARCH_RATE):
+        assert (await admin.post(_api("/search"), json={"q": "x"})).status_code == 200
+    refused = await admin.post(_api("/search"), json={"q": "x"})
+    assert refused.status_code == 429 and int(refused.headers["retry-after"]) >= 1
+
+
+async def test_repeating_a_word_never_beats_having_both(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Finding 7: matched words first, then rank."""
+    sid = await made_source(admin)
+    tag = uuid.uuid4().hex[:8]
+    rows = [{"url": f"https://example.org/{tag}/stuffed", "text": "A. " + BSI,
+             "title": f"{tag} NIS2 NIS2 NIS2 guidance", "summary": "NIS2 " * 40},
+            {"url": f"https://example.org/{tag}/both", "text": "B. " + BSI,
+             "title": f"{tag} NIS2 incident reporting guidance"}]  # fmt: skip
+    key, objects = manifest(sid, uuid.uuid4(), rows)
+    await process_manifest(db, key, loader(objects))
+    got = (await admin.post(_api("/search"), json={"q": f"{tag} NIS2 incident"})).json()
+    assert got["items"][0]["title"].endswith("incident reporting guidance")
+
+
+async def test_websearch_phrases_and_exclusions(admin: httpx.AsyncClient, db: AsyncSession) -> None:
+    """Finding 8: the contract's websearch syntax."""
+    await corpus(admin, db)
+    phrase = await admin.post(_api("/search"), json={"q": f'{TAG} "incident reporting"'})
+    assert [i["title"] for i in phrase.json()["items"]] == [
+        f"{TAG} NIS2 incident reporting guidance"]  # fmt: skip
+    excluded = await admin.post(_api("/search"), json={"q": f"{TAG} NIS2 -guidance"})
+    assert [i["title"] for i in excluded.json()["items"]] == [f"{TAG} NIS2 scope clarified"]
+
+
+async def test_severity_is_the_query_periods(admin: httpx.AsyncClient, db: AsyncSession) -> None:
+    """Finding 9: an old major event does not make an item major for a later period."""
+    from sqlalchemy import select, update
+
+    from regwatch.processing.models import ChangeEvent, Item
+
+    await corpus(admin, db)
+    item = await db.scalar(select(Item).where(Item.title == f"{TAG} Annual report published"))
+    assert item is not None
+    await db.execute(update(ChangeEvent).where(ChangeEvent.item_id == item.id).values(
+        severity="major", occurred_at=datetime(2001, 1, 1, tzinfo=UTC)))  # fmt: skip
+    await db.commit()
+    recent = {"severity": ["major"], "changed": {"from": "2026-01-01T00:00:00+00:00"}}
+    got = await admin.post(_api("/search"), json={"q": TAG, "filters": recent})
+    assert got.json()["total"] == 0
+    found = (await admin.post(_api("/search"), json={"q": TAG, "filters": {
+        "severity": ["major"]}})).json()  # fmt: skip
+    assert found["total"] == 1 and found["items"][0]["severity"] == "major"
+    period = (await admin.post(_api("/search"), json={"q": f"{TAG} annual", "filters": {
+        "changed": {"from": "2026-01-01T00:00:00+00:00"}}})).json()  # fmt: skip
+    assert period["items"][0]["severity"] is None
+
+
+async def test_region_europe_includes_the_european_union(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Finding 10: an item tagged only EU is in region 150."""
+    from sqlalchemy import delete, select
+
+    from regwatch.processing.models import Item, ItemJurisdiction
+    from regwatch.taxonomy.models import Jurisdiction
+
+    await corpus(admin, db)
+    item = await db.scalar(select(Item).where(Item.title == f"{TAG} NIS2 scope clarified"))
+    eu = await db.scalar(select(Jurisdiction.id).where(Jurisdiction.code == "EU"))
+    assert item is not None and eu is not None
+    await db.execute(delete(ItemJurisdiction).where(ItemJurisdiction.item_id == item.id))
+    db.add(ItemJurisdiction(item_id=item.id, jurisdiction_id=eu, assigned_by="user"))
+    await db.commit()
+    got = await admin.post(_api("/search"), json={"q": TAG, "filters": {"regions": ["150"]}})
+    assert got.json()["total"] == 3
+
+
+@pytest.mark.parametrize(
+    "raw", ['{"filters": {"languages": ["\\udfff"]}}', '{"filters": {"terms": {"\\udfff": ["x"]}}}']
+)
+async def test_a_lone_surrogate_is_a_400(admin: httpx.AsyncClient, raw: str) -> None:
+    """Finding 14: sent as JSON escapes, as no client library would encode it."""
+    got = await admin.post(
+        _api("/search"), content=raw.encode(), headers={"content-type": "application/json"}
+    )
+    assert got.status_code == 400, got.text
+
+
+async def test_a_term_filter_matches_and_an_incorrect_term_never_does(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Finding 15: a matching term filter; a term a user marked incorrect is neither matched
+    nor shown; a match in the English title is highlighted (finding 12)."""
+    from sqlalchemy import select, update
+
+    from regwatch.processing.models import Item, ItemTerm
+    from regwatch.processing.pipeline import reprocess_item
+    from regwatch.taxonomy.models import Term
+    from tests.integration.test_processing_classify import term
+
+    await corpus(admin, db)
+    rule = await term(admin, {"keywords": ["NIS2"]})
+    key = await db.scalar(select(Term.key).where(Term.id == rule))
+    items = (await db.scalars(select(Item).where(Item.title.like(f"{TAG}%")))).all()
+    for item in items:
+        await reprocess_item(db, item.id)
+    body = {"q": TAG, "filters": {"terms": {"topic": [key]}}}
+    assert (await admin.post(_api("/search"), json=body)).json()["total"] == 2
+    target = next(i for i in items if i.title.endswith("scope clarified"))
+    await db.execute(
+        update(ItemTerm)
+        .where(ItemTerm.item_id == target.id, ItemTerm.term_id == rule)
+        .values(feedback="incorrect")
+    )
+    await db.execute(update(Item).where(Item.id == target.id).values(title_en="Zebrafish scope"))
+    await db.commit()
+    assert (await admin.post(_api("/search"), json=body)).json()["total"] == 1
+    shown = (await admin.post(_api("/search"), json={"q": f"{TAG} zebrafish"})).json()
+    hit = next(i for i in shown["items"] if i["id"] == str(target.id))
+    assert str(rule) not in {t["term_id"] for t in hit["terms"]}
+    assert hit["highlights"]["title_en"] == ["<mark>Zebrafish</mark> scope"]
