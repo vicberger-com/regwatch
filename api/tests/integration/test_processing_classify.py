@@ -285,6 +285,9 @@ async def test_translation_is_off_unless_flagged_with_a_basis_and_a_url(
         await db.commit()
         assert await translator(db) is None  # no URL
         monkeypatch.setattr(settings_module, "get_settings", lambda: base.model_copy(
+            update={"translate_api_url": "http://tr.example"}))  # fmt: skip
+        assert await translator(db) is None  # plain http would send the key in clear (N29)
+        monkeypatch.setattr(settings_module, "get_settings", lambda: base.model_copy(
             update={"translate_api_url": "https://tr.example"}))  # fmt: skip
         assert isinstance(await translator(db), HttpTranslator)
     finally:

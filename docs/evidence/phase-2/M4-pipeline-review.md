@@ -168,6 +168,18 @@ Migration 0006 yes; 4.6 effective dates yes (low N22); 4.4 snapshots no (N19); 4
 | N23 | low | Relative links survived the sanitizer. | only absolute http, https and mailto links kept | pending |
 | N24 | info | UTF-16 bodies come out as mojibake; `colspan` uncapped; a snapshot written before a failed commit is orphaned; legislation.gov.uk `application/xml` gets no text. | BL-115 | deferred |
 
+## Re-verification 10 (`bf3f55a`, translation `ad97c7a`): signed off
+
+**Signed off for 4.4 to 4.7 and the SafeFetcher POST change.** N19, N20, N22 and N23 fixed, N21 partly (snapshots outside the budget, N25). SafeFetcher: a redirected POST is refused with one request recorded; CRLF in `content-type` refused; `authorization` and `cookie` still refused; private addresses refused. Translation is off by default and was not to be enabled before N26 and N27; fixed after sign-off:
+
+| # | Severity | Fix | Verified |
+| --- | --- | --- | --- |
+| N25 | medium | snapshots run only within the manifest's 10-minute extraction budget | pending (completion review) |
+| N26 | medium | every translation stored as plain text (`plain_text`, NUL removed; title 500, summary 4,000) | pending (completion review) |
+| N27 | medium | a translation budget per manifest (5 minutes) and none after 3 failures in a row; items left `translation_pending` | pending (completion review) |
+| N28 | low | redaction after NFKC: Basic and Bearer, `password`, AKIA and ASIA keys, `xox?-`, `ghp_` and `sk-`, base64-like runs with `/+=`, obfuscated emails; the summary counts within the 4,000 characters sent | pending (completion review) |
+| N29 | low | the hosted translator URL must be https | pending (completion review) |
+
 ## Checked and found fine
 - **Manifest key:** `MANIFEST.fullmatch` allows only `raw/<36 hex-or-dash>/runs/<36 hex-or-dash>.json`. `uuid.UUID` then rejects malformed ids, so a key can name no other prefix, no `..` and no absolute path (tested with `raw/../../etc/passwd`). The source and run come from the key, not the manifest body, and a run id unknown to the database stores `run_id` NULL.
 - **Manifest shape:** a missing or empty object gives no rows. A non-list `documents`, or a non-dict row, is counted and skipped. At most `MAX_ROWS` (2,000, equal to the save-time cap on `max_items_per_run`) rows are read. Malformed JSON fails the task before any write.

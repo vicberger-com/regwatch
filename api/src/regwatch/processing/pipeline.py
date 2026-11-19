@@ -31,7 +31,7 @@ from regwatch.processing.dates import effective_date
 from regwatch.processing.events import raise_events, tag_jurisdictions
 from regwatch.processing.ingest import ingest
 from regwatch.processing.models import Item, ItemTerm, ItemVersion
-from regwatch.processing.translate import Translator, translate_item, translator
+from regwatch.processing.translate import Budget, Translator, translate_item, translator
 from regwatch.taxonomy.models import Jurisdiction
 
 MANIFEST = re.compile(r"raw/([0-9a-f-]{36})/runs/([0-9a-f-]{36})\.json")
@@ -68,6 +68,7 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
     """Every document of the run whose manifest is ``key``."""
     counts = Counts()
     started = time.monotonic()
+    spend = Budget()  # translation, per manifest (N27)
     match = MANIFEST.fullmatch(key)
     if match is None:
         raise ValueError("not a run manifest key")
@@ -131,11 +132,13 @@ async def process_manifest(db: AsyncSession, key: str, load: Load,
                 hits = geotag.detect(item.title, text, item.canonical_url, defaults)
                 ids = await tag_jurisdictions(db, item, hits)
                 # Translation before classification, so English rules see it (design notes).
-                scan = await _translated(db, item, text, engine) if engine is not None else text
+                scan = (await _translated(db, item, text, engine, spend) if engine is not None
+                        else text)  # fmt: skip
                 await classify(db, item, scan, rules, terms, min_confidence)
                 if provider is not None:  # off unless flagged and implemented (acceptance 4)
                     await _by_model(db, item, text, provider, min_confidence)
-                if store is not None:  # the sanitized HTML for display (design notes)
+                # The sanitized HTML for display (design notes), within the budget (N25).
+                if store is not None and time.monotonic() - started < pdf.BUDGET_S:
                     ref = await snapshot.snapshot(row, source_id, item.id,
                                                   item.current_version_no, load, store)  # fmt: skip
                     if ref is not None:
@@ -241,11 +244,12 @@ async def _recently_handed(load: Load, key: str) -> bool:
     return datetime.now(UTC) - when < HANDED_GRACE
 
 
-async def _translated(db: AsyncSession, item: Item, text: str, engine: Translator) -> str:
+async def _translated(db: AsyncSession, item: Item, text: str, engine: Translator,
+                      spend: Budget | None = None) -> str:  # fmt: skip
     """Translate ``item``; the text to classify: the original plus any English (never fails)."""
     version = await db.scalar(select(ItemVersion).where(ItemVersion.item_id == item.id)
                               .order_by(ItemVersion.version_no.desc()).limit(1))  # fmt: skip
-    if not await translate_item(db, item, version, text, engine):
+    if not await translate_item(db, item, version, text, engine, spend):
         return text
     english = (version.translations or {}).get("en", {}) if version is not None else {}
     extra = [item.title_en, item.summary_en, english.get("text")]

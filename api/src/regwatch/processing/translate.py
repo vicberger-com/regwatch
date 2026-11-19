@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+import time
+import unicodedata
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -29,14 +31,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.admin.models import FeatureFlag
 from regwatch.admin.services import BASIS_KEY, values
+from regwatch.capture.connectors.rss import plain_text
 from regwatch.processing.models import Item, ItemVersion
 
 MAX_SENT = 4000
 MAX_ANSWER = 256 * 1024
 TIMEOUT_S = 30.0
-_EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(\.[\w-]{1,63})+")
-_TOKEN = re.compile(r"(?i)\b(bearer\s+\S+|(api[_-]?key|token|secret)\s*[:=]\s*\S+)"
-                    r"|\b[A-Za-z0-9_\-]{32,}\b")  # fmt: skip
+_EMAIL = re.compile(r"[\w.+-]{1,64}\s*(@|\(at\)|\[at\])\s*[\w-]{1,63}"
+                    r"((\.|\s+dot\s+|\s*\(dot\)\s*)[\w-]{1,63})+", re.IGNORECASE)  # fmt: skip
+_TOKEN = re.compile(
+    r"(?i)\b((bearer|basic)\s+\S+|(api[_-]?key|token|secret|password|passwd|pwd)\s*[:=]\s*\S+)"
+    r"|\b(AKIA|ASIA)[A-Z0-9]{16}\b|\bxox[abprs]-[A-Za-z0-9-]{10,}|\b(ghp|gho|ghs|sk)[_-][A-Za-z0-9]{16,}"
+    r"|[A-Za-z0-9+/=_\-]*[+/=][A-Za-z0-9+/=_\-]*(?<=[A-Za-z0-9+/=_\-]{20})"
+    r"|\b[A-Za-z0-9_\-]{32,}\b"
+)
+# What one manifest may spend on translation, and failures in a row before it stops (N27).
+BUDGET_S = 300.0
+MAX_FAILURES = 3
 _log = structlog.get_logger(__name__)
 
 
@@ -55,8 +66,14 @@ class Translator(Protocol):
 
 
 def redact(text: str) -> str:
-    """Email addresses and token-like strings out (8.4)."""
+    """Email addresses and token-like strings out (8.4), after NFKC so full-width forms match."""
+    text = unicodedata.normalize("NFKC", text)
     return _TOKEN.sub("[redacted]", _EMAIL.sub("[redacted]", text))
+
+
+def _clean(value: str, limit: int) -> str:
+    """A translator's answer as plain text (N26): no markup, no NUL, controls or bidi marks."""
+    return plain_text(value.replace("\x00", ""), limit) or ""
 
 
 class HttpTranslator:
@@ -97,8 +114,10 @@ async def translator(db: AsyncSession) -> Translator | None:
     from regwatch.core.settings import get_settings
 
     settings = get_settings()
-    if settings.translate_api_url is None:
-        _log.warning("translation_unconfigured", provider="http")
+    if settings.translate_api_url is None or not str(settings.translate_api_url).startswith(
+        "https:"
+    ):
+        _log.warning("translation_unconfigured", provider="http")  # https only (N29)
         return None
     key = settings.translate_api_key.get_secret_value() if settings.translate_api_key else None
     limits = FetchLimits(max_bytes=MAX_ANSWER, total_s=TIMEOUT_S, max_redirects=0)
@@ -106,30 +125,50 @@ async def translator(db: AsyncSession) -> Translator | None:
                           SafeFetcher("regwatch-translate", limits))  # fmt: skip
 
 
+@dataclass
+class Budget:
+    """Per manifest (N27): ``BUDGET_S`` of translation, and none after ``MAX_FAILURES`` in a row."""
+
+    started: float = field(default_factory=time.monotonic)
+    failures: int = 0
+
+    def open(self) -> bool:
+        return self.failures < MAX_FAILURES and time.monotonic() - self.started < BUDGET_S
+
+
 async def translate_item(db: AsyncSession, item: Item, version: ItemVersion | None, text: str,
-                         engine: Translator) -> bool:  # fmt: skip
+                         engine: Translator, budget: Budget | None = None) -> bool:  # fmt: skip
     """Translate ``item`` in place; True when done. Never raises."""
     lang = (item.language or "").lower()
     if not lang or lang.startswith("en"):
         return False
-    scope = (await values(db, ["translation.scope"]))["translation.scope"]
-    stamp = datetime.now(UTC).isoformat()
-    try:
-        title = await engine.translate(redact(item.title), lang)
-        summary = await engine.translate(redact(item.summary), lang) if item.summary else None
-        full = (await engine.translate(redact(text[:MAX_SENT]), lang)
-                if scope == "full_text" and text.strip() else None)  # fmt: skip
-    except Exception as exc:  # noqa: BLE001 - a translation failure never blocks the pipeline
-        _log.warning("translation_failed", provider=engine.name, error=type(exc).__name__)
+    budget = budget or Budget()
+    if not budget.open():  # spent, or failing: the item waits (N27)
         item.translation_pending = True
         return False
-    item.title_en = title.text[:2000]
-    item.summary_en = summary.text[:16000] if summary else None
+    scope = (await values(db, ["translation.scope"]))["translation.scope"]
+    stamp = datetime.now(UTC).isoformat()
+    # 8.4: at most MAX_SENT characters in all, the summary counted within them (N28).
+    summary_sent = redact(item.summary or "")[:MAX_SENT]
+    text_left = MAX_SENT - len(summary_sent)
+    try:
+        title = await engine.translate(redact(item.title), lang)
+        summary = await engine.translate(summary_sent, lang) if summary_sent else None
+        full = (await engine.translate(redact(text[:text_left]), lang)
+                if scope == "full_text" and text.strip() and text_left > 0 else None)  # fmt: skip
+    except Exception as exc:  # noqa: BLE001 - a translation failure never blocks the pipeline
+        _log.warning("translation_failed", provider=engine.name, error=type(exc).__name__)
+        budget.failures += 1
+        item.translation_pending = True
+        return False
+    budget.failures = 0
+    item.title_en = _clean(title.text, 500)
+    item.summary_en = _clean(summary.text, 4000) if summary else None
     item.translation_pending = False
     if version is not None:
         record: dict[str, Any] = {"provider": engine.name, "at": stamp, "scope": scope,
                                   "title": item.title_en}  # fmt: skip
         if full is not None:
-            record["text"] = full.text
+            record["text"] = _clean(full.text, MAX_SENT * 4)
         version.translations = {**(version.translations or {}), "en": record}
     return True
