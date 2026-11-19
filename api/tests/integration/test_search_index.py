@@ -47,12 +47,12 @@ async def test_items_are_indexed_from_postgresql_and_removed_with_them(
     key, objects = manifest(sid, uuid.uuid4(), rows)
     await process_manifest(db, key, loader(objects))
     ids = list((await db.scalars(select(Item.id).where(Item.source_id == uuid.UUID(sid)))).all())
-    client = index.IndexClient()
+    client, reader = index_env.indexer(), index.IndexClient()
     await index.ensure(client)
     await index.ensure(client)  # idempotent
     assert await index.index_items(db, ids, client) == 3
     await client.call("POST", f"/{index.ALIAS}/_refresh")
-    found = await client.call("POST", f"/{index.ALIAS}/_search", {
+    found = await reader.call("POST", f"/{index.ALIAS}/_search", {
         "query": {"term": {"source_id": sid}}, "size": 10})  # fmt: skip
     docs = {h["_id"]: h["_source"] for h in found["hits"]["hits"]}
     assert set(docs) == {str(i) for i in ids}
@@ -64,7 +64,7 @@ async def test_items_are_indexed_from_postgresql_and_removed_with_them(
     await db.commit()
     await index.index_items(db, ids, client)
     await client.call("POST", f"/{index.ALIAS}/_refresh")
-    count = await client.call("POST", f"/{index.ALIAS}/_count",
+    count = await reader.call("POST", f"/{index.ALIAS}/_count",
                               {"query": {"term": {"source_id": sid}}})  # fmt: skip
     assert count["count"] == 2
 
@@ -93,6 +93,33 @@ async def test_the_client_names_its_paths_and_trusts_only_the_stacks_ca(
     with pytest.raises(index.IndexFailedError) as refused:
         await index.IndexClient().call("GET", "/_cluster/health")
     assert refused.value.detail == "the index answered HTTP 401"
+
+
+async def test_the_api_reads_and_only_the_worker_writes(index_env: OpenSearch) -> None:
+    """Review finding 2: two least-privilege users, and neither may delete an index."""
+    writer, reader = index_env.indexer(), index.IndexClient()
+    await index.ensure(writer)
+    doc = index.bulk_body({uuid.uuid4(): {"title": "x", "summary": "y", "events": []}}, [])
+
+    async def status(client: index.IndexClient, method: str, path: str, **kw: object) -> int:
+        try:
+            await client.call(method, path, **kw)  # type: ignore[arg-type]
+        except index.IndexFailedError as exc:
+            assert exc.reason in ("index-auth", "index-status")
+            return int(exc.detail.rsplit(" ", 1)[1])
+        return 200
+
+    assert await status(reader, "POST", f"/{index.ALIAS}/_search", body={"size": 0}) == 200
+    assert await status(reader, "POST", f"/{index.INDEX}/_bulk", ndjson=doc) == 403
+    assert await status(reader, "PUT", f"/{index.INDEX}/_settings",
+                        body={"index": {"refresh_interval": "1s"}}) == 403  # fmt: skip
+    assert await status(reader, "DELETE", f"/{index.INDEX}") == 403
+    assert await status(writer, "POST", f"/{index.INDEX}/_bulk", ndjson=doc) == 200
+    assert await status(writer, "POST", f"/{index.ALIAS}/_search", body={"size": 0}) == 403
+    assert await status(writer, "DELETE", f"/{index.INDEX}") == 403
+    await index.bulk_mode(writer, True)
+    await index.bulk_mode(writer, False)
+    index_env.wipe(index.INDEX)
 
 
 async def test_without_an_index_nothing_is_queued(

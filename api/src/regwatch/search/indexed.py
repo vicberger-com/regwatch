@@ -15,6 +15,10 @@ Meaning, kept the same as the PostgreSQL path (``search.query``):
 - region 150 includes EU and COE.
 Map activity counts, per jurisdiction or region, the matching items with an event in the period
 there (``reverse_nested``).
+
+A user's request runs under ``SEARCH_TIMEOUT`` on the index and ``SEARCH_DEADLINE_S`` at the
+client; a query the index stopped early is a timeout, never a partial answer. An answer of an
+unexpected shape is an ``IndexFailedError``, so PostgreSQL answers instead.
 """
 
 from __future__ import annotations
@@ -24,7 +28,13 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from regwatch.search.index import ALIAS, IndexClient
+from regwatch.search.index import (
+    ALIAS,
+    SEARCH_DEADLINE_S,
+    SEARCH_PARAMS,
+    IndexClient,
+    IndexFailedError,
+)
 from regwatch.search.query import _WEBSEARCH, MAX_WINDOW, regions
 from regwatch.search.schemas import Query, QueryFilters
 
@@ -37,8 +47,23 @@ _SORT = {
     "last_changed_asc": [{"last_changed_at": "asc"}, {"_id": "asc"}],
     "published_desc": [{"published_at": {"order": "desc", "missing": "_last"}}, {"_id": "desc"}],
     "published_asc": [{"published_at": {"order": "asc", "missing": "_last"}}, {"_id": "asc"}],
-    "title_asc": [{"last_changed_at": "desc"}, {"_id": "asc"}],  # no keyword copy of titles
+    "title_asc": [{"title.sort": "asc"}, {"_id": "asc"}],
 }  # fmt: skip
+
+
+async def _call(client: IndexClient, request: dict[str, Any],
+                params: dict[str, str] | None = None) -> Any:  # noqa: ANN401 - JSON  # fmt: skip
+    return await client.call("POST", f"/{ALIAS}/_search", request,
+                       params={**SEARCH_PARAMS, **(params or {})},
+                       deadline=SEARCH_DEADLINE_S)  # fmt: skip
+
+
+def _answered(got: Any) -> dict[str, Any]:  # noqa: ANN401 - JSON
+    if not isinstance(got, dict):
+        raise IndexFailedError("index-answer", "the index's answer has an unexpected shape")
+    if got.get("timed_out"):  # stopped at SEARCH_TIMEOUT: the counts would be partial
+        raise IndexFailedError("index-timeout", "the index did not answer in time")
+    return got
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -87,7 +112,10 @@ def text_query(q: str) -> dict[str, Any] | None:
     if not q:
         return None
     if _WEBSEARCH.search(q):  # quotes, -word, or: every word required (the PostgreSQL meaning)
-        syntax = re.sub(r"\bor\b", "|", q, flags=re.IGNORECASE)
+        # ``or`` between words is OR; inside a phrase it is a word (review finding 10).
+        parts = q.split('"')
+        syntax = '"'.join(re.sub(r"\bor\b", "|", part, flags=re.IGNORECASE) if n % 2 == 0
+                          else part for n, part in enumerate(parts))  # fmt: skip
         flags = "AND|OR|NOT|PHRASE|PRECEDENCE|WHITESPACE"
         return {"simple_query_string": {"query": syntax, "fields": FIELDS,
                                         "default_operator": "and", "flags": flags}}  # fmt: skip
@@ -119,11 +147,18 @@ def body(query: Query, facets: bool) -> dict[str, Any]:
 async def search(client: IndexClient, query: Query,
                  facets: bool) -> tuple[list[uuid.UUID], int, dict[str, Any]]:  # fmt: skip
     """The page's ids, the total (at most ``MAX_WINDOW``) and the raw aggregations."""
-    got = await client.call("POST", f"/{ALIAS}/_search", body(query, facets))
-    hits = got.get("hits", {})
-    ids = [uuid.UUID(h["_id"]) for h in hits.get("hits", [])]
-    total = min(int(hits.get("total", {}).get("value", 0)), MAX_WINDOW)
-    return ids, total, got.get("aggregations", {}).get("sample", {})
+    got = _answered(await _call(client, body(query, facets)))
+    try:
+        hits = got.get("hits", {})
+        ids = [uuid.UUID(h["_id"]) for h in hits.get("hits", [])]
+        total = min(int(hits.get("total", {}).get("value", 0)), MAX_WINDOW)
+        sample = got.get("aggregations", {}).get("sample", {})
+        if not isinstance(sample, dict):
+            raise TypeError
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise IndexFailedError("index-answer",
+                               "the index's answer has an unexpected shape") from None  # fmt: skip
+    return ids, total, sample
 
 
 async def activity(client: IndexClient, found: QueryFilters | None, start: datetime,
@@ -144,12 +179,19 @@ async def activity(client: IndexClient, found: QueryFilters | None, start: datet
     }  # fmt: skip
     # Identical map requests within a minute share OpenSearch's request cache (the caller
     # rounds a default period to the minute).
-    got = await client.call("POST", f"/{ALIAS}/_search", request, params={"request_cache": "true"})
-    buckets = (got.get("aggregations", {}).get("events", {}).get("period", {})
-               .get("places", {}).get("buckets", []))  # fmt: skip
+    got = _answered(await _call(client, request, {"request_cache": "true"}))
     rows = []
-    for bucket in buckets:
-        levels = {b["key"]: b["items"]["doc_count"] for b in bucket["levels"]["buckets"]}
-        rows.append({"code": bucket["key"], "count": bucket["items"]["doc_count"],
-                     "last": bucket["last"].get("value_as_string"), "levels": levels})  # fmt: skip
+    try:
+        buckets = (got.get("aggregations", {}).get("events", {}).get("period", {})
+                   .get("places", {}).get("buckets", []))  # fmt: skip
+        for bucket in buckets:
+            levels = {str(b["key"]): int(b["items"]["doc_count"])
+                      for b in bucket["levels"]["buckets"]}  # fmt: skip
+            last = bucket["last"].get("value_as_string")
+            rows.append({"code": str(bucket["key"]), "count": int(bucket["items"]["doc_count"]),
+                         "last": str(last) if last is not None else None,
+                         "levels": levels})  # fmt: skip
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise IndexFailedError("index-answer",
+                               "the index's answer has an unexpected shape") from None  # fmt: skip
     return rows

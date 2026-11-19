@@ -13,6 +13,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
@@ -140,9 +141,33 @@ def processing_handovers(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 @dataclass
 class OpenSearch:
+    """The node: ``password`` is the API's read-only regwatch_search user (the default user)."""
+
     url: str
     password: str
     ca_b64: str
+    indexer_password: str
+    admin: Path  # the admin certificate, key and CA (generated/admin)
+
+    def indexer(self) -> Any:  # noqa: ANN401 - an IndexClient, imported late
+        """A client as the worker's regwatch_indexer user (the index settings must be set)."""
+        from pydantic import SecretStr
+
+        from regwatch.core.settings import get_settings
+        from regwatch.search.index import IndexClient
+
+        settings = get_settings().model_copy(update={
+            "index_user": "regwatch_indexer",
+            "index_password": SecretStr(self.indexer_password)})  # fmt: skip
+        return IndexClient(settings)
+
+    def wipe(self, index: str) -> None:
+        """Delete an index with the admin certificate: neither regwatch user may."""
+        got = _run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-X", "DELETE",
+                    "--cacert", str(self.admin / "ca.pem"), "--cert", str(self.admin / "admin.pem"),
+                    "--key", str(self.admin / "admin-key.pem"), f"{self.url}/{index}"])  # fmt: skip
+        if got.stdout not in ("200", "404"):
+            raise RuntimeError(f"could not delete {index}: HTTP {got.stdout}")
 
 
 def _run(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -161,8 +186,14 @@ def opensearch(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OpenSearch]
     setup = _run([str(root / "scripts" / "index-setup.sh"), "--force"], env)
     if setup.returncode != 0:
         pytest.skip(f"index-setup.sh failed: {setup.stderr[-300:]}")
-    values = dict(line.split("=", 1) for line in (work / "index.env").read_text().splitlines()
-                  if "=" in line and not line.startswith("#"))  # fmt: skip
+
+    def values_of(name: str) -> dict[str, str]:
+        return dict(line.split("=", 1) for line in (work / name).read_text().splitlines()
+                    if "=" in line and not line.startswith("#"))  # fmt: skip
+
+    values, worker = values_of("index.env"), values_of("index-worker.env")
+    assert values["REGWATCH_INDEX_USER"] == "regwatch_search"  # noqa: S101
+    assert worker["REGWATCH_INDEX_USER"] == "regwatch_indexer"  # noqa: S101
     name = f"regwatch-os-{uuid.uuid4().hex[:8]}"
     config = "/usr/share/opensearch/config"
     _docker(
@@ -187,7 +218,8 @@ def opensearch(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OpenSearch]
                 raise RuntimeError("OpenSearch did not start")
             time.sleep(2)
         yield OpenSearch(f"https://localhost:{port}", values["REGWATCH_INDEX_PASSWORD"],
-                         values["REGWATCH_INDEX_CA_B64"])  # fmt: skip
+                         values["REGWATCH_INDEX_CA_B64"], worker["REGWATCH_INDEX_PASSWORD"],
+                         work / "gen" / "admin")  # fmt: skip
     finally:
         _run(["docker", "rm", "-f", "-v", name])
         _run(["docker", "run", "--rm", "--user", "0", "-v", f"{work}:/w", "--entrypoint", "rm",

@@ -1,5 +1,7 @@
+# No internal superuser: maintenance uses the admin certificate (plugins.security.authcz.admin_dn),
+# which never reaches the running node (scripts/index-setup.sh).
 _meta: { type: rolesmapping, config_version: 2 }
-regwatch_index:
-  users: [regwatch]
-all_access:
-  users: [admin]
+regwatch_search:
+  users: [regwatch_search]
+regwatch_indexer:
+  users: [regwatch_indexer]

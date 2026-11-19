@@ -37,15 +37,15 @@ async def indexed(opensearch: OpenSearch, db_url: str,
         monkeypatch.setenv(key, value)
     get_settings.cache_clear()
     # Each test's database is new; so is its index (one node serves the whole session).
-    await index.IndexClient().call("DELETE", f"/{index.INDEX}", allow=(404,))
+    opensearch.wipe(index.INDEX)
     yield opensearch
     get_settings.cache_clear()
 
 
-async def indexed_corpus(admin: httpx.AsyncClient, db: AsyncSession) -> str:
+async def indexed_corpus(admin: httpx.AsyncClient, db: AsyncSession, node: OpenSearch) -> str:
     sid = await corpus(admin, db)
     ids = list((await db.scalars(select(Item.id).where(Item.source_id == uuid.UUID(sid)))).all())
-    client = index.IndexClient()
+    client = node.indexer()
     await index.ensure(client)
     await index.index_items(db, ids, client)
     await client.call("POST", f"/{index.ALIAS}/_refresh")
@@ -56,7 +56,7 @@ async def test_more_of_the_words_rank_first_on_the_index(
     indexed: OpenSearch, admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
     """Acceptance 1 through the index."""
-    await indexed_corpus(admin, db)
+    await indexed_corpus(admin, db, indexed)
     got = (await admin.post(_api("/search"), json={"q": f"{TAG} NIS2 incident"})).json()
     titles = [i["title"] for i in got["items"]]
     assert titles[0].endswith("NIS2 incident reporting guidance") and got["total"] == 3
@@ -71,7 +71,7 @@ async def test_more_of_the_words_rank_first_on_the_index(
 async def test_filters_on_the_index(
     indexed: OpenSearch, admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
-    sid = await indexed_corpus(admin, db)
+    sid = await indexed_corpus(admin, db, indexed)
     soon = (datetime.now(UTC) + timedelta(days=1)).isoformat()
     for filters, expected in [({"sources": [sid]}, 3), ({"sources": [str(uuid.uuid4())]}, 0),
                               ({"jurisdictions": ["de"]}, 3), ({"regions": ["150"]}, 3),
@@ -83,13 +83,17 @@ async def test_filters_on_the_index(
         assert got.status_code == 200 and got.json()["total"] == expected, filters
     bad = await admin.post(_api("/search"), json={"filters": {"terms": {"nope": ["x"]}}})
     assert bad.status_code == 400  # facets are checked before the index is asked
+    by_title = (await admin.post(_api("/search"), json={"q": TAG, "sort": "title_asc"})).json()
+    assert [i["title"] for i in by_title["items"]] == [  # review finding 7
+        f"{TAG} Annual report published", f"{TAG} NIS2 incident reporting guidance",
+        f"{TAG} NIS2 scope clarified"]  # fmt: skip
 
 
 async def test_the_map_from_the_index_sums_to_the_search_total(
     indexed: OpenSearch, admin: httpx.AsyncClient, db: AsyncSession
 ) -> None:
     """Acceptance 2 through the index."""
-    sid = await indexed_corpus(admin, db)
+    sid = await indexed_corpus(admin, db, indexed)
     raw = quote(json.dumps({"sources": [sid]}))
     rows = (await admin.get(_api(f"/map/activity?filters={raw}"))).json()["rows"]
     assert [(r["code"], r["count"], r["max_severity"]) for r in rows] == [("DE", 3, "info")]

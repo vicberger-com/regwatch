@@ -20,4 +20,5 @@ htmlcov/
 coverage/
 .schemathesis/
 deploy/index.env
+deploy/index-worker.env
 deploy/opensearch/generated/

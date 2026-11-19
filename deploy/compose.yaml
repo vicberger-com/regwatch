@@ -8,12 +8,7 @@ x-app: &app
     context: ../api
     target: dev
   image: regwatch-api:dev
-  env_file:
-    - .env
-    # The index sidecar's URL, user, password and CA (scripts/index-setup.sh; ADR-0011). Optional:
-    # without it search runs on PostgreSQL alone.
-    - path: index.env
-      required: false
+  env_file: [.env]
   networks: [regwatch]
   restart: unless-stopped
 
@@ -44,6 +39,12 @@ services:
 
   api:
     <<: *app
+    # The index sidecar's URL, read-only user, password and CA (scripts/index-setup.sh;
+    # ADR-0011). Optional: without it search runs on PostgreSQL alone.
+    env_file:
+      - .env
+      - path: index.env
+        required: false
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ../api/src:/app/src:ro
@@ -65,6 +66,11 @@ services:
   # Celery (M3, ADR-0006): the worker serves the capture queue; exactly one beat runs.
   worker:
     <<: *app
+    # The indexer user, which writes the index (scripts/index-setup.sh; ADR-0011). Optional.
+    env_file:
+      - .env
+      - path: index-worker.env
+        required: false
     command: ["regwatch-worker"]
     volumes:
       - objectstore:/data/objectstore

@@ -74,9 +74,10 @@ class Settings(BaseSettings):
     model_api_url: AnyHttpUrl | None = None
     print_bridge_url: AnyHttpUrl = AnyHttpUrl("http://print-bridge:7000")
     # OpenSearch for M5 (ADR-0011, CP-22): unset, search runs on PostgreSQL alone. HTTPS only,
-    # verified against the stack's own CA (base64 PEM), as the least-privilege regwatch user.
+    # verified against the stack's own CA (base64 PEM), as a least-privilege user:
+    # regwatch_search (api, read only) or regwatch_indexer (worker).
     index_url: AnyHttpUrl | None = None
-    index_user: str = "regwatch"
+    index_user: str = "regwatch_search"
     index_password: SecretStr | None = None
     index_ca_b64: SecretStr | None = None
 

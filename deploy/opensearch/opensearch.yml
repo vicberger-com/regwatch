@@ -9,7 +9,8 @@ discovery.type: single-node
 bootstrap.memory_lock: false
 
 # The security plugin stays on: TLS on HTTP and transport with the stack's own CA, and HTTP
-# basic authentication for the API's least-privilege `regwatch` user (never the demo config).
+# basic authentication for the least-privilege `regwatch_search` (API) and `regwatch_indexer`
+# (worker) users (never the demo config).
 plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
 plugins.security.ssl.transport.pemkey_filepath: certs/node-key.pem
 plugins.security.ssl.transport.pemtrustedcas_filepath: certs/ca.pem

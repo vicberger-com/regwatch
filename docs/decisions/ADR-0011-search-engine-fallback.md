@@ -69,7 +69,7 @@ Option 1 is not recommended until Meilisearch documents a production build witho
 - **Security plugin:** never disabled.
   - TLS on HTTP and transport, using the stack's own CA from `scripts/index-setup.sh`, never the demo certificates.
   - HTTP basic authentication, with no anonymous access.
-  - The API and worker use the least-privilege `regwatch` user, whose role `regwatch_index` covers `regwatch-*` only.
+  - Two least-privilege users on `regwatch-*` only (review finding 2): the API reads as `regwatch_search` (search and count), the worker writes as `regwatch_indexer` (create, alias, bulk, refresh, settings); neither may delete an index or run a script. No internal superuser: the admin certificate, kept off the node, serves maintenance.
 - **Smoke test** (throwaway node, published on 127.0.0.1 only):
   - anonymous: 401;
   - `regwatch`: 200 on cluster health and on its own index;

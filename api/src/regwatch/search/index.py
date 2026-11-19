@@ -3,9 +3,11 @@
 The client follows the internal client's rules (ADR-0001; ``core/internal.py``):
 - one base URL from the settings, https only, verified against the stack's own CA (never the
   system store, never unverified);
-- HTTP basic authentication as the least-privilege ``regwatch`` user;
+- HTTP basic authentication as a least-privilege user: ``regwatch_search`` reads (the API),
+  ``regwatch_indexer`` writes (the worker);
 - only the paths this module names, with no redirects, no environment proxies and no cookies;
-- a deadline on every call, a cap on the answer's raw size, and an uncompressed answer only.
+- a deadline on every call (``SEARCH_DEADLINE_S`` for a user's request, so a slow index
+  answers 503 quickly), a cap on the answer's raw size, and an uncompressed answer only.
 
 An error is an ``IndexFailedError`` with a fixed text that never quotes the answer.
 
@@ -40,7 +42,12 @@ from regwatch.taxonomy.models import Facet, Jurisdiction, Term
 ALIAS = "regwatch-items"
 INDEX = "regwatch-items-v1"
 MAX_ANSWER = 16 * 1024 * 1024
-DEADLINE_S = 20.0
+DEADLINE_S = 20.0  # indexing and setup
+# A user's search or map (review finding 1): the index stops the query at SEARCH_TIMEOUT and the
+# client gives up at SEARCH_DEADLINE_S; the 1M-item load test's coldest search took 2.5 s.
+SEARCH_TIMEOUT = "3s"
+SEARCH_DEADLINE_S = 4.0
+SEARCH_PARAMS = {"timeout": SEARCH_TIMEOUT, "cancel_after_time_interval": SEARCH_TIMEOUT}
 TIMEOUT = httpx.Timeout(connect=3.0, read=15.0, write=10.0, pool=3.0)
 BATCH = 500
 SUPRANATIONAL = {"EU": "150", "COE": "150"}  # bodies without a region, by the region they belong to
@@ -93,6 +100,7 @@ class IndexClient:
         ndjson: bytes | None = None,
         params: dict[str, str] | None = None,
         allow: tuple[int, ...] = (),
+        deadline: float = DEADLINE_S,
     ) -> Any:  # noqa: ANN401 - JSON
         if path not in PATHS:
             raise ValueError("an index path is one this module names")
@@ -109,7 +117,7 @@ class IndexClient:
                                      follow_redirects=False,
                                      trust_env=False) as client:  # fmt: skip
             try:
-                async with asyncio.timeout(DEADLINE_S), client.stream(
+                async with asyncio.timeout(deadline), client.stream(
                         method, path, content=content, params=params,
                         headers=headers) as got:  # fmt: skip
                     data = bytearray()
@@ -129,7 +137,8 @@ class IndexClient:
                     "index-unavailable", "the index could not be reached"
                 ) from None
         if not (200 <= status < 300 or status in allow):
-            raise IndexFailedError("index-status", f"the index answered HTTP {status}")
+            reason = "index-auth" if status in (401, 403) else "index-status"
+            raise IndexFailedError(reason, f"the index answered HTTP {status}")
         try:
             return json.loads(bytes(data)) if data else {}
         except ValueError:
@@ -141,12 +150,15 @@ def _text(analyzer: str | None = None) -> dict[str, Any]:
 
 
 MAPPING: dict[str, Any] = {
-    "settings": {"number_of_shards": 1, "number_of_replicas": 0, "refresh_interval": "1s"},
+    "settings": {"number_of_shards": 1, "number_of_replicas": 0, "refresh_interval": "1s",
+                 "analysis": {"normalizer": {"fold": {"type": "custom",
+                                                      "filter": ["lowercase", "asciifolding"]}}}},
     "mappings": {
         "dynamic": "strict",
         "properties": {
             "title": {**_text("standard"), "fields": {
-                c: _text(a) for c, a in STEMMED.items()}},  # fmt: skip
+                **{c: _text(a) for c, a in STEMMED.items()},
+                "sort": {"type": "keyword", "normalizer": "fold"}}},  # title_asc
             "summary": {**_text("standard"), "fields": {c: _text(a) for c, a in STEMMED.items()}},
             "title_en": _text("english"), "summary_en": _text("english"),
             "language": {"type": "keyword"}, "source_id": {"type": "keyword"},

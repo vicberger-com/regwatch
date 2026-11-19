@@ -158,7 +158,7 @@ async def test_search_map_and_export_at_scale(
                            ("REGWATCH_INDEX_CA_B64", node.ca_b64)):  # fmt: skip
             monkeypatch.setenv(key, value)
         get_settings.cache_clear()
-        client = index.IndexClient()
+        client = node.indexer()
         await index.ensure(client)
         started = time.monotonic()
         await index.bulk_mode(client, True)

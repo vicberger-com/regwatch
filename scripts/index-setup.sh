@@ -3,18 +3,26 @@
 # scripts/dev-env.sh; --force replaces everything (and the index must then be rebuilt).
 #
 # Writes, never committed:
-#   deploy/opensearch/generated/certs/   a private CA, the node's certificate and key, and an
-#                                        admin certificate (the security plugin's admin DN);
-#                                        owned by the container's user (uid 1000), mode 600
+#   deploy/opensearch/generated/certs/   a private CA and the node's certificate and key, owned
+#                                        by the container's user (uid 1000), mode 600
+#   deploy/opensearch/generated/admin/   the admin certificate and key (the security plugin's
+#                                        admin DN, for securityadmin.sh and the tests); never
+#                                        mounted into the running node
 #   deploy/opensearch/generated/security/ the security plugin's configuration: the committed
 #                                        files in deploy/opensearch/security plus
 #                                        internal_users.yml with bcrypt hashes of two fresh
-#                                        passwords (admin, and regwatch for the API and worker)
-#   deploy/index.env                     the index URL, the regwatch user and its password, and
-#                                        the CA the API and worker trust (base64), read by api
-#                                        and worker only
-# The admin password is hashed and then discarded: nothing in the stack needs it (the API uses
-# the least-privilege regwatch user); --force makes a new one if ever needed.
+#                                        passwords
+#   deploy/index.env                     for the api: the index URL, the read-only
+#                                        regwatch_search user and its password, and the CA
+#                                        (base64)
+#   deploy/index-worker.env              for the worker: the same with the regwatch_indexer user
+# The passwords never appear on a command line: they reach the hashing container in a mode-600
+# file.
+#
+# The security plugin reads these files only when it creates its security index, so --force
+# refuses while the index-data volume exists: stop the sidecar and remove that volume first
+# (docker compose --profile index down; docker volume rm regwatch_index-data), then rebuild the
+# index (python -m regwatch.search.tasks).
 set -euo pipefail
 umask 077
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,10 +30,17 @@ image="opensearchproject/opensearch@sha256:3bf4fe26aeb9f7b03c0ebcb1302bb24e855ee
 # INDEX_SETUP_OUT and INDEX_SETUP_ENV let tests prepare a throwaway sidecar elsewhere.
 out="${INDEX_SETUP_OUT:-$root/deploy/opensearch/generated}"
 envfile="${INDEX_SETUP_ENV:-$root/deploy/index.env}"
+workerfile="${envfile%.env}-worker.env"
+volume="${INDEX_SETUP_VOLUME:-regwatch_index-data}"
 
 if [[ "${1:-}" != "--force" && -d "$out/certs" && -f "$envfile" ]]; then
   echo "the index sidecar is already prepared; pass --force to recreate it"
   exit 0
+fi
+if [[ -z "${INDEX_SETUP_OUT:-}" ]] && docker volume inspect "$volume" >/dev/null 2>&1; then
+  echo "the volume $volume holds the old security index, so new passwords would not load;" >&2
+  echo "run: docker compose --profile index down && docker volume rm $volume" >&2
+  exit 1
 fi
 
 work="$(mktemp -d)"
@@ -52,43 +67,54 @@ mv index.pem node.pem && mv index-key.pem node-key.pem
 mv regwatch-index-admin.pem admin.pem && mv regwatch-index-admin-key.pem admin-key.pem
 
 secret() { od -An -tx1 -N24 /dev/urandom | tr -d ' \n'; }
-admin_pw="$(secret)"
-api_pw="$(secret)"
+search_pw="$(secret)"
+indexer_pw="$(secret)"
+printf 'SEARCH_PW=%s\nINDEXER_PW=%s\n' "$search_pw" "$indexer_pw" > passwords.env
 
+if [[ -d "$out" ]]; then  # the old files belong to the container's user
+  docker run --rm --user 0 --network none -v "$out:/out" --entrypoint bash "$image" \
+    -c 'rm -rf /out/certs /out/security /out/admin'
+fi
 rm -rf "$out"
-mkdir -p "$out/certs" "$out/security"
+mkdir -p "$out/certs" "$out/security" "$out/admin"
 chmod 755 "$out" "$out/certs" "$out/security"
-mkdir -p in && cp ca.pem node.pem node-key.pem admin.pem admin-key.pem in/
+cp ca.pem admin.pem admin-key.pem "$out/admin/"
+mkdir -p in && cp ca.pem node.pem node-key.pem in/
 chmod 755 in && chmod 644 in/*
 # Inside the image: hash the passwords with the plugin's own tool, and leave every generated
 # file owned by the container's user (uid 1000) with mode 600 (the host user differs).
 docker run --rm --user 0 --network none \
-  -e ADMIN_PW="$admin_pw" -e API_PW="$api_pw" \
+  --env-file "$work/passwords.env" \
   -v "$work/in:/in:ro" -v "$root/deploy/opensearch/security:/committed:ro" -v "$out:/out" \
   --entrypoint bash "$image" -c '
     set -euo pipefail
-    hash() { /usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -p "$1" 2>/dev/null | tail -1; }
-    cp /in/ca.pem /in/node.pem /in/node-key.pem /in/admin.pem /in/admin-key.pem /out/certs/
+    hash() { /usr/share/opensearch/plugins/opensearch-security/tools/hash.sh -env "$1" 2>/dev/null | tail -1; }
+    cp /in/ca.pem /in/node.pem /in/node-key.pem /out/certs/
     cp /committed/*.yml /out/security/
     {
       echo "_meta: { type: internalusers, config_version: 2 }"
-      echo "admin:"
-      echo "  hash: \"$(hash "$ADMIN_PW")\""
-      echo "  reserved: true"
-      echo "regwatch:"
-      echo "  hash: \"$(hash "$API_PW")\""
-      echo "  description: the API and worker (role regwatch_index)"
+      echo "regwatch_search:"
+      echo "  hash: \"$(hash SEARCH_PW)\""
+      echo "  description: the API, read only (role regwatch_search)"
+      echo "regwatch_indexer:"
+      echo "  hash: \"$(hash INDEXER_PW)\""
+      echo "  description: the worker (role regwatch_indexer)"
     } > /out/security/internal_users.yml
     chown -R 1000:1000 /out/certs /out/security
     chmod 700 /out/certs /out/security
     chmod 600 /out/certs/* /out/security/*'
-{
-  echo "# Generated by scripts/index-setup.sh for local development. Never commit."
-  echo "# The regwatch user of the index sidecar (ADR-0011): api and worker only."
-  echo "REGWATCH_INDEX_URL=https://index:9200"
-  echo "REGWATCH_INDEX_USER=regwatch"
-  echo "REGWATCH_INDEX_PASSWORD=$api_pw"
-  echo "REGWATCH_INDEX_CA_B64=$(base64 -w0 ca.pem)"
-} > "$envfile"
-chmod 600 "$envfile"
-echo "wrote deploy/opensearch/generated/ and deploy/index.env; start it with docker compose --profile index up -d"
+env_for() {  # service, user, password, file
+  {
+    echo "# Generated by scripts/index-setup.sh for local development. Never commit."
+    echo "# The index sidecar's $2 user (ADR-0011): the $1 service only."
+    echo "REGWATCH_INDEX_URL=https://index:9200"
+    echo "REGWATCH_INDEX_USER=$2"
+    echo "REGWATCH_INDEX_PASSWORD=$3"
+    echo "REGWATCH_INDEX_CA_B64=$(base64 -w0 ca.pem)"
+  } > "$4"
+  chmod 600 "$4"
+}
+env_for api regwatch_search "$search_pw" "$envfile"
+env_for worker regwatch_indexer "$indexer_pw" "$workerfile"
+echo "wrote deploy/opensearch/generated/, deploy/index.env and deploy/index-worker.env;"
+echo "start it with docker compose --profile index up -d"

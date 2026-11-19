@@ -77,11 +77,13 @@ async def activity(db: AsyncSession, user_id: uuid.UUID | None, period_days: int
     services.limited(user_id)
     terms = await resolve_terms(db, filters)  # an unknown facet is a 400 on either path
     if index.configured():  # ADR-0011: the index's nested aggregation
+        await db.commit()  # no pooled connection waits on the index (review finding 1)
         try:
             hits = await indexed.activity(index.IndexClient(), filters, start, end, view_by)
         except index.IndexFailedError as exc:
             if exc.reason == "index-timeout":
                 raise services.busy() from None
+            services.unavailable(exc)
         else:
             found = [MapRow(code=r["code"], count=r["count"], last_changed_at=r["last"],
                             max_severity=next((lvl for lvl in ("major", "notable", "info")

@@ -208,9 +208,12 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     started = time.monotonic()
     check(query)
     limited(user_id)
-    await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     terms = await resolve_terms(db, query.filters)  # an unknown facet is a 400 on either path
+    if index.configured():
+        # No pooled connection waits on the index (review finding 1); nothing here is written.
+        await db.commit()
     from_index = await _from_index(db, query)  # ADR-0011: the index when it is configured
+    await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     if from_index is not None:
         page_ids, total, facets = from_index
     else:
@@ -254,9 +257,22 @@ async def _from_index(
     except index.IndexFailedError as exc:
         if exc.reason == "index-timeout":
             raise busy() from None
-        _log.warning("index_unavailable", reason=exc.reason)
+        unavailable(exc)
         return None
-    return page_ids, total, await _labelled(db, aggs) if query.facet_counts else {}
+    try:
+        facets = await _labelled(db, aggs) if query.facet_counts else {}
+    except (KeyError, TypeError, ValueError, AttributeError):
+        unavailable(index.IndexFailedError("index-answer", "unexpected facet buckets"))
+        return None
+    return page_ids, total, facets
+
+
+def unavailable(exc: index.IndexFailedError) -> None:
+    """Logged; refused credentials are an error, as every request then falls back (finding 4)."""
+    if exc.reason == "index-auth":
+        _log.error("index_refused_credentials", reason=exc.reason)
+    else:
+        _log.warning("index_unavailable", reason=exc.reason)
 
 
 async def _labelled(db: AsyncSession, aggs: dict[str, Any]) -> dict[str, list[FacetCount]]:

@@ -1,26 +1,26 @@
-# regwatch_index: what the API and worker need, on the regwatch indexes only (least privilege).
+# Least privilege, on the regwatch indexes only (ADR-0011; review of the OpenSearch slices,
+# finding 2). The API only reads; the worker writes. Neither may delete an index, run a script
+# (update_by_query, delete_by_query) or read the security configuration.
 _meta: { type: roles, config_version: 2 }
-regwatch_index:
+regwatch_search:
   cluster_permissions:
     - cluster:monitor/health
-    - cluster:monitor/main
-    - indices:data/read/scroll/clear
+  index_permissions:
+    - index_patterns: ["regwatch-*"]
+      allowed_actions:
+        - indices:data/read/search*
+regwatch_indexer:
+  cluster_permissions:
+    - cluster:monitor/health
     - indices:data/write/bulk
-    - indices:data/read/mget
-    - indices:data/read/msearch
   index_permissions:
     - index_patterns: ["regwatch-*"]
       allowed_actions:
         - indices:admin/create
-        - indices:admin/mapping/put
-        - indices:admin/get
-        - indices:admin/exists
         - indices:admin/aliases
-        - indices:admin/aliases/get
-        - indices:admin/delete
         - indices:admin/refresh*
+        # refresh_interval during a rebuild (index.bulk_mode); any dynamic setting, worker only
         - indices:admin/settings/update
-        - indices:admin/settings/get
-        - indices:data/read/*
-        - indices:data/write/*
-        - indices:monitor/stats
+        - indices:data/write/bulk*
+        - indices:data/write/index
+        - indices:data/write/delete
