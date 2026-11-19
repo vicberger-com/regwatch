@@ -55,7 +55,7 @@ def test_the_registered_task_names_match_the_contract(valid_env: dict[str, str])
     assert processing == {"process.extract", "process.reprocess_item"}
     assert processing <= set(contract["celery_tasks"])
     searching = {name for name in app.tasks if name.startswith("search.")}
-    assert searching == {"search.index_items", "search.reindex"}  # ADR-0011
+    assert searching == {"search.index_items", "search.index_matching", "search.reindex"}
     assert searching <= set(contract["celery_tasks"])
 
 
