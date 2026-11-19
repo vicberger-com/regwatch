@@ -1,22 +1,22 @@
 """Search, CSV export, map activity and saved view routes; mounted under /api/v1.
 
-Search and saved views are implemented (M5); export and map activity answer 501 until their
-slice.
+Every route is implemented (M5).
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, NoReturn
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from regwatch.core.db import DbSession
-from regwatch.core.routing import not_implemented, spec
+from regwatch.core.routing import spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.search import activity, services, views
+from regwatch.search import activity, export, services, views
 from regwatch.search.schemas import MapActivity, SavedView, SavedViewWrite, SearchResult
 from regwatch.search.schemas import Query as SearchQuery
 
@@ -32,10 +32,17 @@ async def search(body: SearchQuery, principal: CurrentPrincipal, db: DbSession) 
 @router.post(
     "/search/export.csv",
     **spec(desc="Streaming CSV (UTF-8 with BOM, formula-injection escaped)", perm="outputs.csv",
-           content="text/csv"),
+           content="text/csv", stub=False),
 )  # fmt: skip
-async def export_csv(body: SearchQuery) -> NoReturn:
-    not_implemented()
+async def export_csv(
+    body: SearchQuery, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> StreamingResponse:
+    wanted = await export.prepare(db, body, principal.user.id)
+    return StreamingResponse(
+        export.stream(request.app.state.db, body, wanted), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="regwatch-export.csv"',
+                 "X-Content-Type-Options": "nosniff"},
+    )  # fmt: skip
 
 
 @router.get(
