@@ -37,11 +37,13 @@ async def search(body: SearchQuery, principal: CurrentPrincipal, db: DbSession) 
 async def export_csv(
     body: SearchQuery, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> StreamingResponse:
-    wanted = await export.prepare(db, body, principal.user.id)
+    wanted = await export.prepare(db, body, principal.user.id, client_ip(request))
     return StreamingResponse(
-        export.stream(request.app.state.db, body, wanted), media_type="text/csv; charset=utf-8",
+        export.stream(request.app.state.db, body, wanted, principal.user.id),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="regwatch-export.csv"',
-                 "X-Content-Type-Options": "nosniff"},
+                 "X-Content-Type-Options": "nosniff",
+                 "X-Regwatch-Order": export.ordered(body).sort},
     )  # fmt: skip
 
 

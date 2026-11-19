@@ -41,6 +41,7 @@ SEARCH_RATE = 60  # per user and minute (08 security 8.2)
 STATEMENT_TIMEOUT = "5s"
 MAX_TOTAL = 10_000
 FACET_VALUES = 50
+FACET_SAMPLE = 2_000  # the most recently changed matches facet counts cover
 FACET_TTL = 30.0
 FACET_CACHE_KEYS = 1000
 _facet_cache: dict[str, tuple[float, dict[str, list[FacetCount]]]] = {}
@@ -124,14 +125,15 @@ async def summaries(db: AsyncSession, ids: list[uuid.UUID], start: datetime | No
 
 async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, list[FacetCount]]:  # noqa: ANN401
     """Per facet shown in the filters, and for jurisdictions: the matching items each value has
-    (never an ``incorrect`` term), at most ``FACET_VALUES`` values a facet, most first; over at
-    most ``MAX_TOTAL`` matches; cached ``FACET_TTL`` seconds per query (M5 design notes)."""
+    (never an ``incorrect`` term), at most ``FACET_VALUES`` values a facet, most first; over the
+    ``FACET_SAMPLE`` most recently changed matches; cached ``FACET_TTL`` seconds per query (M5
+    design notes)."""
     key = query_hash(query.model_copy(update={"page": 1, "page_size": 1, "sort": "relevance",
                                               "highlight": False}))  # fmt: skip
     now = time.monotonic()
     if (hit := _facet_cache.get(key)) is not None and now - hit[0] < FACET_TTL:
         return hit[1]
-    matched = ids.order_by(None).limit(MAX_TOTAL).subquery()
+    matched = ids.limit(FACET_SAMPLE).subquery()
     out: dict[str, list[FacetCount]] = {}
     terms = await db.execute(
         select(Facet.key, Term.key, Term.label, func.count(func.distinct(ItemTerm.item_id)))
@@ -147,7 +149,8 @@ async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, li
         .join(ItemJurisdiction, ItemJurisdiction.jurisdiction_id == Jurisdiction.id)
         .where(ItemJurisdiction.item_id.in_(select(matched.c.id)))
         .group_by(Jurisdiction.code, Jurisdiction.name))  # fmt: skip
-    out["jurisdictions"] = [FacetCount(key=c, label=n, count=k) for c, n, k in places.tuples()]
+    # The contract's name for it (slice 2 S11); a facet may not be called that.
+    out["jurisdiction"] = [FacetCount(key=c, label=n, count=k) for c, n, k in places.tuples()]
     for values_ in out.values():
         values_.sort(key=lambda f: (-f.count, f.key))
         del values_[FACET_VALUES:]
@@ -155,6 +158,16 @@ async def facet_counts(db: AsyncSession, ids: Any, query: Query) -> dict[str, li
         _facet_cache.clear()
     _facet_cache[key] = (now, out)
     return out
+
+
+def timed_out(exc: DBAPIError) -> bool:
+    """The statement timeout (``query_canceled``)."""
+    return getattr(exc.orig, "sqlstate", None) == "57014"
+
+
+def busy() -> ProblemError:
+    return ProblemError(503, "busy", "The search took too long; narrow it and try again.",
+                        headers={"Retry-After": "5"})  # fmt: skip
 
 
 def limited(user_id: uuid.UUID | None) -> None:
@@ -181,13 +194,14 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
     limited(user_id)
     await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'"))  # constant
     compiled = compile_query(query, await resolve_terms(db, query.filters))
-    counted = compiled.ids.order_by(None).limit(MAX_TOTAL + 1).subquery()
+    counted = (compiled.matches if compiled.matches is not None else compiled.ids).limit(
+        MAX_TOTAL + 1).subquery()  # fmt: skip
     paged = compiled.ids.limit(query.page_size).offset((query.page - 1) * query.page_size)
     try:
         total = int(await db.scalar(select(func.count()).select_from(counted)) or 0)
         page_ids = list((await db.scalars(paged)).all())
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) != "57014":  # query_canceled: the timeout
+        if not timed_out(exc):
             raise
         await db.rollback()
         raise ProblemError(
@@ -214,7 +228,15 @@ async def search(db: AsyncSession, query: Query, user_id: uuid.UUID | None) -> S
                     lit[field] = got
             summary.highlights = lit
         items.append(summary)
-    facets = await facet_counts(db, compiled.ids, query) if query.facet_counts else {}
+    facets: dict[str, list[FacetCount]] = {}
+    if query.facet_counts:
+        try:
+            facets = await facet_counts(db, compiled.matches if compiled.matches is not None
+                                        else compiled.ids, query)  # fmt: skip
+        except DBAPIError as exc:  # past the timeout: the results without counts (S9)
+            if not timed_out(exc):
+                raise
+            await db.rollback()
     took = int((time.monotonic() - started) * 1000)
     _log.info("search", query_hash=query_hash(query),
               user_id=str(user_id) if user_id else None, took_ms=took, total=total)  # fmt: skip

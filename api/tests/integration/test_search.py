@@ -317,7 +317,7 @@ async def test_facet_counts_for_the_matching_items(
     for item in (await db.scalars(select(Item).where(Item.title.like(f"{TAG}%")))).all():
         await reprocess_item(db, item.id)
     body = (await admin.post(_api("/search"), json={"q": TAG})).json()
-    assert {f["key"]: f["count"] for f in body["facets"]["jurisdictions"]} == {"DE": 3}
+    assert {f["key"]: f["count"] for f in body["facets"]["jurisdiction"]} == {"DE": 3}
     assert {f["key"]: f["count"] for f in body["facets"]["topic"]}[key] == 2
     none = (await admin.post(_api("/search"), json={"q": TAG, "facet_counts": False})).json()
     assert none["facets"] == {}

@@ -187,7 +187,8 @@ CREATE TABLE item ( -- std
   search_vector tsvector GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(title_en,'')), 'A') ||
     setweight(to_tsvector('simple', coalesce(summary,'') || ' ' || coalesce(summary_en,'')), 'B')) STORED,
-  fetched_host text                                -- CP-19 (migration 0005): host the content was fetched from; NULL = never fetched (a feed summary)
+  fetched_host text,                               -- CP-19 (migration 0005): host the content was fetched from; NULL = never fetched (a feed summary)
+  search_vector_stemmed tsvector GENERATED ALWAYS AS (CASE WHEN language ~~ 'en%'::text THEN to_tsvector('english'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) WHEN language ~~ 'de%'::text THEN to_tsvector('german'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) WHEN language ~~ 'fr%'::text THEN to_tsvector('french'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) WHEN language ~~ 'es%'::text THEN to_tsvector('spanish'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) WHEN language ~~ 'pt%'::text THEN to_tsvector('portuguese'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) ELSE to_tsvector('simple'::regconfig, COALESCE(title, ''::text) || ' '::text || COALESCE(summary, ''::text)) END) STORED -- CP-21 (migration 0007): the item's own language
   -- Language-specific configurations are applied in a per-language expression index by M5; 'simple' is the baseline.
 );
 CREATE INDEX ix_item_attributes ON item USING gin (attributes jsonb_path_ops);
@@ -196,11 +197,7 @@ CREATE INDEX ix_item_last_changed ON item(last_changed_at DESC);
 CREATE INDEX ix_item_published ON item(published_at DESC);
 CREATE INDEX ix_item_title_trgm ON item USING gin (title gin_trgm_ops);
 CREATE INDEX ix_item_source_content ON item(source_id, content_hash); -- CP-20 (migration 0006)
-CREATE INDEX ix_item_fts_en ON item USING gin (to_tsvector('english'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(summary, ''::text)))) WHERE (language ~~ 'en%'::text); -- M5 (migration 0007)
-CREATE INDEX ix_item_fts_de ON item USING gin (to_tsvector('german'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(summary, ''::text)))) WHERE (language ~~ 'de%'::text); -- M5 (migration 0007)
-CREATE INDEX ix_item_fts_fr ON item USING gin (to_tsvector('french'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(summary, ''::text)))) WHERE (language ~~ 'fr%'::text); -- M5 (migration 0007)
-CREATE INDEX ix_item_fts_es ON item USING gin (to_tsvector('spanish'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(summary, ''::text)))) WHERE (language ~~ 'es%'::text); -- M5 (migration 0007)
-CREATE INDEX ix_item_fts_pt ON item USING gin (to_tsvector('portuguese'::regconfig, ((COALESCE(title, ''::text) || ' '::text) || COALESCE(summary, ''::text)))) WHERE (language ~~ 'pt%'::text); -- M5 (migration 0007)
+CREATE INDEX ix_item_search_stemmed ON item USING gin (search_vector_stemmed); -- CP-21 (migration 0007)
 
 CREATE TABLE item_version (
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(),

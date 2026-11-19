@@ -86,3 +86,45 @@ async def test_an_anonymous_caller_sees_no_map(admin: httpx.AsyncClient) -> None
                                   headers=ORIGIN)  # fmt: skip
     async with anonymous:
         assert (await anonymous.get(_api("/map/activity"))).status_code == 401
+
+
+async def test_map_filters_mean_what_search_filters_mean(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """Slice 2 S4, S5, S7: a severity filter works; a jurisdiction filter is about the item's
+    tags, the row about where the event is; EU events show in the region view; naive times are
+    UTC."""
+    from regwatch.processing.models import ItemJurisdiction
+    from regwatch.taxonomy.models import Jurisdiction
+
+    sid = await corpus(admin, db)
+    item = await db.scalar(select(Item).where(Item.source_id == uuid.UUID(sid)).limit(1))
+    assert item is not None
+    fr = await db.scalar(select(Jurisdiction.id).where(Jurisdiction.code == "FR"))
+    eu = await db.scalar(select(Jurisdiction.id).where(Jurisdiction.code == "EU"))
+    db.add(ItemJurisdiction(item_id=item.id, jurisdiction_id=fr, assigned_by="user"))
+    await db.execute(update(ChangeEvent).where(ChangeEvent.item_id == item.id)
+                     .values(jurisdiction_id=fr, severity="major"))  # fmt: skip
+    other = await db.scalar(
+        select(Item).where(Item.source_id == uuid.UUID(sid), Item.id != item.id).limit(1)
+    )
+    assert other is not None
+    await db.execute(update(ChangeEvent).where(ChangeEvent.item_id == other.id)
+                     .values(jurisdiction_id=eu))  # fmt: skip
+    await db.commit()
+    major = quote(json.dumps({"sources": [sid], "severity": ["major"]}))
+    got = await admin.get(_api(f"/map/activity?filters={major}"))
+    assert got.status_code == 200, got.text
+    assert {r["code"]: r["count"] for r in got.json()["rows"]} == {"FR": 1}
+    tagged_de = quote(json.dumps({"sources": [sid], "jurisdictions": ["DE"]}))
+    rows = {
+        r["code"]: r["count"]
+        for r in (await admin.get(_api(f"/map/activity?filters={tagged_de}"))).json()["rows"]
+    }
+    assert rows.get("FR") == 1  # tagged DE (and FR), its event in FR: counted where it is
+    regions = {r["code"] for r in (await admin.get(_api(
+        f"/map/activity?view_by=region&filters={quote(json.dumps({'sources': [sid]}))}"))).json()[
+        "rows"]}  # fmt: skip
+    assert "EU" in regions
+    naive = await admin.get(_api("/map/activity?from=2026-01-01T00:00:00&to=2027-01-01T00:00:00"))
+    assert naive.status_code == 200

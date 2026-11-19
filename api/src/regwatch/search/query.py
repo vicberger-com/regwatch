@@ -40,6 +40,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import TSQUERY
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from regwatch.capture.models import Source
 from regwatch.core.errors import ProblemError, ProblemFieldError
@@ -52,7 +53,7 @@ MAX_FACETS = 10
 MAX_VALUES = 50
 MAX_WINDOW = 10_000  # page * page_size
 MAX_WORDS = 20
-RANK_CANDIDATES = 10_000
+RANK_CANDIDATES = 2_000
 RANK_WORDS = 8  # words counted for ranking: each costs a stemmed test per candidate
 # UN M49 regions over the sub-regions jurisdictions carry (``taxonomy.services.M49_REGIONS``):
 # filtering by Europe (150) means its four sub-regions (acceptance 2).
@@ -63,24 +64,23 @@ CONTINENTS = {
 SUPRANATIONAL = {"150": {"EU", "COE"}}  # bodies a continent includes, though they carry no region
 _WEBSEARCH = re.compile(r'"|(^|\s)-\w|\bor\b', re.IGNORECASE)
 _REGCONFIG: ColumnElement[Any] = literal_column(f"'{CONFIG}'::regconfig")  # a constant, never input
-# Stemmed matching per item language (Q1), with the expression migration 0007 indexes.
+# Stemmed matching per item language (Q1), on the stored ``search_vector_stemmed`` (CP-21).
 STEMMED = {"en": "english", "de": "german", "fr": "french", "es": "spanish", "pt": "portuguese"}
-_DOCUMENT = "coalesce(item.title, '') || ' ' || coalesce(item.summary, '')"
 
 
-def _query_for(config: str, q: str) -> ColumnElement[Any]:
+def _query_for(config: str, q: str, words_only: bool = False) -> ColumnElement[Any]:
     reg: ColumnElement[Any] = literal_column(f"'{config}'::regconfig")  # a STEMMED constant
-    if _WEBSEARCH.search(q):
+    if _WEBSEARCH.search(q) and not words_only:
         return func.websearch_to_tsquery(reg, q)
     return func.replace(cast(func.plainto_tsquery(reg, q), Text), " & ", " | ").cast(TSQUERY)
 
 
-def matches(q: str, found: ColumnElement[Any]) -> ColumnElement[bool]:
-    """The simple-configuration match, or a stemmed one in the item's own language."""
+def matches(q: str, found: ColumnElement[Any], words_only: bool = False) -> ColumnElement[bool]:
+    """The simple-configuration match, or the stemmed one in the item's own language. The
+    language patterns are constants, so the planner can use the index in any plan (S10)."""
     stemmed = [
-        and_(Item.language.like(f"{code}%"),
-             func.to_tsvector(literal_column(f"'{config}'::regconfig"),
-                              literal_column(_DOCUMENT)).op("@@")(_query_for(config, q)))
+        and_(Item.language.like(literal_column(f"'{code}%'")),
+             Item.search_vector_stemmed.op("@@")(_query_for(config, q, words_only)))
         for code, config in STEMMED.items()
     ]  # fmt: skip
     return or_(Item.search_vector.op("@@")(found), *stemmed)
@@ -90,6 +90,9 @@ def matches(q: str, found: ColumnElement[Any]) -> ColumnElement[bool]:
 class Compiled:
     ids: Select[Any]  # item ids, ordered, unpaged
     tsquery: ColumnElement[Any] | None
+    # Every match, newest change first: what counts and facets read a bounded prefix of, so the
+    # planner can walk the date index and stop (the 1M-item load test, acceptance 3).
+    matches: Select[Any] | None = None
 
 
 def _bad(field: str, message: str) -> ProblemError:
@@ -199,24 +202,28 @@ def conditions(filters: QueryFilters | None,
     """The WHERE conditions of ``filters`` on ``item``."""
     if filters is None:
         return []
+    # Each EXISTS has its own aliases and correlates to ``item`` only, so a caller that already
+    # joins change_event or jurisdiction (map activity) gets the same meaning (slice 2 S4, S5).
+    ij, jur, ev, it = (aliased(ItemJurisdiction), aliased(Jurisdiction), aliased(ChangeEvent),
+                       aliased(ItemTerm))  # fmt: skip
     where: list[ColumnElement[bool]] = []
     if filters.jurisdictions:
         codes = [c.upper() for c in filters.jurisdictions]
-        where.append(exists().where(
-            ItemJurisdiction.item_id == Item.id,
-            ItemJurisdiction.jurisdiction_id == Jurisdiction.id,
-            Jurisdiction.code.in_(codes)))  # fmt: skip
+        where.append(exists().correlate(Item).where(
+            ij.item_id == Item.id,
+            ij.jurisdiction_id == jur.id,
+            jur.code.in_(codes)))  # fmt: skip
     if filters.regions:
         bodies = {b for r in filters.regions for b in SUPRANATIONAL.get(r, set())}
-        where.append(exists().where(
-            ItemJurisdiction.item_id == Item.id,
-            ItemJurisdiction.jurisdiction_id == Jurisdiction.id,
-            Jurisdiction.region_code.in_(regions(filters.regions))
-            | Jurisdiction.code.in_(bodies)))  # fmt: skip
+        where.append(exists().correlate(Item).where(
+            ij.item_id == Item.id,
+            ij.jurisdiction_id == jur.id,
+            jur.region_code.in_(regions(filters.regions))
+            | jur.code.in_(bodies)))  # fmt: skip
     for ids in term_ids.values():
-        where.append(exists().where(
-            ItemTerm.item_id == Item.id, ItemTerm.term_id.in_(ids),
-            ItemTerm.feedback.is_distinct_from("incorrect")))  # fmt: skip
+        where.append(exists().correlate(Item).where(
+            it.item_id == Item.id, it.term_id.in_(ids),
+            it.feedback.is_distinct_from("incorrect")))  # fmt: skip
     if filters.sources:
         where.append(Item.source_id.in_(filters.sources))
     if filters.status:
@@ -227,12 +234,12 @@ def conditions(filters: QueryFilters | None,
         where.append(Item.needs_review.is_(filters.needs_review))
     if filters.severity:
         start, end = period(filters)
-        within = [ChangeEvent.occurred_at >= start] if start else []
-        within += [ChangeEvent.occurred_at <= end] if end else []
-        levels = ChangeEvent.severity.in_(set(filters.severity))
-        where.append(exists().where(ChangeEvent.item_id == Item.id, levels, *within))
+        within = [ev.occurred_at >= start] if start else []
+        within += [ev.occurred_at <= end] if end else []
+        levels = ev.severity.in_(set(filters.severity))
+        where.append(exists().correlate(Item).where(ev.item_id == Item.id, levels, *within))
     if filters.credibility:
-        where.append(exists().where(Source.id == Item.source_id,
+        where.append(exists().correlate(Item).where(Source.id == Item.source_id,
                                     Source.credibility.in_(set(filters.credibility))))  # fmt: skip
     where += _range(Item.published_at, filters.published)
     where += _range(Item.last_changed_at, filters.changed)
@@ -256,12 +263,13 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
     if found is not None:
         where.append(matches(text, found))
     ids = ids.where(and_(*where)) if where else ids
+    newest = ids.order_by(Item.last_changed_at.desc(), Item.id.desc())
     if query.sort == "relevance" and found is not None:
-        # Ranking costs per row, so only the first ``RANK_CANDIDATES`` matches are ranked (the
-        # most ``total`` ever says; re-verification 1, N1).
-        candidates = ids.limit(RANK_CANDIDATES).subquery()
+        # Ranking costs per row, so only the ``RANK_CANDIDATES`` most recently changed matches
+        # are ranked (re-verification 1, N1; the 1M-item load test).
+        candidates = newest.limit(RANK_CANDIDATES).subquery()
         # A word counts when it matches as written or by its stem in the item's language.
-        matched = sum((case((matches(w, func.plainto_tsquery(_REGCONFIG, w)), 1), else_=0)
+        matched = sum((case((matches(w, func.plainto_tsquery(_REGCONFIG, w), True), 1), else_=0)
                        for w in words(text)[:RANK_WORDS]),
                       start=cast(literal_column("0"), Integer))  # fmt: skip
         rank = func.ts_rank_cd(Item.search_vector, found)
@@ -270,4 +278,4 @@ def compile_query(query: Query, term_ids: dict[str, list[uuid.UUID]] | None = No
                          Item.id.desc()))  # fmt: skip
     else:
         ids = ids.order_by(*_ORDER.get(query.sort, _ORDER["last_changed_desc"]))
-    return Compiled(ids, found)
+    return Compiled(ids, found, newest)

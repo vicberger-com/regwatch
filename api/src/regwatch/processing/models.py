@@ -52,6 +52,10 @@ class Item(Base):
     search_vector: Mapped[Any] = mapped_column(
         TSVECTOR, Computed("search_vector", persisted=True), deferred=True
     )
+    # CP-21 (migration 0007): title and summary in the item's own language's configuration
+    search_vector_stemmed: Mapped[Any] = mapped_column(
+        TSVECTOR, Computed("search_vector_stemmed", persisted=True), deferred=True
+    )
 
 
 class ItemVersion(Base):

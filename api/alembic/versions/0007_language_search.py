@@ -1,8 +1,11 @@
-"""M5 per-language search (Q1; ``schema.sql``: "Language-specific configurations are applied in
-a per-language expression index by M5; 'simple' is the baseline").
+"""CP-21 (M5 Q1; accepted under the owner's standing instruction of 2026-11-19 to take the
+default recommendations): ``item.search_vector_stemmed``, a stored generated tsvector of title
+and summary in the item's own language's configuration (english, german, french, spanish,
+portuguese; ``simple`` otherwise), with a GIN index.
 
-One partial GIN index per stemmed language on the title and summary, for items of that
-language; ``search.query`` matches with the same expression, so these indexes serve it.
+``schema.sql`` reserved "a per-language expression index"; an expression index made every
+ranked candidate recompute ``to_tsvector`` at query time (M5 slice 2 review S3: 8-word and
+phrase searches past 5 s on 55,000 items), so the vector is stored instead.
 
 Revision ID: 0007
 Revises: 0006
@@ -18,19 +21,20 @@ down_revision = "0006"
 branch_labels = None
 depends_on = None
 
-# language code prefix: PostgreSQL text search configuration (search.query.STEMMED)
-LANGUAGES = {"en": "english", "de": "german", "fr": "french", "es": "spanish",
-             "pt": "portuguese"}  # fmt: skip
 DOCUMENT = "coalesce(title, '') || ' ' || coalesce(summary, '')"
+CONFIGS = (("en", "english"), ("de", "german"), ("fr", "french"), ("es", "spanish"),
+           ("pt", "portuguese"))  # fmt: skip
+STEMMED = ("CASE " + " ".join(f"WHEN language LIKE '{c}%' THEN to_tsvector('{g}'::regconfig, "
+                              f"{DOCUMENT})" for c, g in CONFIGS)
+           + f" ELSE to_tsvector('simple'::regconfig, {DOCUMENT}) END")  # fmt: skip
 
 
 def upgrade() -> None:
-    for code, config in LANGUAGES.items():
-        op.execute(f"CREATE INDEX ix_item_fts_{code} ON item USING gin "
-                   f"(to_tsvector('{config}'::regconfig, {DOCUMENT})) "
-                   f"WHERE language LIKE '{code}%'")  # fmt: skip
+    op.execute(f"ALTER TABLE item ADD COLUMN search_vector_stemmed tsvector "
+               f"GENERATED ALWAYS AS ({STEMMED}) STORED")  # fmt: skip
+    op.execute("CREATE INDEX ix_item_search_stemmed ON item USING gin (search_vector_stemmed)")
 
 
 def downgrade() -> None:
-    for code in LANGUAGES:
-        op.execute(f"DROP INDEX ix_item_fts_{code}")
+    op.execute("DROP INDEX ix_item_search_stemmed")
+    op.execute("ALTER TABLE item DROP COLUMN search_vector_stemmed")
