@@ -296,7 +296,9 @@ async def test_a_stock_report_is_emailed_to_allowed_addresses(
     assert attached.get_content() == PDF and smtp.sent[0]["Subject"] == "Sources"
     rows = (await admin.get(_api("/admin/audit"), params={"entity_type": "output_job"})).json()
     sent = next(r for r in rows["items"] if r["action"] == "output.sent")
-    assert len(sent["after"]["recipients"]) == 2 and "example.org" not in str(sent["after"])
+    assert len(sent["after"]["recipients"]) == 2  # hashed
+    assert sent["after"]["recipient_domains"] == ["example.org", "legal.example.org"]
+    assert "ana@" not in str(sent["after"]) and "bo@" not in str(sent["after"])  # no addresses
     viewer = await _as_new_user(admin, "vee@example.org", ["viewer"])  # no outputs.email
     assert (await viewer.post(_api("/outputs"), json=_email(["ana@example.org"]))
             ).status_code == 403  # fmt: skip

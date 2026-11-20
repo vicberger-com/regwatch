@@ -116,6 +116,10 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
         done = set(destination.get("sent", []))  # those a failed attempt already reached
         try:
             for to in [r for r in recipients if mail.hashed(r) not in done]:
+                now = await db.scalar(select(OutputJob.status).where(OutputJob.id == job.id))
+                if now != "rendering":  # cancelled or swept meanwhile: stop sending
+                    await db.commit()
+                    return str(now)
                 await mail.send(
                     [
                         (

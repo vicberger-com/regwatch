@@ -142,9 +142,13 @@ def build(to: str, subject: str, message: str, pdf: bytes, filename: str) -> Ema
     return mail
 
 
+IN_STACK = frozenset({"localhost", "127.0.0.1", "::1", "mailpit"})  # deploy/compose.yaml
+
+
 def _in_stack(host: str) -> bool:
-    """A relay on loopback or inside the stack's own network (a one-label service name)."""
-    return host in ("localhost", "127.0.0.1", "::1") or "." not in host
+    """A relay on loopback or the stack's own Mailpit: named, not any one-label host, which a
+    resolver could complete into a corporate host outside the stack (M8.2 re-review)."""
+    return host.lower() in IN_STACK
 
 
 def _send_sync(messages: list[tuple[EmailMessage, str]]) -> None:
