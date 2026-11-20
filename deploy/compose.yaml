@@ -46,6 +46,9 @@ services:
       - path: index.env
         required: false
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # CP-23: `fetch` gives outbound internet (and DNS) for the save-time source address
+    # check; nothing is published, and SafeFetcher refuses every non-public address.
+    networks: [regwatch, fetch]
     volumes:
       - ../api/src:/app/src:ro
       - objectstore:/data/objectstore
@@ -72,6 +75,8 @@ services:
       - path: index-worker.env
         required: false
     command: ["regwatch-worker"]
+    # CP-23: the worker captures sources through SafeFetcher, so it needs outbound internet.
+    networks: [regwatch, fetch]
     volumes:
       - objectstore:/data/objectstore
     depends_on:
@@ -259,6 +264,9 @@ networks:
   edge: {}
   # CP-18: internet access for the `search` sidecar only (ADR-0010 decision 6).
   egress: {}
+  # CP-23: outbound internet for the capture path (api and worker) only. Separate from `egress`,
+  # so the search sidecar, which parses internet content, cannot reach the API directly.
+  fetch: {}
 
 volumes:
   pgdata:

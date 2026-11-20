@@ -138,3 +138,4 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
   - no health summary on the admin home;
   - the region view shows EU by its code;
   - a stray test facet in the QA data. | proposal | M6, M9 | use testing round 1 | open |
+| BL-130 | CP-23 (ADR-0001 amendment): the `fetch` network gives `api` and `worker` outbound internet for capture; recorded after the fact for the owner's review at G3. Follow-up: a Compose check in CI that only `api`, `worker` (on `fetch`) and `search`, `translate` (on `egress`) have outbound networks. | change | M3 | lead session | done (CP-23 applied 2026-11-20); follow-up open |

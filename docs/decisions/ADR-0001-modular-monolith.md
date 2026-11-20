@@ -66,3 +66,16 @@ The owner accepted the recommended default for every open question above:
 - Q3 (BL-15) accepted in principle: a future server print path is Python; nothing is built now.
 - Q4 accepted: SearXNG and LibreTranslate on a separate egress segment; LibreTranslate downloads its models once at first start into a persistent volume, then runs without egress (BL-48).
 - Q5 accepted: sidecar calls use the fixed-URL internal client; CLAUDE.md now limits SafeFetcher to external hosts.
+
+## Amendment (CP-23, 2026-11-20): outbound access for the capture path
+
+Approved on recommendation under the owner's standing instruction.
+
+- **What changes:** a third network class, `fetch`, joined by `api` and `worker` only.
+  - The worker captures sources through SafeFetcher and needs the internet.
+  - The API checks a source URL's DNS when the source is saved (M3 acceptance 3).
+- **What was wrong:** on the internal `regwatch` network alone, both failed every lookup. No live source could be saved or run, and the G2 criterion "starter sources produce items" had been shown only with simulated fetches. Found by the owner's demonstration on the dev stack.
+- **Controls:**
+  - nothing is published;
+  - `fetch` is separate from `egress`, so the `search` sidecar cannot reach the API;
+  - SafeFetcher still refuses every non-public address, including the cloud metadata address, `localhost` and the stack's own subnet. This was checked on the dev stack.
