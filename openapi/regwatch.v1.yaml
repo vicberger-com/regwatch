@@ -731,7 +731,7 @@ components:
     QueryFilters:
       type: object
       properties:
-        jurisdictions: { type: array, maxItems: 50, items: { type: string }, description: jurisdiction codes }
+        jurisdictions: { type: array, maxItems: 300, items: { type: string }, description: jurisdiction codes (CP-24 raised 50 to 300) }
         regions: { type: array, maxItems: 20, items: { type: string } }
         terms: { type: object, additionalProperties: { type: array, maxItems: 20, items: { type: string } }, description: "facet key to term keys; OR within a facet, AND across facets" }
         sources: { type: array, maxItems: 50, items: { type: string, format: uuid } }
@@ -850,7 +850,12 @@ components:
       properties:
         facets: { type: array, items: { type: object, required: [key, label, terms], properties: { key: { type: string }, label: { type: string }, terms: { type: array, items: { $ref: "#/components/schemas/InterestOption" } } } } }
         jurisdictions: { type: array, items: { type: object, required: [code, name], properties: { code: { type: string }, name: { type: string }, region_code: { type: string, nullable: true } } } }
-        regions: { type: array, items: { $ref: "#/components/schemas/InterestOption" } }
+        regions: { type: array, items: { $ref: "#/components/schemas/InterestRegion" } }
+    InterestRegion:
+      type: object
+      required: [key, label, members]
+      description: "A region and the jurisdiction codes it covers, so places combine as any-of (M11.1)"
+      properties: { key: { type: string }, label: { type: string }, members: { type: array, items: { type: string } } }
     InterestOption:
       type: object
       required: [key, label]

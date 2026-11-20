@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import { interestFilters, type Filters } from "@/features/map/api";
 import { jurisdictionName } from "@/features/map/names";
 import { preferencesQuery } from "@/features/me/api";
+import { interestOptionsQuery } from "@/features/me/InterestsEditor";
 import { problemText } from "@/lib/auth/session";
 
 import { searchQuery, type ItemSummary, type Query } from "./api";
@@ -169,12 +170,13 @@ export function ItemsPage(props: {
   const [text, setText] = useState(search.q ?? "");
   const [now] = useState(() => new Date()); // one "now" per visit keeps the query key stable
   const prefs = useQuery(preferencesQuery);
-  const interests = interestFilters(prefs.data?.interests);
+  const options = useQuery(interestOptionsQuery);
+  const interests = interestFilters(prefs.data?.interests, options.data);
   const mine = usesInterests(search, interests);
   const result = useQuery({
     ...searchQuery(toQuery(search, now, interests)),
     placeholderData: keepPreviousData,
-    enabled: !prefs.isPending, // the first search already knows the interests
+    enabled: !prefs.isPending && !options.isPending, // the first search knows the interests
   });
   const sort = toQuery(search, now).sort;
   const page = search.page ?? 1;

@@ -23,7 +23,8 @@ class DateRange(BaseModel):
 
 
 class QueryFilters(BaseModel):
-    jurisdictions: list[str] = Field(default=UNSET, max_length=50)
+    # 300: every jurisdiction, so interests in regions can be sent as one any-of list (CP-24).
+    jurisdictions: list[str] = Field(default=UNSET, max_length=300)
     regions: list[str] = Field(default=UNSET, max_length=20)
     terms: dict[str, Annotated[list[str], Field(max_length=20)]] = UNSET
     sources: list[UUID] = Field(default=UNSET, max_length=50)

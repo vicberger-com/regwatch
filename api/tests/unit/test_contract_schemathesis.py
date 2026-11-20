@@ -53,14 +53,6 @@ gated = (
 )
 
 
-# A fuzzed body over the 2 MB cap is refused with 413 before anything reads it, which is a
-# correct rejection of invalid data; schemathesis's default list for that check omits 413.
-for _schema in (gated,):
-    _schema.config.checks.negative_data_rejection = NegativeDataRejectionConfig(
-        expected_statuses=[*NEGATIVE_DATA_REJECTION_EXPECTED_STATUSES, "413"]
-    )
-
-
 def _implemented(ctx: Any) -> bool:
     """Operations without a documented 501 have real handlers that need a database."""
     return "501" not in ctx.operation.definition.raw.get("responses", {})
@@ -69,6 +61,13 @@ def _implemented(ctx: Any) -> bool:
 open_stubs = schemathesis.openapi.from_asgi("/api/v1/openapi.json", _app(gated=False)).exclude(
     _implemented
 )
+
+# A fuzzed body over the 2 MB cap is refused with 413 before anything reads it, which is a
+# correct rejection of invalid data; schemathesis's default list for that check omits 413.
+for _schema in (gated, open_stubs):
+    _schema.config.checks.negative_data_rejection = NegativeDataRejectionConfig(
+        expected_statuses=[*NEGATIVE_DATA_REJECTION_EXPECTED_STATUSES, "413"]
+    )
 
 
 def no_unexpected_server_error(ctx: Any, response: Any, case: Any) -> bool:
@@ -104,5 +103,6 @@ def test_stub_api_conforms(case: schemathesis.Case) -> None:
 def test_a_body_over_the_cap_counts_as_rejected() -> None:
     """The 413 allowance above reaches the negative-data check (it lives in a private
     schemathesis module, so an upgrade that moves it fails here, not by chance in a fuzz run)."""
-    statuses = gated.config.checks.negative_data_rejection.expected_statuses
-    assert "413" in statuses and "422" in statuses
+    for schema in (gated, open_stubs):
+        statuses = schema.config.checks.negative_data_rejection.expected_statuses
+        assert "413" in statuses and "422" in statuses

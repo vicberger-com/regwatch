@@ -27,6 +27,7 @@ What exists today:
    - A visible "My interests" chip set shows the filter, and one action widens it to everything.
    - Every user can still see all content. Access control stays with roles, so the search index, exports and the API need no per-item visibility.
    - The profile is stored in the user's preferences as `interests` (CP-24), with the same shapes as the M5 filters and checked against `GET /me/interest-options`. That needs no migration, and it reuses the reviewed preference path.
+   - Places combine as any-of: the chosen jurisdictions and the members of the chosen regions (from `GET /me/interest-options`) form one jurisdiction filter. Topics, and each facet, narrow it. The search jurisdiction filter takes up to 300 codes for this (CP-24).
 2. **A curated feed catalogue ships with the application.**
    - `seed/catalogue.yaml` lists R-03's verified starter sources. For each it gives the connector configuration, terms URL, credibility, jurisdictions, topics and a one-line description, and leaves out the sources R-03 rules out, such as `flk.npc.gov.cn`.
    - The seed creates them as sources that are disabled, marked `catalogue`.

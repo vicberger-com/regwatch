@@ -5,7 +5,7 @@ import { useId, type ReactNode } from "react";
 import { HelpTip } from "@/features/help/HelpTip";
 import { InterestsEditor } from "./InterestsEditor";
 import { meTopic } from "@/features/help/topics";
-import { problemText } from "@/lib/auth/session";
+import { hasPermission, problemText } from "@/lib/auth/session";
 
 import {
   preferencesQuery,
@@ -131,9 +131,15 @@ export function MePage() {
       </Section>
       {p && (
         <>
-          <Section id="interests" title="Interests">
-            <InterestsEditor saved={p.interests} />
-          </Section>
+          {hasPermission(me, "items.read") && (
+            <Section id="interests" title="Interests">
+              {/* Keyed by the saved value, so a value the server dropped never lingers. */}
+              <InterestsEditor
+                key={JSON.stringify(p.interests ?? {})}
+                saved={p.interests}
+              />
+            </Section>
+          )}
           <Section id="appearance" title="Appearance">
             <label className="flex items-center gap-2 text-sm">
               <input

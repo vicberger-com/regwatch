@@ -61,7 +61,7 @@ async def _get(app: FastAPI, path: str, **kw: Any) -> httpx.Response:
 
 
 def _resolve_to(monkeypatch: pytest.MonkeyPatch, principal: services.Principal | None) -> None:
-    async def fake(db: object, token: str) -> services.Principal | None:
+    async def fake(db: object, token: str, passive: bool = False) -> services.Principal | None:
         return principal
 
     monkeypatch.setattr(services, "resolve_session", fake)

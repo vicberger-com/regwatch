@@ -42,6 +42,7 @@ from regwatch.identity.schemas import (
     InterestJurisdiction,
     InterestOption,
     InterestOptions,
+    InterestRegion,
     Interests,
     Me,
     Preferences,
@@ -1122,9 +1123,15 @@ async def interest_options(db: AsyncSession) -> InterestOptions:
         select(Jurisdiction.code, Jurisdiction.name, Jurisdiction.region_code)
         .where(Jurisdiction.active.is_(True))
         .order_by(Jurisdiction.name))).tuples().all()  # fmt: skip
+    from regwatch.search.query import SUPRANATIONAL
+    from regwatch.search.query import regions as covered
+
     used = {r for _, _, r in places if r} | set(CONTINENTS)
-    regions = [InterestOption(key=code, label=M49_REGIONS.get(code, code)) for code in sorted(
-        used, key=lambda c: M49_REGIONS.get(c, c))]  # fmt: skip
+    regions = [
+        InterestRegion(key=code, label=M49_REGIONS.get(code, code), members=sorted(
+            {c for c, _, r in places if r in covered([code])} | SUPRANATIONAL.get(code, set())))
+        for code in sorted(used, key=lambda c: M49_REGIONS.get(c, c))
+    ]  # fmt: skip
     return InterestOptions(
         facets=[InterestFacet(key=f.key, label=f.label, terms=by_facet.get(f.id, []))
                 for f in facets],

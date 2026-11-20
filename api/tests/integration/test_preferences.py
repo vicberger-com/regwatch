@@ -152,7 +152,8 @@ async def test_interests_are_checked_normalised_and_offered_to_everyone(
         offered = {f["key"]: [t["key"] for t in f["terms"]] for f in options["facets"]}
         assert offered[facet["key"]] == ["supply-chain"]
         codes = {j["code"] for j in options["jurisdictions"]}
-        assert "DE" in codes and "150" in {r["key"] for r in options["regions"]}
+        europe = next(r for r in options["regions"] if r["key"] == "150")
+        assert "DE" in codes and "DE" in europe["members"] and "EU" in europe["members"]
         wanted = {"jurisdictions": ["de", "DE", "CN"], "regions": ["150"],
                   "terms": {facet["key"]: ["supply-chain", "supply-chain"]}}  # fmt: skip
         body = {"interests": wanted}

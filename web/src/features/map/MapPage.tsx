@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { regionsQuery } from "@/features/jurisdictions/api";
 import { preferencesQuery, viewsQuery } from "@/features/me/api";
+import { interestOptionsQuery } from "@/features/me/InterestsEditor";
 import { facetsQuery } from "@/features/taxonomy/api";
 import { hasPermission, problemText } from "@/lib/auth/session";
 
@@ -137,7 +138,11 @@ export function MapPage() {
   // The user's interests filter the map by default; "Show everything" widens it (M11.1).
   const prefs = useQuery(preferencesQuery);
   const [everything, setEverything] = useState(false);
-  const interests = interestFilters(prefs.data?.interests);
+  const options = useQuery({
+    ...interestOptionsQuery,
+    enabled: hasPermission(me, "items.read"),
+  });
+  const interests = interestFilters(prefs.data?.interests, options.data);
   const hasInterests = Object.keys(interests).length > 0;
   const extra = everything ? {} : interests;
   const activity = useQuery(activityQuery(period, asked, extra));
@@ -229,7 +234,6 @@ export function MapPage() {
           </span>
           <button
             type="button"
-            aria-pressed={everything}
             onClick={() => {
               setEverything(!everything);
               setSelected(null);

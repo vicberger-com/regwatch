@@ -91,7 +91,7 @@ async def test_shared_views_need_curation_and_are_audited(
     "body",
     [{"view_by": "country"}, {**VIEW, "name": "  "}, {**VIEW, "view_by": "no-such-facet"},
      {**VIEW, "period_days": 0}, {**VIEW, "color_scheme": "rainbow"}, {**VIEW, "q": "x" * 501},
-     {**VIEW, "filters": {"jurisdictions": [f"J{n}" for n in range(51)]}},
+     {**VIEW, "filters": {"jurisdictions": [f"J{n}" for n in range(301)]}},
      {**VIEW, "name": "x" * 121}],
 )  # fmt: skip
 async def test_bad_views_are_refused(admin: httpx.AsyncClient, body: dict[str, Any]) -> None:

@@ -21,8 +21,8 @@ const OPTIONS = {
     { code: "DE", name: "Germany", region_code: "155" },
   ],
   regions: [
-    { key: "150", label: "Europe" },
-    { key: "142", label: "Asia" },
+    { key: "150", label: "Europe", members: ["DE", "EU", "FR"] },
+    { key: "142", label: "Asia", members: ["CN"] },
   ],
 };
 const INTERESTS = {
@@ -106,6 +106,7 @@ describe("my interests (M11.1)", () => {
         { session_idle_timeout_minutes: 480, interests: INTERESTS },
       ],
       "GET /map/activity": [200, ACTIVITY],
+      "GET /me/interest-options": [200, OPTIONS],
     });
     renderAt("/");
     const filters = () =>
@@ -116,7 +117,7 @@ describe("my interests (M11.1)", () => {
     await waitFor(() => {
       expect(filters()).toContain(
         JSON.stringify({
-          regions: ["150"],
+          jurisdictions: ["DE", "EU", "FR"],
           terms: { topic: ["supply-chain"] },
         }),
       );
@@ -138,12 +139,16 @@ describe("my interests (M11.1)", () => {
         { session_idle_timeout_minutes: 480, interests: INTERESTS },
       ],
       "POST /search": [200, { items: [], total: 0, page: 1, page_size: 25 }],
+      "GET /me/interest-options": [200, OPTIONS],
     });
     renderAt("/items");
     await waitFor(() => {
       expect(
         (api.calls.at(-1)?.body as { filters?: object } | undefined)?.filters,
-      ).toEqual({ regions: ["150"], terms: { topic: ["supply-chain"] } });
+      ).toEqual({
+        jurisdictions: ["DE", "EU", "FR"],
+        terms: { topic: ["supply-chain"] },
+      });
     });
     await userEvent.click(
       await screen.findByRole("button", { name: "Show everything" }),

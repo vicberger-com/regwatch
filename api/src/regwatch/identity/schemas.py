@@ -54,6 +54,15 @@ class InterestOption(BaseModel):
     label: str
 
 
+class InterestRegion(BaseModel):
+    """A region, with the jurisdictions it covers (sub-regions of a continent, and bodies such
+    as the EU for Europe), so interests in places combine as one "any of" list (M11.1 review)."""
+
+    key: str
+    label: str
+    members: list[str]
+
+
 class InterestFacet(BaseModel):
     key: str
     label: str
@@ -72,7 +81,7 @@ class InterestOptions(BaseModel):
 
     facets: list[InterestFacet]
     jurisdictions: list[InterestJurisdiction]
-    regions: list[InterestOption]
+    regions: list[InterestRegion]
 
 
 class Preferences(BaseModel):

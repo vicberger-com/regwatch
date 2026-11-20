@@ -4212,7 +4212,13 @@ export interface components {
                 name: string;
                 region_code?: string | null;
             }[];
-            regions: components["schemas"]["InterestOption"][];
+            regions: components["schemas"]["InterestRegion"][];
+        };
+        /** @description A region and the jurisdiction codes it covers, so places combine as any-of (M11.1) */
+        InterestRegion: {
+            key: string;
+            label: string;
+            members: string[];
         };
         InterestOption: {
             key: string;

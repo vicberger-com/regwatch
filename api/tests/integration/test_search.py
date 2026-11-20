@@ -117,7 +117,7 @@ async def test_hostile_queries_are_words_not_syntax(
     "body",
     [{"page_size": 201}, {"page": 0}, {"q": "x" * 501},
      {"filters": {"terms": {"topic": [f"t{n}" for n in range(21)]}}},
-     {"filters": {"jurisdictions": [f"J{n}" for n in range(51)]}}, {"sort": "random"}],
+     {"filters": {"jurisdictions": [f"J{n}" for n in range(301)]}}, {"sort": "random"}],
 )  # fmt: skip
 async def test_the_dsl_limits(admin: httpx.AsyncClient, body: dict[str, Any]) -> None:
     assert (await admin.post(_api("/search"), json=body)).status_code == 422

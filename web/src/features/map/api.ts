@@ -16,11 +16,30 @@ export interface MapView {
 
 export type Filters = NonNullable<Schemas["Query"]["filters"]>;
 
-/** The user's interests as query filters; empty parts are left out (M11.1). */
-export function interestFilters(i: Schemas["Interests"] | undefined): Filters {
+/**
+ * The user's interests as query filters (M11.1). Places combine as any of: the chosen
+ * jurisdictions and every member of the chosen regions form one jurisdiction list. Topics
+ * combine as any of within a facet, and every facet chosen must match. Without the options
+ * (not loaded yet, or refused), regions are sent as they are.
+ */
+export function interestFilters(
+  i: Schemas["Interests"] | undefined,
+  options?: Schemas["InterestOptions"],
+): Filters {
   const out: Filters = {};
-  if (i?.jurisdictions?.length) out.jurisdictions = i.jurisdictions;
-  if (i?.regions?.length) out.regions = i.regions;
+  const chosenRegions = i?.regions ?? [];
+  if (options && chosenRegions.length > 0) {
+    const members = options.regions
+      .filter((r) => chosenRegions.includes(r.key))
+      .flatMap((r) => r.members);
+    const places = [
+      ...new Set([...(i?.jurisdictions ?? []), ...members]),
+    ].sort();
+    if (places.length > 0) out.jurisdictions = places; // at most every jurisdiction (CP-24: 300)
+  } else {
+    if (i?.jurisdictions?.length) out.jurisdictions = i.jurisdictions;
+    if (chosenRegions.length) out.regions = chosenRegions;
+  }
   const terms = Object.fromEntries(
     Object.entries(i?.terms ?? {}).filter(([, keys]) => keys.length > 0),
   );
