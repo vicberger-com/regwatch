@@ -16,13 +16,16 @@ export interface MapView {
 
 export type Filters = NonNullable<Schemas["Query"]["filters"]>;
 
+export const MAX_JURISDICTIONS = 300; // the search filter's cap (CP-24)
+
 /**
  * The user's interests as query filters (M11.1). Places combine as any of: the chosen
  * jurisdictions and every member of the chosen regions form one jurisdiction list. Topics
- * combine as any of within a facet, and every facet chosen must match. Without the options
- * (not loaded yet, or refused), regions are sent as they are.
+ * combine as any of within a facet, and every facet chosen must match. Past the cap, the
+ * regions are sent alone (chosen jurisdictions outside them are left out). Without the
+ * options (not loaded yet, or refused), the chosen jurisdictions are sent alone, or the
+ * regions when none is chosen: never both, whose intersection may be empty.
  */
-export const MAX_JURISDICTIONS = 300; // the search filter's cap (CP-24)
 
 export function interestFilters(
   i: Schemas["Interests"] | undefined,
