@@ -81,12 +81,23 @@ export async function signInByKeyboard(page: Page): Promise<void> {
 
 export const THEMES = ["light", "dark", "high-contrast"] as const;
 
-/** Start a page in a theme (the shell reads it from localStorage until M9). */
+/**
+ * Use a theme: saved in the admin's preferences, which the shell applies after sign-in (M9),
+ * and in localStorage for the first paint. Returns a function that restores "system".
+ */
 export async function useTheme(
   page: Page,
   theme: (typeof THEMES)[number],
-): Promise<void> {
+): Promise<() => Promise<void>> {
+  const api = await apiSession();
+  const set = await api.patch("/api/v1/me/preferences", { data: { theme } });
+  if (!set.ok())
+    throw new Error(`setting the theme: HTTP ${String(set.status())}`);
   await page.addInitScript((t) => {
     window.localStorage.setItem("regwatch.theme", t);
   }, theme);
+  return async () => {
+    await api.patch("/api/v1/me/preferences", { data: { theme: "system" } });
+    await api.dispose();
+  };
 }

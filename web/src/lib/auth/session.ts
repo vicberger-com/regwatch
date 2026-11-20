@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-query";
 
 import { api, isProblem, type Problem, type Schemas } from "@/lib/api/client";
+import { setTimeZone } from "@/lib/time/format";
 
 export type Me = Schemas["Me"];
 
@@ -92,6 +93,7 @@ export function useLogout() {
 export function forgetEverything(client: QueryClient): void {
   client.getMutationCache().clear();
   client.clear();
+  setTimeZone(undefined); // the previous user's zone hints at where they are
   try {
     // The last user's appearance hints at personal needs on a shared device (M9 review).
     window.localStorage.removeItem("regwatch.appearance");

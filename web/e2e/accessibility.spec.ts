@@ -46,30 +46,36 @@ for (const theme of THEMES) {
   test(`no serious or critical axe issues in the ${theme} theme`, async ({
     page,
   }) => {
-    await useTheme(page, theme);
-    const id = await firstItemId();
-    await signInByKeyboard(page);
-    await expect(page.locator("html")).toHaveAttribute("data-theme", theme); // the theme applied
-    const routes: [string, string][] = [
-      ["/", "Map"],
-      ["/items", "Items"],
-      [`/items/${id}`, ""],
-      ["/admin", "Settings"],
-      ["/admin/sources", "Sources"],
-      ["/admin/taxonomy", "Taxonomy"],
-      ["/admin/users", "Users"],
-      ["/legal", ""],
-    ];
-    for (const [route, heading] of routes) {
-      await page.goto(route);
-      if (heading)
-        await page.getByRole("heading", { level: 1, name: heading }).waitFor();
-      else await page.getByRole("heading", { level: 1 }).first().waitFor();
-      await page.waitForLoadState("networkidle");
-      await audit(page, theme, route);
+    const restore = await useTheme(page, theme);
+    try {
+      const id = await firstItemId();
+      await signInByKeyboard(page);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme); // the theme applied
+      const routes: [string, string][] = [
+        ["/", "Map"],
+        ["/items", "Items"],
+        [`/items/${id}`, ""],
+        ["/admin", "Settings"],
+        ["/admin/sources", "Sources"],
+        ["/admin/taxonomy", "Taxonomy"],
+        ["/admin/users", "Users"],
+        ["/legal", ""],
+      ];
+      for (const [route, heading] of routes) {
+        await page.goto(route);
+        if (heading)
+          await page
+            .getByRole("heading", { level: 1, name: heading })
+            .waitFor();
+        else await page.getByRole("heading", { level: 1 }).first().waitFor();
+        await page.waitForLoadState("networkidle");
+        await audit(page, theme, route);
+      }
+      await page.goto("/");
+      await page.getByRole("radio", { name: "Table" }).check();
+      await audit(page, theme, "/ (table)");
+    } finally {
+      await restore();
     }
-    await page.goto("/");
-    await page.getByRole("radio", { name: "Table" }).check();
-    await audit(page, theme, "/ (table)");
   });
 }

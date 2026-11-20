@@ -26,9 +26,11 @@ export function AppShell() {
   // the live query, since the route context keeps the user as it was at sign-in.
   const live = useQuery(meQuery).data ?? me;
   const prefs = live.preferences;
+  // Dates in the user's zone (use testing U-M9-1), set while rendering so every date drawn in
+  // this render already uses it; idempotent, so repeated renders are harmless.
+  setTimeZone(prefs?.timezone);
   useEffect(() => {
     applyAppearance(resolve(prefs, systemIsDark()));
-    setTimeZone(prefs?.timezone); // dates in the user's zone (use testing U-M9-1)
   }, [prefs]);
 
   return (
