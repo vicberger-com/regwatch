@@ -47,7 +47,8 @@ const ME: Topic[] = [
     "Feeds",
     "The curated catalogue of official sources; tick one to follow it, and it is captured for everyone.",
     "The catalogue ships with the application. Each feed is checked before it is listed and always respects the site's robots.txt. A feed is captured while at least one person follows it, and one capture serves everyone.",
-    "An administrator can turn a feed off; it then shows as turned off and cannot be followed until it is on again. To add a feed that is not listed, ask an administrator.",
+    "An administrator can turn a feed off; it then shows as turned off and cannot be followed until it is on again.",
+    "To add a feed that is not listed, ask for it with its https address and why it matters. An editor checks the feed and adds it to the catalogue, and you then follow it, or declines with a note. You can withdraw a request while it waits.",
     "legislation.gov.uk refuses requests that give no contact address, so its feed fails until an administrator sets the contact email in Settings.",
   ),
   T(

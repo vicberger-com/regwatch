@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { RequestFeed } from "@/features/sources/FeedRequests";
 import { api, type Schemas } from "@/lib/api/client";
 import { failure, problemText } from "@/lib/auth/session";
 
@@ -69,7 +70,7 @@ export function FeedsEditor() {
     <div className="grid gap-3">
       <p className="text-sm text-text-muted">
         Tick a feed to follow it. One capture serves everyone who follows a
-        feed. To add a feed that is not listed, ask an administrator.
+        feed. To add a feed that is not listed, ask for it below.
       </p>
       {[...groups].map(([place, entries]) => (
         <fieldset key={place} className="rounded border border-border p-3">
@@ -121,6 +122,7 @@ export function FeedsEditor() {
           </ul>
         </fieldset>
       ))}
+      <RequestFeed />
       {change.isError && (
         <p role="alert" className="text-sm">
           {problemText(change.error, "The change could not be saved.")}

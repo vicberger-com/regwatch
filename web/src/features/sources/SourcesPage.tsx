@@ -16,6 +16,7 @@ import {
   type Source,
   type SourceTestResult,
 } from "./api";
+import { RequestQueue } from "./FeedRequests";
 import { SourceEditor } from "./SourceEditor";
 
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -69,6 +70,7 @@ export function SourcesPage({
       <h1 id="src-heading" className="text-2xl font-semibold">
         Sources
       </h1>
+      {canManage && <RequestQueue />}
       {canManage && (
         <div>
           <button
