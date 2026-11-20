@@ -35,6 +35,8 @@ from regwatch.outputs.schemas import OutputRequest
 READ_ALL = "outputs.read_all"
 LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
 KINDS_NOW = {"pdf"}  # M8.1; email, csv, print and schedules follow
+MAX_ATTEMPTS = 3  # renders per job, first try and retries together (M8.1 review finding 3)
+STALE_AFTER = timedelta(minutes=5)  # a render outlives its 90-second limit: interrupted
 
 
 def _invalid(field: str, message: str) -> ProblemError:
@@ -198,6 +200,9 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
         raise ProblemError(403, "forbidden", "Only the requester can retry an output.")
     if job.status != "failed":
         raise ProblemError(409, "conflict", "Only a failed output can be tried again.")
+    if job.attempts >= MAX_ATTEMPTS:
+        raise ProblemError(409, "conflict", f"This output was tried {job.attempts} times; "
+                           "request a new one.")  # fmt: skip
     await check_source(db, job, principal)
     await _limited(db, principal.user.id)
     job.status, job.error_class, job.error_message = "queued", None, None
@@ -212,11 +217,32 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
 
 async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
                  ip: str | None) -> None:  # fmt: skip
-    job = await get_job(db, job_id, principal)
-    if job.requested_by != principal.user.id:
+    await get_job(db, job_id, principal)  # visible, or 404
+    # Locked, so a render finishing at the same moment cannot overwrite the cancel (finding 2).
+    job = await db.scalar(select(OutputJob).where(OutputJob.id == job_id).with_for_update())
+    if job is None or job.requested_by != principal.user.id:
         raise ProblemError(403, "forbidden", "Only the requester can cancel an output.")
-    if job.status not in ("queued", "failed") and job.scheduled_cron is None:
+    stale = job.status == "rendering" and job.updated_at < datetime.now(UTC) - STALE_AFTER
+    if job.status not in ("queued", "failed") and not stale and job.scheduled_cron is None:
         raise ProblemError(409, "conflict", f"The output is already {job.status}.")
     job.status = "cancelled"
     audit(db, "output.cancel", "output_job", job.id, actor=principal.user.id, ip=ip)
     await db.commit()
+
+
+async def sweep_stale(db: AsyncSession, now: datetime | None = None) -> int:
+    """Mark renders that a crashed or killed worker left ``rendering`` as failed, so they can be
+    retried (M8.1 review finding 1); how many."""
+    from sqlalchemy import update
+
+    limit = (now or datetime.now(UTC)) - STALE_AFTER
+    done = await db.execute(update(OutputJob).where(
+        OutputJob.status == "rendering", OutputJob.updated_at < limit).values(
+        status="failed", error_class="interrupted",
+        error_message="the render did not finish; try again", finished_at=func.now())
+        .returning(OutputJob.id))  # fmt: skip
+    ids = done.scalars().all()
+    for job_id in ids:
+        audit(db, "output.failed", "output_job", job_id, after={"error_class": "interrupted"})
+    await db.commit()
+    return len(ids)

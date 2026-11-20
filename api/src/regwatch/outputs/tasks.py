@@ -87,6 +87,11 @@ async def run_pdf(db: AsyncSession, job_id: uuid.UUID) -> str:
         data, pages = await pdf.render(html, layout.name, limit)
     except pdf.PdfError as exc:
         return await fail(exc.error_class, exc.message)
+    # Read again under a lock: a cancel during the render wins (M8.1 review finding 2).
+    await db.refresh(job, with_for_update=True)
+    if job.status != "rendering":
+        await db.commit()
+        return job.status
     key = f"outputs/{job.id}.pdf"
     await objectstore.put(key, data)
     job.status, job.artifact_ref, job.artifact_bytes = "sent", key, len(data)
@@ -98,3 +103,22 @@ async def run_pdf(db: AsyncSession, job_id: uuid.UUID) -> str:
     await db.commit()
     _log.info("output_sent", job=str(job.id), pages=pages, bytes=len(data))
     return "sent"
+
+
+@shared_task(name="outputs.schedule_tick", queue="outputs")  # type: ignore[untyped-decorator]
+def schedule_tick() -> None:
+    """Every minute (beat): renders interrupted by a crashed worker are failed, so they can be
+    retried; scheduled outputs join this tick in M8.3."""
+    anyio.run(_tick)
+
+
+async def _tick() -> None:
+    from regwatch.outputs import services
+
+    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            if swept := await services.sweep_stale(db):
+                _log.info("outputs_swept", jobs=swept)
+    finally:
+        await engine.dispose()

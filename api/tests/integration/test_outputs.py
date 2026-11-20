@@ -5,16 +5,19 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.internal import InternalClient
 from regwatch.outputs import pdf, tasks
+from regwatch.outputs.models import OutputJob
 from regwatch.reports import render
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
@@ -182,3 +185,49 @@ async def test_outputs_are_limited_per_hour(admin: httpx.AsyncClient,
 
 def test_pages_are_counted_without_the_page_tree() -> None:
     assert pdf.page_count(PDF) == 2
+
+
+async def test_a_cancel_during_the_render_wins(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """M8.1 review finding 2: the render stores nothing once its job was cancelled."""
+    job = (await _pdf(admin, {"report_template_key": "source-health"})).json()
+    real = pdf.render
+
+    async def slow(html: str, title: str, max_bytes: int) -> tuple[bytes, int]:
+        assert (await admin.delete(_api(f"/outputs/{job['id']}"))).status_code == 409  # busy
+        await db.execute(update(OutputJob).where(OutputJob.id == uuid.UUID(job["id"]))
+                         .values(status="cancelled"))  # fmt: skip
+        await db.commit()  # as a cancel by the owner would, between render and store
+        return await real(html, title, max_bytes)
+
+    monkeypatch.setattr(pdf, "render", slow)
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "cancelled"
+    shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert (shown["status"], shown["artifact_available"]) == ("cancelled", False)
+
+
+async def test_an_interrupted_render_is_swept_and_attempts_are_capped(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    """M8.1 review findings 1 and 3."""
+    from regwatch.outputs import services
+
+    job = (await _pdf(admin, {"report_template_key": "source-health"})).json()
+    jid = uuid.UUID(job["id"])
+    await db.execute(
+        update(OutputJob).where(OutputJob.id == jid).values(status="rendering", attempts=1)
+    )  # as a render that then crashed
+    await db.commit()
+    assert await services.sweep_stale(db) == 0  # not stale yet
+    later = datetime.now(UTC) + timedelta(minutes=10)
+    assert await services.sweep_stale(db, now=later) == 1
+    shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert (shown["status"], shown["error_class"]) == ("failed", "interrupted")
+    gotenberg.answer = (500, b"down")
+    for _ in range(2):  # attempts 2 and 3
+        assert (await admin.post(_api(f"/outputs/{job['id']}/retry"))).status_code == 202
+        assert await tasks.run_pdf(db, jid) == "failed"
+    capped = await admin.post(_api(f"/outputs/{job['id']}/retry"))
+    assert capped.status_code == 409 and "tried 3 times" in capped.text
