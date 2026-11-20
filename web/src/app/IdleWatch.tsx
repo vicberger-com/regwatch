@@ -79,7 +79,12 @@ export function IdleWatch() {
       // at most once a minute (the server's own touch interval).
       if (last.current - renewed.current >= SERVER_SLACK_S * 1000) {
         renewed.current = last.current;
-        void api.GET("/auth/me").catch(() => undefined);
+        void api
+          .GET("/auth/me")
+          .then((got) => {
+            if (got.response.status === 401) signOut(); // the server ended it meanwhile
+          })
+          .catch(() => undefined);
       }
     };
     for (const name of ACTIVITY)

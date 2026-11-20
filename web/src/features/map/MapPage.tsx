@@ -80,8 +80,15 @@ export function MapPage() {
   // The user's landing view (M9 Defaults), applied once when it is known. A view that is
   // gone or no longer visible to the user is simply not in their list: the map stays as is.
   const landing = useLandingView();
+  const { me } = useRouteContext({ from: "/authed" });
+  const taxonomy = hasPermission(me, "taxonomy.read");
+  const facets = useQuery({ ...facetsQuery, enabled: taxonomy });
+  const regions = useQuery({ ...regionsQuery, enabled: taxonomy });
   const [applied, setApplied] = useState(false);
-  if (!applied && landing !== undefined) {
+  // Applied once the lists it may name are known: a facet term or the region view only when
+  // this user's View select can show it, so no filter is ever hidden (landing view review).
+  const listsKnown = !taxonomy || (!facets.isPending && !regions.isPending);
+  if (!applied && landing !== undefined && listsKnown) {
     setApplied(true);
     if (landing) {
       setPeriod(
@@ -95,20 +102,23 @@ export function MapPage() {
       )
         setEncoding(landing.color_scheme);
       const [facet, terms] =
-        Object.entries(landing.filters.terms ?? {})[0] ?? [];
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- answers are unchecked
+        Object.entries(landing.filters?.terms ?? {})[0] ?? [];
       const term = Array.isArray(terms) ? terms[0] : undefined;
+      const offered = (Array.isArray(facets.data) ? facets.data : []).some(
+        (f) =>
+          typeof f === "object" && f.key === facet && f.show_in_view_selector,
+      );
+      const regionsShown =
+        regions.isSuccess && validRegions(regions.data).length > 0;
       setViewState({
-        by: landing.view_by === "region" ? "region" : "country",
-        ...(typeof facet === "string" && typeof term === "string"
+        by: landing.view_by === "region" && regionsShown ? "region" : "country",
+        ...(offered && typeof facet === "string" && typeof term === "string"
           ? { facet, term }
           : {}),
       });
     }
   }
-  const { me } = useRouteContext({ from: "/authed" });
-  const taxonomy = hasPermission(me, "taxonomy.read");
-  const facets = useQuery({ ...facetsQuery, enabled: taxonomy });
-  const regions = useQuery({ ...regionsQuery, enabled: taxonomy });
   const setView = (next: MapView) => {
     setViewState(next);
     setSelected(null); // a code of one view means nothing in another

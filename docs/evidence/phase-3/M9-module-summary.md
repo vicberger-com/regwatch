@@ -9,7 +9,7 @@
 | # | Criterion | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | Changing theme, font scale and density applies immediately, persists across devices after re-login, and never flashes the wrong theme on load | **Met** | `api/tests/integration/test_preferences.py` (a second session sees the same preferences). `MePage.test.tsx` (applies to `<html>` at once). `appearance.test.ts` (the stored copy applied before the first render, tampering ignored). |
-| 2 | An idle timeout of 20 minutes signs the user out after 20 minutes of inactivity, with a 60-second warning dialog that screen readers announce | **Met** | `IdleWatch.test.tsx` with fake timers covers: the warning, focus, the inert page, announcements at 60, 30 and 10 seconds, sign-out at zero (local even when the logout request fails), activity in other tabs, and Stay checked against `/auth/me`. The server enforces the timeout on its own. |
+| 2 | An idle timeout of 20 minutes signs the user out after 20 minutes of inactivity, with a 60-second warning dialog that screen readers announce | **Met, a minute early on the client** | `IdleWatch.test.tsx` with fake timers covers: the warning, focus, the inert page, announcements at 60, 30 and 10 seconds, sign-out at zero (local even when the logout request fails), activity in other tabs, and Stay checked against `/auth/me`. The client warns at 18 minutes and signs out at 19, one minute before the server can (its touch interval), so the warning always comes first. The server enforces the timeout on its own (`api/tests/integration/test_auth.py`, the idle-timeout test). |
 | 3 | Revoking another session from the list makes that session's next request return 401 | **Met** | `api/tests/integration/test_auth.py::test_sessions_list_and_revoke`; the `/me` sessions table (`MePage.test.tsx`). |
 
 ## Built
@@ -23,9 +23,9 @@
   - the landing view.
 - **Appearance:** applied through tokens on `<html>`, and mirrored for the first paint.
 - **Idle warning:** `IdleWatch`.
+- **Landing view:** `/` opens with the chosen saved view (period, colour, view, first facet term). A facet term or the region view applies only when the user's View select can show it, and a view the user can no longer see leaves the map as it is.
 
 ## Open
 
-- **Landing view:** done: `/` opens with the chosen saved view (period, colour, view, first facet term); a view the user can no longer see leaves the map as it is.
 - **i18n:** `react-i18next` (spec), deferred while English is the only locale (backlog E10).
 - **The manual check of the warning dialog with a screen reader.**

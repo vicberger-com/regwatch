@@ -442,8 +442,21 @@ describe("map page", () => {
           },
         ],
       ],
-      "GET /taxonomy/facets": [200, []],
-      "GET /jurisdictions/regions": [200, []],
+      "GET /taxonomy/facets": [
+        200,
+        [
+          {
+            key: "industry",
+            label: "Industry",
+            show_in_view_selector: true,
+            terms: [],
+          },
+        ],
+      ],
+      "GET /jurisdictions/regions": [
+        200,
+        [{ code: "155", name: "Western Europe", jurisdiction_codes: ["DE"] }],
+      ],
       "GET /map/activity": [200, ACTIVITY],
     });
     renderAt("/");
@@ -462,6 +475,52 @@ describe("map page", () => {
       ).toBe(true);
     });
     expect(screen.getByLabelText("Colour by")).toHaveValue("severity");
+  });
+
+  it("ignores landing-view filters this user's View select cannot show", async () => {
+    const id = "0190a000-0000-7000-8000-0000000000d2";
+    const api = fakeApi({
+      "GET /auth/me": [200, { ...ADMIN, permissions: ["items.read"] }],
+      "GET /me/preferences": [
+        200,
+        { landing_view_id: id, session_idle_timeout_minutes: 480 },
+      ],
+      "GET /views": [
+        200,
+        [
+          {
+            id,
+            name: "Shared",
+            view_by: "region",
+            period_days: 7,
+            color_scheme: "count",
+            filters: { terms: { industry: ["finance"] } },
+            shared: true,
+          },
+        ],
+      ],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    await waitFor(() => {
+      const urls = api.fetch.mock.calls
+        .map(([r]) => new URL(r.url))
+        .filter((u) => u.pathname.endsWith("/map/activity"));
+      expect(urls.some((u) => u.searchParams.get("period_days") === "7")).toBe(
+        true,
+      );
+    });
+    const urls = api.fetch.mock.calls
+      .map(([r]) => new URL(r.url))
+      .filter((u) => u.pathname.endsWith("/map/activity"));
+    expect(
+      urls.every(
+        (u) =>
+          u.searchParams.get("view_by") === "country" &&
+          !u.searchParams.has("filters"),
+      ),
+    ).toBe(true);
+    expect(screen.getByLabelText("View")).toHaveValue("country");
   });
 
   it("names no country over a disputed area", async () => {
