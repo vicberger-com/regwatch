@@ -21,6 +21,47 @@ class UserStatus(StrEnum):
     locked = "locked"
 
 
+Code = Annotated[str, Field(min_length=2, max_length=16, pattern=r"^[A-Za-z0-9_-]+$")]
+Key = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")]
+
+
+class Interests(BaseModel):
+    """A user's interests (M11, ADR-0012): default filters on the map, items and search, never
+    a limit on what they may see. The same shapes as ``QueryFilters``."""
+
+    jurisdictions: list[Code] = Field(default_factory=list, max_length=50)
+    regions: list[Code] = Field(default_factory=list, max_length=20)
+    # Facet keys are checked against the offered facets when saved (``_interest_errors``).
+    terms: dict[str, Annotated[list[Key], Field(max_length=20)]] = Field(default_factory=dict,
+                                                                         max_length=20)  # fmt: skip
+
+
+class InterestOption(BaseModel):
+    key: str
+    label: str
+
+
+class InterestFacet(BaseModel):
+    key: str
+    label: str
+    terms: list[InterestOption]
+
+
+class InterestJurisdiction(BaseModel):
+    code: str
+    name: str
+    region_code: str | None = None
+
+
+class InterestOptions(BaseModel):
+    """What a user may pick as interests: facets shown in filters with their active terms,
+    active jurisdictions, and regions. Open to every signed-in user (BL-125 for M11)."""
+
+    facets: list[InterestFacet]
+    jurisdictions: list[InterestJurisdiction]
+    regions: list[InterestOption]
+
+
 class Preferences(BaseModel):
     theme: Literal["light", "dark", "high-contrast", "system"] = "system"
     accessibility_preset: bool = False
@@ -33,6 +74,7 @@ class Preferences(BaseModel):
     landing_view_id: UUID | None = None
     session_idle_timeout_minutes: int = Field(default=UNSET, ge=15)
     remember_me_default: bool = False
+    interests: Interests = UNSET
 
 
 class User(BaseModel):

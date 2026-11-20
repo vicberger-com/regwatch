@@ -18,6 +18,7 @@ from regwatch.core.settings import Settings, get_settings
 from regwatch.identity import services
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.schemas import (
+    InterestOptions,
     Login,
     Me,
     PasswordChange,
@@ -208,6 +209,14 @@ async def get_preferences(principal: CurrentPrincipal, db: DbSession) -> Prefere
 async def update_preferences(body: Preferences, principal: CurrentPrincipal,
                              db: DbSession) -> Preferences:  # fmt: skip
     return await services.update_preferences(db, principal, body)
+
+
+@router.get(
+    "/me/interest-options", tags=ME,
+    **spec(InterestOptions, desc="What a user may pick as interests", stub=False),
+)  # fmt: skip
+async def get_interest_options(principal: CurrentPrincipal, db: DbSession) -> InterestOptions:
+    return await services.interest_options(db)
 
 
 @router.get(

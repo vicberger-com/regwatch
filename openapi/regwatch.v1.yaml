@@ -451,6 +451,8 @@ paths:
       tags: [me]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }
       responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }, "400": { $ref: "#/components/responses/Problem" } }
+  /me/interest-options:
+    get: { tags: [me], description: "CP-24: what a user may pick as interests; every signed-in user", responses: { "200": { description: What a user may pick as interests, content: { application/json: { schema: { $ref: "#/components/schemas/InterestOptions" } } } } } }
   /me/sessions:
     get: { tags: [me], responses: { "200": { description: Active sessions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } } } }
   /me/sessions/{id}:
@@ -834,6 +836,25 @@ components:
         landing_view_id: { type: string, format: uuid, nullable: true }
         session_idle_timeout_minutes: { type: integer, minimum: 15, description: capped by sessions.idle_timeout_max_minutes }
         remember_me_default: { type: boolean, default: false }
+        interests: { $ref: "#/components/schemas/Interests" }
+    Interests:
+      type: object
+      description: "CP-24 (M11, ADR-0012): default filters on the map, items and search, never a limit"
+      properties:
+        jurisdictions: { type: array, maxItems: 50, items: { type: string, pattern: "^[A-Za-z0-9_-]+$", minLength: 2, maxLength: 16 } }
+        regions: { type: array, maxItems: 20, items: { type: string, pattern: "^[A-Za-z0-9_-]+$", minLength: 2, maxLength: 16 } }
+        terms: { type: object, maxProperties: 20, additionalProperties: { type: array, maxItems: 20, items: { type: string, pattern: "^[a-z0-9][a-z0-9_-]*$", minLength: 1, maxLength: 64 } } }
+    InterestOptions:
+      type: object
+      required: [facets, jurisdictions, regions]
+      properties:
+        facets: { type: array, items: { type: object, required: [key, label, terms], properties: { key: { type: string }, label: { type: string }, terms: { type: array, items: { $ref: "#/components/schemas/InterestOption" } } } } }
+        jurisdictions: { type: array, items: { type: object, required: [code, name], properties: { code: { type: string }, name: { type: string }, region_code: { type: string, nullable: true } } } }
+        regions: { type: array, items: { $ref: "#/components/schemas/InterestOption" } }
+    InterestOption:
+      type: object
+      required: [key, label]
+      properties: { key: { type: string }, label: { type: string } }
     SessionInfo:
       type: object
       properties: { id: { type: string, format: uuid }, created_at: { type: string, format: date-time }, last_seen_at: { type: string, format: date-time }, expires_at: { type: string, format: date-time }, ip: { type: string, nullable: true }, user_agent: { type: string, nullable: true }, current: { type: boolean } }

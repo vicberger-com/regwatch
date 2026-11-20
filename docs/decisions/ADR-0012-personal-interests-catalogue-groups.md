@@ -26,7 +26,7 @@ What exists today:
    - The map, the items table, search, and later reports and digests (M7, M8) open filtered by the profile, ordered by relevance to it.
    - A visible "My interests" chip set shows the filter, and one action widens it to everything.
    - Every user can still see all content. Access control stays with roles, so the search index, exports and the API need no per-item visibility.
-   - The profile is stored as a saved view of kind `interests`, reusing the M5 filter model and its validation, and the user's landing view points at it by default.
+   - The profile is stored in the user's preferences as `interests` (CP-24), with the same shapes as the M5 filters and checked against `GET /me/interest-options`. That needs no migration, and it reuses the reviewed preference path.
 2. **A curated feed catalogue ships with the application.**
    - `seed/catalogue.yaml` lists R-03's verified starter sources. For each it gives the connector configuration, terms URL, credibility, jurisdictions, topics and a one-line description, and leaves out the sources R-03 rules out, such as `flk.npc.gov.cn`.
    - The seed creates them as sources that are disabled, marked `catalogue`.

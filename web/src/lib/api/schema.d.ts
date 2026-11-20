@@ -2096,6 +2096,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sources/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description CP-17: add one document to a manual source, by URL (fetched through SafeFetcher by a worker) or by file (HTML, PDF or plain text, at most 10 MB). Starts a capture run; the document goes through the same extraction and manifest as captured ones. Audited. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        url: string;
+                        title?: string;
+                    };
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                        title?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Accepted; the run that adds the document */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            run_id: string;
+                        };
+                    };
+                };
+                409: components["responses"]["Problem"];
+                413: components["responses"]["Problem"];
+                415: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sources/{id}/health": {
         parameters: {
             query?: never;
@@ -3322,6 +3381,42 @@ export interface paths {
         };
         trace?: never;
     };
+    "/me/interest-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-24: what a user may pick as interests; every signed-in user */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description What a user may pick as interests */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InterestOptions"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/sessions": {
         parameters: {
             query?: never;
@@ -4096,6 +4191,32 @@ export interface components {
             session_idle_timeout_minutes?: number;
             /** @default false */
             remember_me_default: boolean;
+            interests?: components["schemas"]["Interests"];
+        };
+        /** @description CP-24 (M11, ADR-0012): default filters on the map, items and search, never a limit */
+        Interests: {
+            jurisdictions?: string[];
+            regions?: string[];
+            terms?: {
+                [key: string]: string[];
+            };
+        };
+        InterestOptions: {
+            facets: {
+                key: string;
+                label: string;
+                terms: components["schemas"]["InterestOption"][];
+            }[];
+            jurisdictions: {
+                code: string;
+                name: string;
+                region_code?: string | null;
+            }[];
+            regions: components["schemas"]["InterestOption"][];
+        };
+        InterestOption: {
+            key: string;
+            label: string;
         };
         SessionInfo: {
             /** Format: uuid */

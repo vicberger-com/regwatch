@@ -37,7 +37,16 @@ from regwatch.core.schemas import Page
 from regwatch.core.services import audit
 from regwatch.core.settings import Settings
 from regwatch.identity.models import Permission, Role, RolePermission, User, UserRole, UserSession
-from regwatch.identity.schemas import Me, Preferences, SessionInfo
+from regwatch.identity.schemas import (
+    InterestFacet,
+    InterestJurisdiction,
+    InterestOption,
+    InterestOptions,
+    Interests,
+    Me,
+    Preferences,
+    SessionInfo,
+)
 from regwatch.identity.schemas import Permission as PermissionOut
 from regwatch.identity.schemas import Role as RoleOut
 from regwatch.identity.schemas import User as UserOut
@@ -1011,8 +1020,9 @@ def preferences_of(user: User, cfg: dict[str, int]) -> Preferences:
     # Every field set explicitly, so the answer carries the defaults too (unset fields are
     # left out of responses).
     fields = {name: getattr(stored, name) for name in Preferences.model_fields
-              if name != "session_idle_timeout_minutes"}  # fmt: skip
-    return Preferences(**fields, session_idle_timeout_minutes=_idle_minutes(user, cfg))
+              if name not in ("session_idle_timeout_minutes", "interests")}  # fmt: skip
+    return Preferences(**fields, session_idle_timeout_minutes=_idle_minutes(user, cfg),
+                       interests=stored.interests or Interests())  # fmt: skip
 
 
 async def get_preferences(db: AsyncSession, principal: Principal) -> Preferences:
@@ -1049,6 +1059,9 @@ async def update_preferences(db: AsyncSession, principal: Principal,
             or_(SavedView.user_id == principal.user.id, SavedView.shared.is_(True))))  # fmt: skip
         if visible is None:
             errors.append(ProblemFieldError(field="landing_view_id", message="a view you can see"))
+    if "interests" in changes:
+        errors += await _interest_errors(db, body.interests)
+        changes["interests"] = _normalised(body.interests)
     if errors:
         raise ProblemError(400, "validation", "Some preferences are not valid.", errors=errors)
     user = await db.get(User, principal.user.id, with_for_update=True)
@@ -1057,3 +1070,69 @@ async def update_preferences(db: AsyncSession, principal: Principal,
     user.preferences = {**(user.preferences or {}), **changes}
     await db.commit()
     return preferences_of(user, cfg)
+
+
+# --- Interests (M11.1, ADR-0012) -----------------------------------------------------------
+
+
+def _normalised(interests: Interests) -> dict[str, Any]:
+    """Codes upper-cased, duplicates and empty term lists dropped, in a stable order."""
+    return {
+        "jurisdictions": sorted({c.upper() for c in interests.jurisdictions}),
+        "regions": sorted(set(interests.regions)),
+        "terms": {f: sorted(set(keys)) for f, keys in sorted(interests.terms.items()) if keys},
+    }
+
+
+async def interest_options(db: AsyncSession) -> InterestOptions:
+    """Facets shown in filters with their active terms, active jurisdictions, and regions."""
+    from regwatch.search.query import CONTINENTS
+    from regwatch.taxonomy.models import Facet, Jurisdiction, Term
+    from regwatch.taxonomy.services import M49_REGIONS
+
+    facets = (await db.scalars(select(Facet).where(Facet.show_in_filters)
+                               .order_by(Facet.label))).all()  # fmt: skip
+    terms = (await db.execute(
+        select(Term.facet_id, Term.key, Term.label).where(
+            Term.active.is_(True), Term.facet_id.in_([f.id for f in facets]))
+        .order_by(Term.label))).tuples().all()  # fmt: skip
+    by_facet: dict[uuid.UUID, list[InterestOption]] = {}
+    for facet_id, key, label in terms:
+        by_facet.setdefault(facet_id, []).append(InterestOption(key=key, label=label))
+    places = (await db.execute(
+        select(Jurisdiction.code, Jurisdiction.name, Jurisdiction.region_code)
+        .where(Jurisdiction.active.is_(True))
+        .order_by(Jurisdiction.name))).tuples().all()  # fmt: skip
+    used = {r for _, _, r in places if r} | set(CONTINENTS)
+    regions = [InterestOption(key=code, label=M49_REGIONS.get(code, code)) for code in sorted(
+        used, key=lambda c: M49_REGIONS.get(c, c))]  # fmt: skip
+    return InterestOptions(
+        facets=[InterestFacet(key=f.key, label=f.label, terms=by_facet.get(f.id, []))
+                for f in facets],
+        jurisdictions=[InterestJurisdiction(code=c, name=n, region_code=r) for c, n, r in places],
+        regions=regions,
+    )  # fmt: skip
+
+
+async def _interest_errors(db: AsyncSession, interests: Interests) -> list[ProblemFieldError]:
+    """Every code and key must be one the options offer (an unknown one is refused, so a stale
+    or hostile value never becomes a filter)."""
+    offered = await interest_options(db)
+    errors: list[ProblemFieldError] = []
+    codes = {j.code for j in offered.jurisdictions}
+    if bad := [c for c in interests.jurisdictions if c.upper() not in codes]:
+        unknown = f"unknown jurisdiction {bad[0][:16]!r}"
+        errors.append(ProblemFieldError(field="interests.jurisdictions", message=unknown))
+    region_keys = {r.key for r in offered.regions}
+    if bad := [r for r in interests.regions if r not in region_keys]:
+        errors.append(ProblemFieldError(field="interests.regions",
+                                        message=f"unknown region {bad[0][:16]!r}"))  # fmt: skip
+    facets = {f.key: {t.key for t in f.terms} for f in offered.facets}
+    for facet, keys in interests.terms.items():
+        if facet not in facets:
+            errors.append(ProblemFieldError(field="interests.terms",
+                                            message=f"unknown facet {facet[:64]!r}"))  # fmt: skip
+        elif bad := [k for k in keys if k not in facets[facet]]:
+            errors.append(ProblemFieldError(field="interests.terms",
+                                            message=f"unknown term {bad[0][:64]!r}"))  # fmt: skip
+    return errors

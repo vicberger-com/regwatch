@@ -131,3 +131,46 @@ async def test_anonymous_callers_have_no_preferences(admin: httpx.AsyncClient) -
         ).status_code == 401
     finally:
         await anon.aclose()
+
+
+async def test_interests_are_checked_normalised_and_offered_to_everyone(
+    admin: httpx.AsyncClient,
+) -> None:
+    """M11.1 (ADR-0012): interests come from the offered options, are tidied, and follow the
+    user; a viewer without taxonomy.read can read the options (BL-125 for interests)."""
+    facet = {"key": f"t{uuid.uuid4().hex[:6]}", "label": "Topic test", "value_type": "term",
+             "multi": True, "required": False, "show_in_filters": True,
+             "show_in_view_selector": True}  # fmt: skip
+    made = await admin.post(_api("/taxonomy/facets"), json=facet)
+    assert made.status_code == 201, made.text
+    term = await admin.post(_api(f"/taxonomy/facets/{facet['key']}/terms"),
+                            json={"key": "supply-chain", "label": "Supply chain"})  # fmt: skip
+    assert term.status_code == 201, term.text
+    alice, _ = await viewer(admin)
+    try:
+        options = (await alice.get(_api("/me/interest-options"))).json()
+        offered = {f["key"]: [t["key"] for t in f["terms"]] for f in options["facets"]}
+        assert offered[facet["key"]] == ["supply-chain"]
+        codes = {j["code"] for j in options["jurisdictions"]}
+        assert "DE" in codes and "150" in {r["key"] for r in options["regions"]}
+        wanted = {"jurisdictions": ["de", "DE", "CN"], "regions": ["150"],
+                  "terms": {facet["key"]: ["supply-chain", "supply-chain"]}}  # fmt: skip
+        body = {"interests": wanted}
+        saved = await alice.patch(_api("/me/preferences"), json=body)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["interests"] == {"jurisdictions": ["CN", "DE"], "regions": ["150"],
+                                             "terms": {facet["key"]: ["supply-chain"]}}  # fmt: skip
+        bad_ones = [
+            {"jurisdictions": ["ZZ"]},
+            {"regions": ["999"]},
+            {"terms": {"nope": ["x"]}},
+            {"terms": {facet["key"]: ["missing"]}},
+            {"jurisdictions": ["<script>"]},
+        ]
+        for bad in bad_ones:
+            refused = await alice.patch(_api("/me/preferences"), json={"interests": bad})
+            assert refused.status_code in (400, 422), bad
+        again = (await alice.get(_api("/me/preferences"))).json()["interests"]
+        assert again["jurisdictions"] == ["CN", "DE"]  # unchanged by the refusals
+    finally:
+        await alice.aclose()
