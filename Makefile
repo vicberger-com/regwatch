@@ -55,8 +55,8 @@ test-integration: env ## Start the stack, wait for health checks, run integratio
 	$(COMPOSE) up -d --build --wait
 	cd api && uv run pytest -m integration
 
-e2e: ## Playwright end-to-end tests
-	@echo "make e2e: lands in Phase 3 (Playwright with axe-core)"; exit 1
+e2e: ## Playwright end-to-end tests against a running stack (E2E_BASE_URL, E2E_CREDENTIALS)
+	scripts/e2e.sh
 
 openapi: ## Export the live OpenAPI document, diff it with the contract, regenerate the web client
 	cd api && uv sync --frozen --quiet && uv run python -m tests.openapi_semantic \

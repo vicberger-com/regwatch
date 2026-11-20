@@ -237,7 +237,8 @@ export function MapPage() {
             <ActivityTable
               rows={rows}
               nameOf={nameOf}
-              caption={`${plural(entries.length, view.by === "region" ? "region" : "jurisdiction", view.by === "region" ? "regions" : "jurisdictions")} with changes in ${periodText}; choose a column to sort`}
+              placeLabel={view.by === "region" ? "Region" : "Jurisdiction"}
+              caption={`${plural(entries.length, view.by === "region" ? "region" : "jurisdiction", view.by === "region" ? "regions" : "jurisdictions")} with changes in ${periodText}`}
               onSelect={setSelected}
             />
           ) : (

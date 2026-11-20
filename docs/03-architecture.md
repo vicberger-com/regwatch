@@ -154,7 +154,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | CPython 3.12 (`python:3.12-slim` image) | runtime in the api image (#27) | PSF-2.0 (image packaging MIT) | V `f6650f9`, `f4c67ec` (untagged HEAD, 2026-11-02) | runtime (base image) | M0 |
 | Vitest, Testing Library | frontend tests | MIT | V `7a825db`, `20ce75f`, `6049cc0` | tooling | tests |
 | jest-dom, user-event (Testing Library), jsdom | DOM matchers, user interaction and DOM for Vitest (#27) | MIT | V `3782c78`, `1951eb7`, `058c0f5` | tooling | tests |
-| axe-core, @axe-core/playwright | accessibility tests | MPL-2.0 | V `e797173`, `2375f7f` | tooling | tests |
+| axe-core, @axe-core/playwright 4.14.0 (exact pin) | accessibility tests | MPL-2.0 | V `e797173`, `2375f7f` | tooling | tests |
+| @playwright/test 1.65.1 (exact pin) and the official image `mcr.microsoft.com/playwright@sha256:1507cbfc…5579` (v1.65.1-noble) | end-to-end tests (`make e2e`, `scripts/e2e.sh`; M6 acceptance 3 and 4); browsers come from the image, none are downloaded into the repository | Apache-2.0 | V `bbd9483` (tag v1.65.1) | tooling | tests |
 | k6 | load tests | AGPL-3.0 | V `e088784` | tooling | tests |
 | OWASP ZAP | dynamic security scan | Apache-2.0 | V `8a1bff3` | tooling | security |
 | Semgrep CLI, Bandit, ESLint | static analysis | LGPL-2.1, Apache-2.0, MIT | V `4fe07d8`, `92ae8b8`, `12cbff4` | tooling | security |

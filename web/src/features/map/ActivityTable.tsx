@@ -3,6 +3,12 @@ import { useState } from "react";
 import type { ActivityRow } from "./scale";
 
 type Column = "name" | "count" | "last" | "severity";
+const SORT_TEXT: Record<Column, string> = {
+  name: "name",
+  count: "items changed",
+  last: "last change",
+  severity: "highest severity",
+};
 const SEVERITY_ORDER: Record<string, number> = {
   none: 0,
   info: 1,
@@ -12,12 +18,14 @@ const SEVERITY_ORDER: Record<string, number> = {
 
 /**
  * The map's data as a table (screens.md, REQ-18): one row per jurisdiction or region with
- * changes, sortable by any column with the sort stated in `aria-sort` and in the caption.
+ * changes, sortable by any column; the sort is stated in `aria-sort` and in the caption.
  */
 export function ActivityTable(props: {
   rows: readonly ActivityRow[];
   nameOf: (code: string) => string;
   caption: string;
+  /** The first column's heading: "Jurisdiction" or "Region". */
+  placeLabel: string;
   onSelect: (code: string) => void;
 }) {
   const [sort, setSort] = useState<{ by: Column; up: boolean }>({
@@ -69,11 +77,12 @@ export function ActivityTable(props: {
   return (
     <table className="w-full border-collapse text-left">
       <caption className="mb-2 text-left text-sm text-text-muted">
-        {props.caption}
+        {props.caption}; sorted by {SORT_TEXT[sort.by]},{" "}
+        {sort.up ? "ascending" : "descending"}
       </caption>
       <thead>
         <tr className="border-b border-border">
-          {header("name", "Jurisdiction")}
+          {header("name", props.placeLabel)}
           {header("count", "Items changed")}
           {header("last", "Last change")}
           {header("severity", "Highest severity")}

@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- `make e2e` (M0 tooling): Playwright end-to-end tests in `web/e2e` against a running stack, in the official image pinned by digest; axe finds no serious or critical issue on every M6 route in all three themes (M6 acceptance 4), and a keyboard-only journey reaches Germany's latest item and its diff (acceptance 3, except printing, which needs M7) (Refs: REQ-17, REQ-18).
 - M6 table view (acceptance 5, REQ-18): the map page shows its data as a map or as a table of jurisdictions (or regions) with changes, sortable by name, items changed, last change and highest severity, with `aria-sort` on the sorted column; choosing a row opens the side panel (Refs: REQ-06, REQ-18).
 - M6 high contrast (ADR-0004 decision 7): in the high-contrast theme every map step has its own hatch pattern (sparse, anti-diagonal, cross, dense) in black or white over its grey, and the legend shows the same patterns; `/items` shows its active filters as removable chips (Refs: REQ-18, REQ-06).
 - M6 view selector (acceptance 2): the map's View is Country, Region (member countries shaded with their region) or a facet term such as Industry: Finance, which filters the map, the side panel and its items link (`/items?t=facet:term`) (Refs: REQ-06, REQ-08).
