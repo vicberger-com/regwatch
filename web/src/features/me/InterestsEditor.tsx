@@ -53,11 +53,15 @@ function Checks(props: {
           />
         </label>
       )}
-      <div className="grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2">
+      <div className="grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2">
         {shown.map((o) => (
-          <label key={o.key} className="flex items-center gap-2 text-sm">
+          <label
+            key={o.key}
+            className="flex min-h-6 items-center gap-2 text-sm"
+          >
             <input
               type="checkbox"
+              className="h-5 w-5 shrink-0" // 24 px targets with the gap (WCAG 2.5.8)
               checked={props.chosen.includes(o.key)}
               onChange={(e) => {
                 props.onChange(toggle(props.chosen, o.key, e.target.checked));
