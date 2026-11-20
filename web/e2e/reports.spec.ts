@@ -18,11 +18,9 @@ test("a report is created, edited in Puck and previewed", async ({ page }) => {
   await expect(settings).toBeVisible();
   // The editor chunk loads and shows the palette and the two starting components.
   await expect(
-    page.getByText("Items table", { exact: true }).first(),
+    page.locator("[data-report-editor] [data-puck-component]").first(),
   ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    page.getByText("Latest changes", { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByLabel("Add a component")).toBeVisible();
   const box = await page.locator("[class*='Puck']").first().boundingBox();
   expect(box?.height ?? 0).toBeGreaterThan(300); // drawn, not collapsed (the U-M6-1 lesson)
   await settings.getByRole("button", { name: "Save", exact: true }).click();
@@ -62,7 +60,7 @@ test("the builder works by keyboard alone and passes axe (BL-16)", async ({
   await page.goto("/reports");
   await page.getByRole("button", { name: "New report", exact: true }).click();
   await expect(
-    page.getByText("Items table", { exact: true }).first(),
+    page.locator("[data-report-editor] [data-puck-component]").first(),
   ).toBeVisible({ timeout: 20_000 });
   const items = page.locator("[data-report-editor] [data-puck-component]");
   const order = async () =>

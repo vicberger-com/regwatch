@@ -93,10 +93,7 @@ function MovingActionBar(props: {
 }
 
 /** In Puck's header: "Add a component", keyboard selection, and the live region. */
-function KeyboardTools(props: {
-  types: { name: string; label: string }[];
-  children: ReactNode;
-}) {
+function KeyboardTools(props: { types: { name: string; label: string }[] }) {
   const id = useId();
   const getPuck = useGetPuck();
   const [type, setType] = useState(props.types[0]?.name ?? "");
@@ -183,7 +180,6 @@ function KeyboardTools(props: {
       >
         Add
       </button>
-      {props.children}
     </div>
   );
 }
@@ -227,9 +223,8 @@ export default function Editor(props: {
           headerTitle="Report layout"
           overrides={{
             actionBar: MovingActionBar,
-            headerActions: ({ children }) => (
-              <KeyboardTools types={types}>{children}</KeyboardTools>
-            ),
+            // Puck's Publish button is left out: Save above stores the layout.
+            headerActions: () => <KeyboardTools types={types} />,
           }}
         />
       </div>
