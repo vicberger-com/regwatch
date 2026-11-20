@@ -19,6 +19,7 @@ import {
   type OutputJob,
   type Scope,
 } from "./api";
+import { NewOutput } from "./NewOutput";
 
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
 const KIND: Record<string, string> = {
@@ -41,14 +42,32 @@ function why(job: OutputJob): string | null {
   return job.error_message ?? job.error_class ?? null;
 }
 
-export function OutputsPage(props: { userId: string; canReadAll: boolean }) {
+export function OutputsPage(props: {
+  userId: string;
+  canReadAll: boolean;
+  can: (permission: string) => boolean;
+}) {
   const [tab, setTab] = useState("history");
   const [scope, setScope] = useState<Scope>("mine");
+  const [creating, setCreating] = useState(false);
   return (
     <section aria-labelledby="outputs-heading" className="flex flex-col gap-4">
       <h1 id="outputs-heading" className="text-2xl font-semibold">
         Outputs
       </h1>
+      <div>
+        <button
+          type="button"
+          className={button}
+          aria-expanded={creating}
+          onClick={() => {
+            setCreating(!creating);
+          }}
+        >
+          New output
+        </button>
+      </div>
+      {creating && <NewOutput can={props.can} />}
       {props.canReadAll && (
         <fieldset className="flex gap-4 text-sm">
           <legend className="sr-only">Whose outputs</legend>

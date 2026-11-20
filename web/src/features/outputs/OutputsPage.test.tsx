@@ -155,3 +155,129 @@ describe("outputs (M8.6)", () => {
     expect(screen.queryByRole("link", { name: "Outputs" })).toBeNull();
   });
 });
+
+describe("new output (M8.6b)", () => {
+  const EMAILER = {
+    ...ADMIN,
+    permissions: [
+      "outputs.pdf",
+      "outputs.email",
+      "outputs.schedule",
+      "reports.print",
+      "items.read",
+    ],
+  };
+
+  it("emails a stock report on a schedule, and shows the server's refusal", async () => {
+    let attempt = 0;
+    const api = fakeApi({
+      "GET /auth/me": [200, EMAILER],
+      "GET /outputs": [200, page([])],
+      "GET /reports/templates": [
+        200,
+        [{ key: "source-health", label: "Source health", version: 1 }],
+      ],
+      "POST /outputs": () => {
+        attempt += 1;
+        return attempt === 1
+          ? [
+              422,
+              {
+                ...problem(422),
+                errors: [
+                  {
+                    field: "destination.emails",
+                    message: "kim@evil.example is not on an allowed domain",
+                  },
+                ],
+              },
+            ]
+          : [
+              202,
+              {
+                ...SCHEDULE,
+                status: "queued",
+                next_run_at: "2026-11-23T06:00:00Z",
+              },
+            ];
+      },
+    });
+    renderAt("/outputs");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "New output" }),
+    );
+    const form = screen.getByRole("form", { name: "New output" });
+    // Only what this user may use: no CSV without outputs.csv.
+    const what = within(form).getByRole("combobox", { name: "What" });
+    expect(
+      within(what).queryByRole("option", { name: "CSV export" }),
+    ).toBeNull();
+    await userEvent.selectOptions(what, "email");
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "Report" }),
+      await within(form).findByRole("option", { name: "Source health" }),
+    );
+    await userEvent.type(
+      within(form).getByRole("textbox", {
+        name: "Recipients, one address a line",
+      }),
+      "kim@evil.example",
+    );
+    await userEvent.click(
+      within(form).getByRole("checkbox", { name: /Repeat on a schedule/ }),
+    );
+    await userEvent.click(
+      within(form).getByRole("button", { name: "Schedule" }),
+    );
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "kim@evil.example is not on an allowed domain",
+    );
+    await userEvent.click(
+      within(form).getByRole("button", { name: "Schedule" }),
+    );
+    expect(await within(form).findByRole("status")).toHaveTextContent(
+      "Scheduled.",
+    );
+    const sent = api.calls.filter((c) => c.key === "POST /outputs").at(-1);
+    expect(sent?.body).toEqual({
+      kind: "email",
+      source: { report_template_key: "source-health" },
+      destination: { emails: ["kim@evil.example"], copies: 1 },
+      schedule: { cron: "0 7 * * 1" },
+    });
+  });
+
+  it("exports a saved view as CSV", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ANALYST],
+      "GET /outputs": [200, page([])],
+      "GET /views": [200, [{ id: "v1", name: "EU privacy" }]],
+      "POST /outputs": [202, { ...JOB, kind: "csv", status: "queued" }],
+    });
+    renderAt("/outputs");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "New output" }),
+    );
+    const form = screen.getByRole("form", { name: "New output" });
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "What" }),
+      "csv",
+    );
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "Items" }),
+      await within(form).findByRole("option", {
+        name: "Saved view: EU privacy",
+      }),
+    );
+    await userEvent.click(
+      within(form).getByRole("button", { name: "Request" }),
+    );
+    expect(await within(form).findByRole("status")).toHaveTextContent(
+      "Requested.",
+    );
+    expect(api.calls.find((c) => c.key === "POST /outputs")?.body).toEqual({
+      kind: "csv",
+      source: { saved_view_id: "v1" },
+    });
+  });
+});

@@ -68,3 +68,28 @@ export function useCancel() {
     onSettled: () => client.invalidateQueries({ queryKey: ["outputs"] }),
   });
 }
+
+export type OutputRequest = Schemas["OutputRequest"];
+
+export function useCreateOutput() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: OutputRequest) => {
+      const result = await api.POST("/outputs", { body });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: ["outputs"] }),
+  });
+}
+
+export const templatesQuery = queryOptions({
+  queryKey: ["reports", "templates"],
+  queryFn: async () => {
+    const result = await api.GET("/reports/templates");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+  staleTime: 5 * 60_000,
+});

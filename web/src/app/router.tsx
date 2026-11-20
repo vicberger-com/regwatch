@@ -260,6 +260,7 @@ const outputsRoute = createRoute({
       <OutputsPage
         userId={me.id}
         canReadAll={hasPermission(me, "outputs.read_all")}
+        can={(permission) => hasPermission(me, permission)}
       />
     );
   },
