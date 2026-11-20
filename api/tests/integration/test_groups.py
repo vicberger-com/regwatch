@@ -103,3 +103,25 @@ async def test_groups_are_checked(admin: httpx.AsyncClient) -> None:
     viewer = await _as_new_user(admin, "may@example.org", ["viewer"])
     assert (await viewer.get(_api("/admin/groups"))).status_code == 403
     await viewer.aclose()
+
+
+async def test_a_groups_interests_reach_its_members(admin: httpx.AsyncClient) -> None:
+    """M11.4b: a group's interests are checked like a user's and shown to its members."""
+    viewer = await _as_new_user(admin, "ivy@example.org", ["viewer"])
+    vid = (await viewer.get(_api("/auth/me"))).json()["id"]
+    bad = {**TEAM, "interests": {"jurisdictions": ["ZZ"], "regions": [], "terms": {}}}
+    assert (await admin.post(_api("/admin/groups"), json=bad)).status_code == 422
+    wanted = {"jurisdictions": ["de", "FR"], "regions": ["150"], "terms": {}}
+    made = await admin.post(_api("/admin/groups"), json={**TEAM, "interests": wanted})
+    assert made.status_code == 201, made.text
+    gid = made.json()["id"]
+    assert made.json()["interests"]["jurisdictions"] == ["DE", "FR"]  # tidied
+    assert (await viewer.get(_api("/me/groups"))).json() == []
+    assert (await admin.put(_api(f"/admin/groups/{gid}/members/{vid}"))).status_code == 204
+    mine = (await viewer.get(_api("/me/groups"))).json()
+    assert [(g["key"], g["interests"]["regions"]) for g in mine] == [("eu-policy", ["150"])]
+    changed = await admin.patch(_api(f"/admin/groups/{gid}"), json={
+        "interests": {"jurisdictions": [], "regions": [], "terms": {}}})  # fmt: skip
+    assert changed.status_code == 200
+    assert (await viewer.get(_api("/me/groups"))).json()[0]["interests"]["regions"] == []
+    await viewer.aclose()

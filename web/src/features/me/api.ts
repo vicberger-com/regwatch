@@ -72,3 +72,42 @@ export function useRevokeSession() {
       client.invalidateQueries({ queryKey: sessionsQuery.queryKey }),
   });
 }
+
+export type MyGroup = Schemas["MyGroup"];
+
+/** The signed-in user's groups and their interests (M11.4b, CP-27). */
+export const myGroupsQuery = queryOptions({
+  queryKey: ["me", "groups"],
+  queryFn: async (): Promise<MyGroup[]> => {
+    const result = await api.GET("/me/groups");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+  staleTime: 5 * 60_000,
+});
+
+type Interests = Schemas["Interests"];
+
+function chosen(i: Interests | undefined): i is Interests {
+  return Boolean(
+    i &&
+    ((i.jurisdictions ?? []).length > 0 ||
+      (i.regions ?? []).length > 0 ||
+      Object.values(i.terms ?? {}).some((keys) => keys.length > 0)),
+  );
+}
+
+/**
+ * The interests the map and items open with: the user's own, or, when they have set none,
+ * those of their first group (by name) that has some. `group` names it for the chip.
+ */
+export function effectiveInterests(
+  own: Interests | undefined,
+  groups: readonly MyGroup[] | undefined,
+): { interests: Interests | undefined; group?: string } {
+  if (chosen(own)) return { interests: own };
+  const shared = groups?.find((g) => chosen(g.interests));
+  return shared
+    ? { interests: shared.interests, group: shared.name }
+    : { interests: own };
+}

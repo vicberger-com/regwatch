@@ -185,6 +185,16 @@ class Group(BaseModel):
     description: str | None = None
     roles: list[str]
     members: list[UUID]
+    interests: Interests = UNSET  # the members' default interests (M11.4b)
+
+
+class MyGroup(BaseModel):
+    """CP-27: a group the signed-in user is in, with its interests (live)."""
+
+    id: UUID
+    key: str
+    name: str
+    interests: Interests
 
 
 class GroupWrite(BaseModel):
@@ -194,3 +204,4 @@ class GroupWrite(BaseModel):
         default=UNSET, max_length=500
     )
     roles: RoleKeys = UNSET
+    interests: Interests = UNSET

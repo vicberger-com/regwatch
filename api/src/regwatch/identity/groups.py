@@ -20,12 +20,16 @@ from regwatch.core.errors import ProblemError
 from regwatch.core.services import audit
 from regwatch.identity.models import GroupMember, GroupRole, Role, User, UserGroup
 from regwatch.identity.schemas import Group as GroupOut
+from regwatch.identity.schemas import Interests, MyGroup
 from regwatch.identity.services import (
     GROUP_FORBIDDEN,
     Principal,
+    _interest_errors,
+    _normalised,
     _perms_of_roles,
     _require_held,
     _serialise_admin_changes,
+    live_interests,
     validation,
 )
 
@@ -54,11 +58,35 @@ async def _members_of(
     return out
 
 
+def _interests(group: UserGroup) -> Interests:
+    return Interests.model_validate(group.interests or {})
+
+
 async def _out(db: AsyncSession, group: UserGroup) -> GroupOut:
     roles = (await _roles_of(db, [group.id]))[group.id]
     members = (await _members_of(db, [group.id]))[group.id]
     return GroupOut(id=group.id, key=group.key, name=group.name, description=group.description,
-                    roles=roles, members=members)  # fmt: skip
+                    roles=roles, members=members, interests=_interests(group))  # fmt: skip
+
+
+async def _set_interests(db: AsyncSession, group: UserGroup, changes: dict[str, Any]) -> None:
+    """Checked and tidied as a user's own interests are (M11.1)."""
+    if "interests" not in changes:
+        return
+    interests = Interests.model_validate(changes["interests"] or {})
+    if errors := await _interest_errors(db, interests):
+        raise ProblemError(422, "validation", "Some interests are not valid.", errors=errors)
+    group.interests = _normalised(interests)
+
+
+async def my_groups(db: AsyncSession, user_id: uuid.UUID) -> list[MyGroup]:
+    """The signed-in user's groups by name, with interests that still exist."""
+    rows = (await db.scalars(select(UserGroup)
+                             .join(GroupMember, GroupMember.group_id == UserGroup.id)
+                             .where(GroupMember.user_id == user_id)
+                             .order_by(UserGroup.name, UserGroup.id))).all()  # fmt: skip
+    return [MyGroup(id=g.id, key=g.key, name=g.name,
+                    interests=await live_interests(db, _interests(g))) for g in rows]  # fmt: skip
 
 
 async def list_groups(db: AsyncSession) -> list[GroupOut]:
@@ -67,7 +95,8 @@ async def list_groups(db: AsyncSession) -> list[GroupOut]:
     ids = [g.id for g in groups]
     roles, members = await _roles_of(db, ids), await _members_of(db, ids)
     return [GroupOut(id=g.id, key=g.key, name=g.name, description=g.description,
-                     roles=roles[g.id], members=members[g.id]) for g in groups]  # fmt: skip
+                     roles=roles[g.id], members=members[g.id], interests=_interests(g))
+            for g in groups]  # fmt: skip
 
 
 async def _group_or_404(db: AsyncSession, group_id: uuid.UUID) -> UserGroup:
@@ -110,6 +139,7 @@ async def create_group(db: AsyncSession, changes: dict[str, Any], actor: Princip
         raise ProblemError(409, "conflict", "A group with this key exists.")
     role_ids = await _role_ids(db, changes.get("roles") or [], actor)
     group = UserGroup(key=changes["key"], name=name, description=_text(changes, "description"))
+    await _set_interests(db, group, changes)
     db.add(group)
     await db.flush()
     db.add_all(GroupRole(group_id=group.id, role_id=r) for r in role_ids)
@@ -136,6 +166,7 @@ async def update_group(db: AsyncSession, group_id: uuid.UUID, changes: dict[str,
         group.name = name
     if "description" in changes:
         group.description = _text(changes, "description")
+    await _set_interests(db, group, changes)
     if "roles" in changes:
         role_ids = await _role_ids(db, changes["roles"] or [], actor)
         # Taking a role away from members also needs it held (as for a user's roles).

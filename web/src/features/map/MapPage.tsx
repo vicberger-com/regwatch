@@ -3,7 +3,12 @@ import { useRouteContext } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import { regionsQuery } from "@/features/jurisdictions/api";
-import { preferencesQuery, viewsQuery } from "@/features/me/api";
+import {
+  effectiveInterests,
+  myGroupsQuery,
+  preferencesQuery,
+  viewsQuery,
+} from "@/features/me/api";
 import { interestOptionsQuery } from "@/features/me/InterestsEditor";
 import { facetsQuery } from "@/features/taxonomy/api";
 import { hasPermission, problemText } from "@/lib/auth/session";
@@ -142,7 +147,15 @@ export function MapPage() {
     ...interestOptionsQuery,
     enabled: hasPermission(me, "items.read"),
   });
-  const interests = interestFilters(prefs.data?.interests, options.data);
+  const groups = useQuery({
+    ...myGroupsQuery,
+    enabled: hasPermission(me, "items.read"),
+  });
+  const effective = effectiveInterests(prefs.data?.interests, groups.data);
+  const interests = interestFilters(effective.interests, options.data);
+  const filteredTo = effective.group
+    ? `Filtered to ${effective.group}'s interests`
+    : "Filtered to my interests";
   const hasInterests = Object.keys(interests).length > 0;
   const extra = everything ? {} : interests;
   const activity = useQuery(activityQuery(period, asked, extra));
@@ -230,7 +243,7 @@ export function MapPage() {
       {hasInterests && (
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded border border-accent px-2 py-0.5">
-            {everything ? "Showing everything" : "Filtered to my interests"}
+            {everything ? "Showing everything" : filteredTo}
           </span>
           <button
             type="button"

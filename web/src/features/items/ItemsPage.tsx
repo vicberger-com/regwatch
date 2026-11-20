@@ -4,7 +4,11 @@ import { useState, type FormEvent } from "react";
 
 import { interestFilters, type Filters } from "@/features/map/api";
 import { jurisdictionName } from "@/features/map/names";
-import { preferencesQuery } from "@/features/me/api";
+import {
+  effectiveInterests,
+  myGroupsQuery,
+  preferencesQuery,
+} from "@/features/me/api";
 import { interestOptionsQuery } from "@/features/me/InterestsEditor";
 import { problemText } from "@/lib/auth/session";
 
@@ -171,12 +175,18 @@ export function ItemsPage(props: {
   const [now] = useState(() => new Date()); // one "now" per visit keeps the query key stable
   const prefs = useQuery(preferencesQuery);
   const options = useQuery(interestOptionsQuery);
-  const interests = interestFilters(prefs.data?.interests, options.data);
+  const groups = useQuery(myGroupsQuery); // the page needs items.read already
+  const effective = effectiveInterests(prefs.data?.interests, groups.data);
+  const interests = interestFilters(effective.interests, options.data);
+  const filteredTo = effective.group
+    ? `Filtered to ${effective.group}'s interests`
+    : "Filtered to my interests";
   const mine = usesInterests(search, interests);
   const result = useQuery({
     ...searchQuery(toQuery(search, now, interests)),
     placeholderData: keepPreviousData,
-    enabled: !prefs.isPending && !options.isPending, // the first search knows the interests
+    // The first search knows the interests, the user's or their group's.
+    enabled: !prefs.isPending && !options.isPending && !groups.isPending,
   });
   const sort = toQuery(search, now).sort;
   const page = search.page ?? 1;
@@ -250,7 +260,7 @@ export function ItemsPage(props: {
       {(mine || search.all) && Object.keys(interests).length > 0 && (
         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded border border-accent px-2 py-0.5">
-            {mine ? "Filtered to my interests" : "Showing everything"}
+            {mine ? filteredTo : "Showing everything"}
           </span>
           <button
             type="button"

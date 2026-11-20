@@ -114,3 +114,21 @@ def test_catalogue_sources_wait_for_a_follower(postgres: Postgres, empty_db: str
         "gb-legislation-it|f|respect|GB|t|t|t|t",
         "us-federal-register-it|f|respect|US|t|t|t|t",
     ]
+
+
+def test_the_seed_refuses_admin_permissions_on_group_roles(
+    postgres: Postgres, empty_db: str
+) -> None:
+    """CP-27 (11.4a review): no role a group holds may carry users.manage or roles.manage."""
+    url = postgres.url(empty_db)
+    upgrade(url)
+    asyncio.run(seed.run(SEED_DIR, url))
+    postgres.psql(
+        empty_db,
+        "INSERT INTO user_group (key, name) VALUES ('team', 'Team');"
+        "INSERT INTO group_role SELECT g.id, r.id FROM user_group g, role r WHERE r.key = 'editor';"
+        "INSERT INTO role_permission (role_id, permission_key)"
+        " SELECT id, 'roles.manage' FROM role WHERE key = 'editor';",
+    )
+    with pytest.raises(seed.SeedError, match="editor has roles.manage"):
+        asyncio.run(seed.run(SEED_DIR, url))

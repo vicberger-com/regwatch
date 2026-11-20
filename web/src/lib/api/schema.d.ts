@@ -3837,6 +3837,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-27: your groups and their interests */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Your groups and their interests */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MyGroup"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/sessions": {
         parameters: {
             query?: never;
@@ -4215,12 +4251,22 @@ export interface components {
             description?: string | null;
             roles: string[];
             members: string[];
+            interests?: components["schemas"]["Interests"];
+        };
+        /** @description CP-27: a group you are in; its interests are your default when you have set none */
+        MyGroup: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            interests: components["schemas"]["Interests"];
         };
         GroupWrite: {
             key?: string;
             name?: string;
             description?: string | null;
             roles?: string[];
+            interests?: components["schemas"]["Interests"];
         };
         FeedRequestWrite: {
             url: string;

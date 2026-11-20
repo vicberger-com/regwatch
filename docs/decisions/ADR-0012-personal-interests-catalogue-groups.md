@@ -44,6 +44,7 @@ What exists today:
    - A member's effective profile is their own, or their group's when they have not set one. They can switch between them, as with views.
    - Roles granted to a group apply to its members, alongside their own roles.
    - Shared views can be shared with a group instead of with everyone.
+   - As built (CP-27, migration 0010): a group never carries `users.manage` or `roles.manage`, so the `admin` role (every permission) is never a group role. Full administration stays a named grant to each user, and the last-manager guard keeps counting direct roles. An administrator grants through a group only what they hold, and a user manager with fewer permissions cannot edit or remove a member whose groups grant permissions they lack. A group's interests are its members' default when they have set none; they are default filters only, as a user's are.
 5. **OAuth and OpenID Connect stay in Phase 5 (M1b),** with group claims mapped to these groups. Groups built now are the target of that mapping, so no rework is needed.
 
 ## Alternatives considered

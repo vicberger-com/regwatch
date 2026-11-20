@@ -23,6 +23,7 @@ from regwatch.identity.schemas import (
     InterestOptions,
     Login,
     Me,
+    MyGroup,
     PasswordChange,
     Permission,
     Preferences,
@@ -220,6 +221,14 @@ async def update_preferences(body: Preferences, principal: CurrentPrincipal,
 )  # fmt: skip
 async def get_interest_options(principal: CurrentPrincipal, db: DbSession) -> InterestOptions:
     return await services.interest_options(db)
+
+
+@router.get(
+    "/me/groups", tags=ME,
+    **spec(list[MyGroup], desc="Your groups and their interests", stub=False),
+)  # fmt: skip
+async def get_my_groups(principal: CurrentPrincipal, db: DbSession) -> list[MyGroup]:
+    return await groups.my_groups(db, principal.user.id)
 
 
 @router.get(

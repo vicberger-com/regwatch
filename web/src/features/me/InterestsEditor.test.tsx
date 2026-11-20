@@ -131,6 +131,50 @@ describe("my interests (M11.1)", () => {
     });
   });
 
+  it("uses the group's interests when the user has set none (M11.4b)", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /me/preferences": [
+        200,
+        {
+          session_idle_timeout_minutes: 480,
+          interests: { jurisdictions: [], regions: [], terms: {} },
+        },
+      ],
+      "GET /me/groups": [
+        200,
+        [
+          {
+            id: "g0",
+            key: "empty",
+            name: "A team",
+            interests: { jurisdictions: [], regions: [], terms: {} },
+          },
+          { id: "g1", key: "eu", name: "EU policy team", interests: INTERESTS },
+        ],
+      ],
+      "GET /map/activity": [200, ACTIVITY],
+      "GET /me/interest-options": [200, OPTIONS],
+    });
+    renderAt("/");
+    await waitFor(() => {
+      expect(
+        api.fetch.mock.calls
+          .map(([r]) => new URL(r.url))
+          .filter((u) => u.pathname.endsWith("/map/activity"))
+          .map((u) => u.searchParams.get("filters")),
+      ).toContain(
+        JSON.stringify({
+          jurisdictions: ["DE", "EU", "FR"],
+          terms: { topic: ["supply-chain"] },
+        }),
+      );
+    });
+    expect(
+      screen.getByText("Filtered to EU policy team's interests"),
+    ).toBeInTheDocument();
+  });
+
   it("filters the items list unless the address names its own filters or all", async () => {
     const api = fakeApi({
       "GET /auth/me": [200, ADMIN],

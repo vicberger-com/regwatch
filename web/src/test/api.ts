@@ -16,6 +16,7 @@ const DEFAULTS: Routes = {
   ],
   "GET /catalogue": [200, []],
   "GET /feed-requests": [200, []],
+  "GET /me/groups": [200, []],
   "GET /map/activity": [
     200,
     {

@@ -248,6 +248,7 @@ async def apply(conn: AsyncConnection, data: SeedData) -> dict[str, int]:
     counts["role_permission"] = await _insert_missing(
         conn, _table(RolePermission), pairs, ["role_id", "permission_key"]
     )
+    await _check_group_roles(conn)
     setting_rows = [{"key": k, "value": v} for k, v in data.settings.items()]
     counts["setting"] = await _insert_missing(conn, _table(Setting), setting_rows, ["key"])
     flag_rows = [{"key": k, **v} for k, v in data.feature_flags.items()]
@@ -294,6 +295,23 @@ async def _apply_terms(conn: AsyncConnection, facet_id: Any, terms: list[dict[st
         inserted += await _insert_missing(conn, _table(Term), rows, ["facet_id", "key"])
         pending = [t for t in pending if t not in ready]
     return inserted
+
+
+async def _check_group_roles(conn: AsyncConnection) -> None:
+    """No role a group holds may carry users.manage or roles.manage (CP-27), whether an admin
+    or a registries change added it; the seed's transaction is rolled back if one does."""
+    from regwatch.identity.models import GroupRole
+    from regwatch.identity.services import GROUP_FORBIDDEN
+
+    rp, gr, role = _table(RolePermission), _table(GroupRole), _table(Role)
+    bad = (await conn.execute(
+        select(role.c.key, rp.c.permission_key).distinct()
+        .join(rp, rp.c.role_id == role.c.id).join(gr, gr.c.role_id == role.c.id)
+        .where(rp.c.permission_key.in_(sorted(GROUP_FORBIDDEN)))
+        .order_by(role.c.key))).tuples().all()  # fmt: skip
+    if bad:
+        held = ", ".join(f"{r} has {p}" for r, p in bad)
+        raise SeedError(f"roles held by groups may not carry {sorted(GROUP_FORBIDDEN)}: {held}")
 
 
 async def _apply_catalogue(conn: AsyncConnection, catalogue: dict[str, dict[str, Any]]) -> int:

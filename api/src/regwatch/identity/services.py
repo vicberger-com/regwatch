@@ -987,6 +987,7 @@ async def update_role(
 async def delete_role(
     db: AsyncSession, role_id: uuid.UUID, actor: Principal, ip: str | None
 ) -> None:
+    await _serialise_admin_changes(db)  # a group cannot take the role while it goes (review)
     role = await _role_or_404(db, role_id)
     if role.system:
         raise ProblemError(409, "conflict", "System roles cannot be deleted.")
@@ -1060,17 +1061,21 @@ async def _current(db: AsyncSession, prefs: Preferences) -> Preferences:
     they were saved is dropped, so default filters never fail (M11.1 review)."""
     if prefs.interests is None:
         return prefs
+    return prefs.model_copy(update={"interests": await live_interests(db, prefs.interests)})
+
+
+async def live_interests(db: AsyncSession, interests: Interests) -> Interests:
+    """``interests`` without what has been removed or deactivated since it was saved."""
     offered = await interest_options(db)
     codes = {j.code for j in offered.jurisdictions}
     regions_ = {r.key for r in offered.regions}
     facets = {f.key: {t.key for t in f.terms} for f in offered.facets}
-    live = Interests(
-        jurisdictions=[c for c in prefs.interests.jurisdictions if c in codes],
-        regions=[r for r in prefs.interests.regions if r in regions_],
-        terms={f: kept for f, keys in prefs.interests.terms.items() if f in facets
+    return Interests(
+        jurisdictions=[c for c in interests.jurisdictions if c in codes],
+        regions=[r for r in interests.regions if r in regions_],
+        terms={f: kept for f, keys in interests.terms.items() if f in facets
                if (kept := [k for k in keys if k in facets[f]])},
     )  # fmt: skip
-    return prefs.model_copy(update={"interests": live})
 
 
 async def update_preferences(db: AsyncSession, principal: Principal,

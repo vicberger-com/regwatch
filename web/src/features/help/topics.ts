@@ -39,7 +39,7 @@ const ME: Topic[] = [
     "My interests",
     "The regions, jurisdictions and topics the map, items and search open filtered to; you can always show everything.",
     "Interests are default filters, never a limit: everyone can still see all content. A choice that is later removed from the taxonomy is simply dropped.",
-    "Interests shared by a group arrive in a later M11 slice.",
+    "If you have set none and you are in a group with interests, the group's are used, and the chip on the map and the items list names the group. Choosing your own takes over.",
   ),
   T(
     "User tab",

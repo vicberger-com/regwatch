@@ -503,6 +503,8 @@ paths:
       responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }, "400": { $ref: "#/components/responses/Problem" } }
   /me/interest-options:
     get: { tags: [me], x-permission: items.read, description: "CP-24: what a user may pick as interests", responses: { "200": { description: What a user may pick as interests, content: { application/json: { schema: { $ref: "#/components/schemas/InterestOptions" } } } } } }
+  /me/groups:
+    get: { tags: [me], description: "CP-27: your groups and their interests", responses: { "200": { description: Your groups and their interests, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/MyGroup" } } } } } } }
   /me/sessions:
     get: { tags: [me], responses: { "200": { description: Active sessions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } } } }
   /me/sessions/{id}:
@@ -712,6 +714,16 @@ components:
         description: { type: string, nullable: true }
         roles: { type: array, items: { type: string } }
         members: { type: array, items: { type: string, format: uuid } }
+        interests: { $ref: "#/components/schemas/Interests" }
+    MyGroup:
+      type: object
+      description: "CP-27: a group you are in; its interests are your default when you have set none"
+      required: [id, key, name, interests]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        interests: { $ref: "#/components/schemas/Interests" }
     GroupWrite:
       type: object
       properties:
@@ -719,6 +731,7 @@ components:
         name: { type: string, maxLength: 120 }
         description: { type: string, nullable: true, maxLength: 500 }
         roles: { type: array, items: { type: string } }
+        interests: { $ref: "#/components/schemas/Interests" }
     FeedRequestWrite:
       type: object
       required: [url, reason]
