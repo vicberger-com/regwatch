@@ -1,18 +1,18 @@
 """Auth, users, roles and ``/me`` routes; mounted under /api/v1 by regwatch.api.app.
 
 Auth and ``/me/sessions`` (#31) and user and role administration (#32) are implemented;
-``/me/preferences`` answers 501 until M9.
+``/me/preferences`` reads and merges the user's preferences (M9).
 """
 
 from __future__ import annotations
 
-from typing import Annotated, NoReturn
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 
 from regwatch.core.db import DbSession
-from regwatch.core.routing import Paging, Tags, not_implemented, spec
+from regwatch.core.routing import Paging, Tags, spec
 from regwatch.core.schemas import Page
 from regwatch.core.settings import Settings, get_settings
 from regwatch.identity import services
@@ -196,14 +196,18 @@ async def list_permissions(db: DbSession) -> list[Permission]:
     return await services.list_permissions(db)
 
 
-@router.get("/me/preferences", tags=ME, **spec(Preferences, desc="Preferences"))
-async def get_preferences() -> NoReturn:
-    not_implemented()
+@router.get("/me/preferences", tags=ME, **spec(Preferences, desc="Preferences", stub=False))
+async def get_preferences(principal: CurrentPrincipal, db: DbSession) -> Preferences:
+    return await services.get_preferences(db, principal)
 
 
-@router.patch("/me/preferences", tags=ME, **spec(Preferences, desc="Updated", errors=(400,)))
-async def update_preferences(body: Preferences) -> NoReturn:
-    not_implemented()
+@router.patch(
+    "/me/preferences", tags=ME,
+    **spec(Preferences, desc="Updated", errors=(400,), stub=False),
+)  # fmt: skip
+async def update_preferences(body: Preferences, principal: CurrentPrincipal,
+                             db: DbSession) -> Preferences:  # fmt: skip
+    return await services.update_preferences(db, principal, body)
 
 
 @router.get(

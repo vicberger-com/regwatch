@@ -8,7 +8,7 @@
 #   E2E_CREDENTIALS  a file with the lines "admin email: …" and "admin password: …" (required),
 #                    kept outside web/ (which is mounted into the container)
 set -euo pipefail
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(realpath "$(dirname "$0")/..")"  # resolved, so the web/ check below cannot be sidestepped
 image="mcr.microsoft.com/playwright@sha256:1507cbfc550a63a6b7396791ca4f00df17beb56342d2447b3f106c306f525579"  # v1.65.1-noble
 creds="${E2E_CREDENTIALS:?set E2E_CREDENTIALS to the admin credential file of the stack under test}"
 base="${E2E_BASE_URL:?set E2E_BASE_URL to the stack under test, e.g. http://localhost:8180}"

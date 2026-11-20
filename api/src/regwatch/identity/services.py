@@ -973,3 +973,64 @@ async def list_permissions(db: AsyncSession) -> list[PermissionOut]:
     rows = await db.scalars(select(Permission).order_by(Permission.key))
     return [PermissionOut(key=p.key, description=p.description, module=p.module)
             for p in rows.all()]  # fmt: skip
+
+
+# --- Preferences (M9) ---------------------------------------------------------------------
+
+LOCALES = frozenset({"en"})  # UI strings shipped (M9 Q1: English; other locales are backlog E10)
+
+
+def preferences_of(user: User, cfg: dict[str, int]) -> Preferences:
+    """The stored preferences over the defaults, with the idle timeout actually in force."""
+    stored = Preferences.model_validate(user.preferences or {})
+    # Every field set explicitly, so the answer carries the defaults too (unset fields are
+    # left out of responses).
+    fields = {name: getattr(stored, name) for name in Preferences.model_fields
+              if name != "session_idle_timeout_minutes"}  # fmt: skip
+    return Preferences(**fields, session_idle_timeout_minutes=_idle_minutes(user, cfg))
+
+
+async def get_preferences(db: AsyncSession, principal: Principal) -> Preferences:
+    return preferences_of(principal.user, await auth_settings(db))
+
+
+async def update_preferences(db: AsyncSession, principal: Principal,
+                             body: Preferences) -> Preferences:  # fmt: skip
+    """Merge the fields given into ``user.preferences`` (M9 acceptance 1: they follow the user
+    to every device). Checked: the time zone is an IANA name, the locale is one the UI ships,
+    the landing view is one the user can see, the idle timeout is within the admin's ceiling."""
+    from zoneinfo import available_timezones
+
+    from regwatch.search.models import SavedView
+
+    changes = body.model_dump(mode="json", exclude_unset=True)
+    cfg = await auth_settings(db)
+    errors: list[ProblemFieldError] = []
+    if "timezone" in changes and changes["timezone"] not in available_timezones():
+        errors.append(
+            ProblemFieldError(field="timezone", message="an IANA time zone, such as Europe/Berlin")
+        )
+    if "locale" in changes and changes["locale"] not in LOCALES:
+        errors.append(
+            ProblemFieldError(field="locale", message="one of: " + ", ".join(sorted(LOCALES)))
+        )
+    ceiling = cfg["sessions.idle_timeout_max_minutes"]
+    minutes = changes.get("session_idle_timeout_minutes")
+    if isinstance(minutes, int) and minutes > ceiling:
+        limit = f"at most {ceiling} minutes (sessions.idle_timeout_max_minutes)"
+        errors.append(ProblemFieldError(field="session_idle_timeout_minutes", message=limit))
+    view = changes.get("landing_view_id")
+    if view is not None:
+        visible = await db.scalar(select(SavedView.id).where(
+            SavedView.id == uuid.UUID(view),
+            or_(SavedView.user_id == principal.user.id, SavedView.shared.is_(True))))  # fmt: skip
+        if visible is None:
+            errors.append(ProblemFieldError(field="landing_view_id", message="a view you can see"))
+    if errors:
+        raise ProblemError(400, "validation", "Some preferences are not valid.", errors=errors)
+    user = await db.get(User, principal.user.id, with_for_update=True)
+    if user is None:  # deleted meanwhile; the session gate answers 401 next time
+        raise ProblemError(401, "unauthenticated", "Sign in again.")
+    user.preferences = {**(user.preferences or {}), **changes}
+    await db.commit()
+    return preferences_of(user, cfg)
