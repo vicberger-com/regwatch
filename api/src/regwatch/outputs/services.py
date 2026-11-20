@@ -34,8 +34,9 @@ from regwatch.outputs.schemas import OutputRequest
 
 READ_ALL = "outputs.read_all"
 LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
-KINDS_NOW = {"pdf", "email"}  # M8.1 and M8.2; csv, print and schedules follow
-TASKS = {"pdf": "outputs.render_pdf", "email": "outputs.send_email"}
+KINDS_NOW = {"pdf", "email", "csv"}  # M8.1, M8.2, M8.4; print follows
+TASKS = {"pdf": "outputs.render_pdf", "email": "outputs.send_email",
+         "csv": "outputs.export_csv"}  # fmt: skip
 RECIPIENTS_PER_HOUR = 100  # email recipients a user may reach in an hour (M8.1 review)
 MAX_ATTEMPTS = 3  # renders per job, first try and retries together (M8.1 review finding 3)
 STALE_AFTER = timedelta(minutes=5)  # a render outlives its 90-second limit: interrupted
@@ -74,10 +75,15 @@ async def current_principal(db: AsyncSession, user_id: uuid.UUID) -> Principal |
 
 
 async def check_source(db: AsyncSession, job: OutputJob, principal: Principal) -> Any:
-    """The layout (saved, or built from the stock report) the principal may print now."""
+    """The layout (saved, or built from the stock report) the principal may print now; for a
+    CSV, the query they may export now."""
     from regwatch.reports import services as reports
     from regwatch.reports.models import ReportLayout, ReportTemplate
 
+    if job.kind == "csv":
+        from regwatch.outputs import csv_out
+
+        return await csv_out.source(db, job, principal)
     if job.report_template_key is not None:
         if "reports.print" not in principal.permissions:
             raise ProblemError(403, "forbidden", "Printing stock reports needs reports.print.")
@@ -120,7 +126,7 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     from regwatch.reports import templates
 
     if body.kind.value not in KINDS_NOW:
-        raise _invalid("kind", "PDF and email for now; CSV and print come next")
+        raise _invalid("kind", "PDF, email and CSV for now; print comes next")
     planned = await _schedule(db, body, principal) if body.schedule is not None else None
     chosen = body.source.model_dump(exclude_unset=True)
     if len(chosen) != 1:
@@ -137,12 +143,20 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
                     if "report_template_key" in chosen else None,
                     saved_view_id=None, query=None,
                     destination=destination, status="queued")  # fmt: skip
-    if "saved_view_id" in chosen or "query" in chosen:
-        raise _invalid("source", "M8.1 prints a report layout or a stock report")
+    if job.kind == "csv":  # a query or a saved view, as the search exports it (M8.4)
+        if "saved_view_id" in chosen:
+            job.saved_view_id = body.source.saved_view_id
+        elif "query" in chosen:
+            job.query = body.source.query.model_dump(mode="json", exclude_unset=True)
+        else:
+            raise _invalid("source", "a CSV exports a query or a saved view")
+    elif "saved_view_id" in chosen or "query" in chosen:
+        raise _invalid("source", "a PDF or email prints a report layout or a stock report")
     layout = await check_source(db, job, principal)
-    from regwatch.search.schemas import Query
+    if job.kind != "csv":
+        from regwatch.search.schemas import Query
 
-    await templates.apply(db, Query(), layout.based_on_template_key, params)  # 422 early
+        await templates.apply(db, Query(), layout.based_on_template_key, params)  # 422 early
     await limited(db, principal.user.id)
     job.layout_version = layout.version
     if planned is not None and body.schedule is not None:

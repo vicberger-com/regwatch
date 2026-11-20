@@ -86,7 +86,8 @@ def _limited(user_id: uuid.UUID) -> None:
     renders.hit(key)
 
 
-async def _query(db: AsyncSession, source: ReportDataSource, principal: Principal) -> Query:
+async def data_source_query(db: AsyncSession, source: ReportDataSource,
+                            principal: Principal) -> Query:  # fmt: skip
     """The data source as a search query, with the viewer's visibility of a saved view."""
     from regwatch.search.models import SavedView
 
@@ -112,7 +113,9 @@ async def _rows(db: AsyncSession, source: ReportDataSource, principal: Principal
     from regwatch.reports import templates
     from regwatch.search import services as search
 
-    query = await templates.apply(db, await _query(db, source, principal), template_key, given)
+    query = await templates.apply(
+        db, await data_source_query(db, source, principal), template_key, given
+    )
     wanted = min(source.limit, MAX_ROWS)
     rows: list[ItemSummary] = []
     page = 1

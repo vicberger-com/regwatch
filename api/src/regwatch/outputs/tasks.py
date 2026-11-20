@@ -67,7 +67,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
     from regwatch.admin.services import values
     from regwatch.core import objectstore
     from regwatch.core.services import audit
-    from regwatch.outputs import mail, pdf, schedules, services
+    from regwatch.outputs import csv_out, mail, pdf, schedules, services
     from regwatch.outputs.models import OutputJob
     from regwatch.reports.render import render_layout
 
@@ -101,17 +101,23 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
             recipients = mail.check_recipients(
                 destination.get("emails", []),
                 list(settings["outputs.allowed_recipient_domains"] or []))  # fmt: skip
-        html = await render_layout(db, layout, principal, destination.get("report_params", {}))
+        if kind == "csv":
+            data, cut = await csv_out.build(db, layout)
+        else:
+            html = await render_layout(db, layout, principal,
+                                       destination.get("report_params", {}))  # fmt: skip
     except ProblemError as exc:
         return await fail(exc.slug, exc.detail or exc.title)
     except ValueError as exc:
         return await fail("recipient-refused", str(exc))
-    try:
-        data, pages = await pdf.render(
-            html, layout.name, int(settings["outputs.attachment_max_bytes"])
-        )
-    except pdf.PdfError as exc:
-        return await fail(exc.error_class, exc.message)
+    pages: int | None = None
+    if kind != "csv":
+        try:
+            data, pages = await pdf.render(
+                html, layout.name, int(settings["outputs.attachment_max_bytes"])
+            )
+        except pdf.PdfError as exc:
+            return await fail(exc.error_class, exc.message)
     if kind == "email":
         name = f"regwatch-{job.id}.pdf"
         done = set(destination.get("sent", []))  # those a failed attempt already reached
@@ -151,13 +157,15 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
     if job.status != "rendering":
         await db.commit()
         return job.status
-    key = f"outputs/{job.id}.pdf"
+    key = f"outputs/{job.id}.{'csv' if kind == 'csv' else 'pdf'}"
     await objectstore.put(key, data)
     job.status, job.artifact_ref, job.artifact_bytes = "sent", key, len(data)
     job.layout_version, job.finished_at = layout.version, datetime.now(UTC)
     job.error_class = job.error_message = None
     after: dict[str, object] = {"kind": kind, "bytes": len(data), "pages": pages,
                                 "layout_version": layout.version}  # fmt: skip
+    if kind == "csv":
+        after["columns"], after["truncated"] = list(layout.columns), cut
     if kind == "email":
         after["recipients"] = [mail.hashed(r) for r in recipients]  # never the addresses
         after["recipient_domains"] = sorted({mail.domain_of(r) for r in recipients})  # review
@@ -179,6 +187,25 @@ async def _run_email(job_id: uuid.UUID) -> None:
             await run_email(db, job_id)
     finally:
         await engine.dispose()
+
+
+@shared_task(name="outputs.export_csv", queue="outputs")  # type: ignore[untyped-decorator]
+def export_csv(output_job_id: str) -> None:
+    anyio.run(_run_csv, uuid.UUID(output_job_id))
+
+
+async def _run_csv(job_id: uuid.UUID) -> None:
+    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            await run_csv(db, job_id)
+    finally:
+        await engine.dispose()
+
+
+async def run_csv(db: AsyncSession, job_id: uuid.UUID) -> str:
+    """Export one queued CSV job to the object store; its final status (M8.4)."""
+    return await run_job(db, job_id, "csv")
 
 
 @shared_task(name="outputs.schedule_tick", queue="outputs")  # type: ignore[untyped-decorator]

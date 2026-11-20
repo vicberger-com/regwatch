@@ -27,7 +27,7 @@ import re
 import time
 import unicodedata
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from sqlalchemy.exc import DBAPIError
@@ -151,7 +151,7 @@ async def stream(
     wanted: tuple[str, ...],
     user_id: uuid.UUID | None = None,
     slot: float | None = None,
-) -> AsyncIterator[bytes]:
+) -> AsyncGenerator[bytes, None]:
     """The file, batch by batch; releases the export's slot however it ends."""
     query = ordered(query)
     deadline = time.monotonic() + DEADLINE_S

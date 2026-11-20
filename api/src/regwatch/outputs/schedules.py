@@ -69,7 +69,16 @@ async def count_active(db: AsyncSession, user_id: Any) -> int:
 
 
 # A run failing for one of these will fail every time: its schedule is paused (M8.3 review).
-PAUSE_ON = frozenset({"requester-inactive", "forbidden", "not-found", "recipient-refused"})
+PAUSE_ON = frozenset(
+    {
+        "requester-inactive",
+        "forbidden",
+        "not-found",
+        "recipient-refused",
+        "conflict",
+        "invalid-query",
+    }
+)  # a saved view no longer visible; a bad query
 
 
 async def pause_parent(db: AsyncSession, child: OutputJob, error_class: str,
