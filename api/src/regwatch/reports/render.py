@@ -227,6 +227,8 @@ def _chart(kind: str, props: dict[str, Any], rows: list[ItemSummary]) -> str:
     if kind == "LineChart":
         buckets: dict[str, int] = defaultdict(int)
         for row in rows:
+            if row.last_changed_at is None:  # no date, no point (M7.5 review finding 2)
+                continue
             day = row.last_changed_at.date()
             if props["interval"] == "week":
                 day = day - timedelta(days=day.weekday())

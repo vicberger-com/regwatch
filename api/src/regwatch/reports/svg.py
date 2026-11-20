@@ -102,11 +102,24 @@ def _rings(geometry: dict[str, Any]) -> list[list[list[float]]]:
     return [ring for polygon in polygons for ring in polygon]
 
 
+@cache
+def _shapes(width: int) -> tuple[tuple[str, str, str], ...]:
+    """Each country's code, escaped name and path, built once per width: only the fill
+    changes from one render to the next (M7.5 review finding 1)."""
+    scale = width / 180
+    return tuple(
+        (str(f["properties"].get("iso") or ""),
+         escape(str(f["properties"].get("name", f["properties"].get("iso", "")))),
+         " ".join("M" + " L".join(f"{_n((x + 90) * scale)},{_n((45 - y) * scale)}"
+                                  for x, y in ring) + "Z" for ring in _rings(f["geometry"])))
+        for f in _countries()
+    )  # fmt: skip
+
+
 def map_snapshot(counts: dict[str, int], title: str, width: int = 640) -> str:
     """A choropleth of item counts per country (ISO alpha-2), in five steps, with a legend.
     Projected x and y lie in -90..90 (ADR-0004); y is flipped for SVG."""
     height = round(width * 0.5)
-    scale = width / 180
     most = max(counts.values(), default=0)
 
     def colour(code: str) -> str:
@@ -118,14 +131,9 @@ def map_snapshot(counts: dict[str, int], title: str, width: int = 640) -> str:
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" role="img" width="{width}" '
            f'height="{height + 40}" viewBox="0 0 {width} {height + 40}" font-family="sans-serif" '
            f'font-size="11"><title>{escape(title)}</title>']  # fmt: skip
-    for feature in _countries():
-        code = str(feature["properties"].get("iso") or "")
-        d = " ".join("M" + " L".join(f"{_n((x + 90) * scale)},{_n((45 - y) * scale)}"
-                                     for x, y in ring) + "Z"
-                     for ring in _rings(feature["geometry"]))  # fmt: skip
+    for code, name, d in _shapes(width):
         out.append(f'<path d="{d}" fill="{colour(code)}" stroke="#fcfcfb" stroke-width="0.5">'
-                   f"<title>{escape(str(feature['properties'].get('name', code)))}: "
-                   f"{counts.get(code, 0)}</title></path>")  # fmt: skip
+                   f"<title>{name}: {counts.get(code, 0)}</title></path>")  # fmt: skip
     for i, step in enumerate(STEPS):
         out.append(f'<rect x="{10 + i * 34}" y="{height + 14}" width="30" height="10" '
                    f'fill="{step}"/>')  # fmt: skip

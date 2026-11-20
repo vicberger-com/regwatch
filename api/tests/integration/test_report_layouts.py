@@ -88,6 +88,10 @@ async def test_layouts_are_private_until_shared(admin: httpx.AsyncClient) -> Non
         ({**layout(HEADING), "extra": 1}, "layout.extra"),
         (layout(*({"type": "PageBreak", "props": {"id": f"p{n}"}} for n in range(201))),
          "layout.content"),
+        (layout(*({"type": "MapSnapshot", "props": {"id": f"m{n}"}} for n in range(6))),
+         "layout.content"),
+        (layout(*({"type": "BarChart", "props": {"id": f"b{n}"}} for n in range(21))),
+         "layout.content"),
         (layout({"type": "Paragraph", "props": {"id": "p", "text": "x" * 5000}},
                 *({"type": "Paragraph", "props": {"id": f"q{n}", "text": "y" * 4999}}
                   for n in range(60))), "layout"),

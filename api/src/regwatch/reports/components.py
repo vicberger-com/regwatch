@@ -21,6 +21,8 @@ from regwatch.core.schemas import has_control
 
 MAX_COMPONENTS = 200
 MAX_LAYOUT_BYTES = 256 * 1024
+MAX_MAPS, MAX_CHARTS = 5, 20  # M7.5 review finding 1: drawing them is the costly part
+CHARTS = ("BarChart", "LineChart")
 
 
 def _plain(value: str) -> str:
@@ -205,6 +207,9 @@ def validate_layout(data: dict[str, Any], fields: set[str],
         if isinstance(props, ItemsTable) and props.sort and props.sort not in sortable:
             raise _fail(f"{where}.props.sort", f"{props.sort!r} cannot be sorted on")
         content.append({"type": component.type, "props": props.model_dump(mode="json")})
+    for kinds, most in ((("MapSnapshot",), MAX_MAPS), (CHARTS, MAX_CHARTS)):
+        if sum(c["type"] in kinds for c in content) > most:  # each costs a full pass to draw
+            raise _fail("layout.content", f"at most {most} {' or '.join(kinds)} components")
     return {"root": {"props": root.model_dump(mode="json", exclude_none=True)},
             "content": content}  # fmt: skip
 
