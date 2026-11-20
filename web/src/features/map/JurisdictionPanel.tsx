@@ -3,10 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
-import { searchQuery, type ItemSummary } from "@/features/items/api";
+import {
+  searchQuery,
+  type ItemSummary,
+  type Query,
+} from "@/features/items/api";
+import type { ItemsSearch } from "@/features/items/ItemsPage";
 import { problemText } from "@/lib/auth/session";
 
-import { jurisdictionName } from "./names";
 import type { ActivityRow } from "./scale";
 
 const LEVELS = ["major", "notable", "info"] as const;
@@ -18,6 +22,11 @@ const LEVELS = ["major", "notable", "info"] as const;
  */
 export function JurisdictionPanel(props: {
   code: string;
+  name: string;
+  /** The filters that select this place's items (a jurisdiction, or a region) and the view's. */
+  scope: NonNullable<Query["filters"]>;
+  /** Where "All items" leads; none when the items table cannot express the view. */
+  link: ItemsSearch | null;
   row: (ActivityRow & { breakdown?: Record<string, number> }) | undefined;
   periodDays: number;
   periodStart: string | undefined;
@@ -49,7 +58,7 @@ export function JurisdictionPanel(props: {
   const latest = useQuery({
     ...searchQuery({
       filters: {
-        jurisdictions: [props.code],
+        ...props.scope,
         ...(props.periodStart ? { changed: { from: props.periodStart } } : {}),
       },
       sort: "last_changed_desc",
@@ -60,7 +69,7 @@ export function JurisdictionPanel(props: {
     }),
   });
   const items = (latest.data?.items ?? []) as ItemSummary[];
-  const name = jurisdictionName(props.code);
+  const { name } = props;
   const id = `panel-${props.code}`;
   return (
     <aside
@@ -83,7 +92,9 @@ export function JurisdictionPanel(props: {
           className="rounded p-1 hover:bg-bg"
         >
           <X aria-hidden="true" className="h-4 w-4" />
-          <span className="sr-only">Close the {name} panel</span>
+          <span className="sr-only">
+            Close the {name} panel (Escape returns to the list)
+          </span>
         </button>
       </div>
       <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 text-sm">
@@ -121,20 +132,24 @@ export function JurisdictionPanel(props: {
                 <bdi>{item.title}</bdi>
               </Link>
               <span className="block text-text-muted">
-                {new Date(item.last_changed_at).toLocaleDateString()}
+                {item.last_changed_at
+                  ? new Date(item.last_changed_at).toLocaleDateString()
+                  : "—"}
                 {item.severity ? ` · ${item.severity}` : ""}
               </span>
             </li>
           ))}
         </ol>
       )}
-      <Link
-        to="/items"
-        search={{ j: props.code, days: props.periodDays }}
-        className="mt-3 inline-block text-accent underline"
-      >
-        All items for {name} in the last {String(props.periodDays)} days
-      </Link>
+      {props.link && (
+        <Link
+          to="/items"
+          search={props.link}
+          className="mt-3 inline-block text-accent underline"
+        >
+          All items for {name} in the last {String(props.periodDays)} days
+        </Link>
+      )}
     </aside>
   );
 }

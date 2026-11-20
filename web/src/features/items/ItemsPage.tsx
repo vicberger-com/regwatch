@@ -18,6 +18,8 @@ export interface ItemsSearch {
   j?: string;
   /** Changed within the last this many days. */
   days?: number;
+  /** One facet term, `facet:term` (the map's facet view). */
+  t?: string;
   sort?: Sort;
   page?: number;
 }
@@ -43,6 +45,11 @@ export function parseItemsSearch(raw: Record<string, unknown>): ItemsSearch {
   if (typeof raw.q === "string" && raw.q.trim()) out.q = raw.q.slice(0, 500);
   if (typeof raw.j === "string" && /^[A-Za-z0-9,_-]{1,400}$/.test(raw.j))
     out.j = raw.j.toUpperCase();
+  if (
+    typeof raw.t === "string" &&
+    /^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}$/.test(raw.t)
+  )
+    out.t = raw.t;
   const days = Number(raw.days);
   if (Number.isInteger(days) && days >= 1 && days <= 3660) out.days = days;
   if (SORTS.some((s) => s.value === raw.sort)) out.sort = raw.sort as Sort;
@@ -66,6 +73,10 @@ function without(
 export function toQuery(search: ItemsSearch, now = new Date()): Query {
   const filters: NonNullable<Query["filters"]> = {};
   if (search.j) filters.jurisdictions = search.j.split(",").filter(Boolean);
+  if (search.t) {
+    const [facet = "", term = ""] = search.t.split(":");
+    filters.terms = { [facet]: [term] };
+  }
   if (search.days) {
     filters.changed = {
       from: new Date(now.getTime() - search.days * 86_400_000).toISOString(),

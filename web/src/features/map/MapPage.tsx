@@ -1,13 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useRouteContext } from "@tanstack/react-router";
+import { useCallback, useMemo, useState } from "react";
 
-import { problemText } from "@/lib/auth/session";
+import { regionsQuery } from "@/features/jurisdictions/api";
+import { facetsQuery } from "@/features/taxonomy/api";
+import { hasPermission, problemText } from "@/lib/auth/session";
 
-import { activityQuery, PERIODS } from "./api";
+import { activityQuery, PERIODS, type MapView } from "./api";
 import { jurisdictionName } from "./names";
 import { JurisdictionList } from "./JurisdictionList";
 import { JurisdictionPanel } from "./JurisdictionPanel";
-import { legend, steps as stepsOf, wellFormed, type Encoding } from "./scale";
+import {
+  legend,
+  steps as stepsOf,
+  wellFormed,
+  type ActivityRow,
+  type Encoding,
+  type Step,
+} from "./scale";
+import { ViewSelector } from "./ViewSelector";
 import { WorldMap } from "./WorldMap";
 
 const ENCODINGS: { value: Encoding; label: string }[] = [
@@ -24,7 +35,50 @@ export function MapPage() {
   const [period, setPeriod] = useState<number>(30);
   const [encoding, setEncoding] = useState<Encoding>("recency");
   const [selected, setSelected] = useState<string | null>(null);
-  const activity = useQuery(activityQuery(period));
+  const [view, setViewState] = useState<MapView>({ by: "country" });
+  const { me } = useRouteContext({ from: "/authed" });
+  const taxonomy = hasPermission(me, "taxonomy.read");
+  const facets = useQuery({ ...facetsQuery, enabled: taxonomy });
+  const regions = useQuery({ ...regionsQuery, enabled: taxonomy });
+  const setView = (next: MapView) => {
+    setViewState(next);
+    setSelected(null); // a code of one view means nothing in another
+  };
+  // Until a facet's value is chosen, the view shows every change (acceptance 2).
+  const asked: MapView = view.facet && !view.term ? { by: view.by } : view;
+  const activity = useQuery(activityQuery(period, asked));
+  // A region's member countries, and each country's region, for the region view.
+  const members = useMemo(() => {
+    const out = new Map<string, string[]>();
+    for (const r of regions.data ?? []) {
+      if (r.code)
+        out.set(
+          r.code,
+          (r.jurisdiction_codes ?? []).filter((c) => /^[A-Z]{2}$/.test(c)),
+        );
+    }
+    return out;
+  }, [regions.data]);
+  const regionOf = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [region, codes] of members)
+      for (const c of codes) out.set(c, region);
+    return out;
+  }, [members]);
+  const regionNames = useMemo(
+    () =>
+      new Map(
+        (regions.data ?? []).map((r) => [r.code ?? "", r.name ?? r.code ?? ""]),
+      ),
+    [regions.data],
+  );
+  const nameOf = useCallback(
+    (code: string) =>
+      view.by === "region"
+        ? (regionNames.get(code) ?? code)
+        : jurisdictionName(code),
+    [view.by, regionNames],
+  );
   // Only well-formed rows: a broken answer must not take the page down.
   const rows = useMemo(() => wellFormed(activity.data?.rows), [activity.data]);
 
@@ -34,17 +88,32 @@ export function MapPage() {
       start: new Date(activity.data.period_start),
       end: new Date(activity.data.period_end),
     };
-    return stepsOf(rows, encoding, range);
-  }, [activity.data, rows, encoding]);
+    const own = stepsOf(rows, encoding, range);
+    if (view.by !== "region") return own;
+    // The region view shades every member country with its region's step.
+    const out = new Map<string, Step>();
+    for (const [region, step] of own)
+      for (const c of members.get(region) ?? []) out.set(c, step);
+    return out;
+  }, [activity.data, rows, encoding, view.by, members]);
   const byCode = useMemo(() => new Map(rows.map((r) => [r.code, r])), [rows]);
+  const closePanel = useCallback(() => {
+    setSelected(null);
+  }, []);
+  /** A row by its own code (a region in the region view), for the list and the status. */
+  const describeOwn = (code: string) => describeRow(byCode.get(code));
   const describe = (code: string) => {
-    const row = byCode.get(code);
+    return describeRow(
+      byCode.get(view.by === "region" ? (regionOf.get(code) ?? code) : code),
+    );
+  };
+  function describeRow(row: ActivityRow | undefined) {
     if (!row || row.count === 0) return "No changes in this period";
     const last = row.last_changed_at
       ? `, last ${new Date(row.last_changed_at).toLocaleDateString()}`
       : "";
     return `${plural(row.count, "item", "items")} changed${last}; highest severity ${row.max_severity}`;
-  };
+  }
   const entries = useMemo(
     () =>
       rows
@@ -54,12 +123,12 @@ export function MapPage() {
         )
         .map((r) => ({
           code: r.code,
-          name: jurisdictionName(r.code),
-          summary: describe(r.code),
+          name: nameOf(r.code),
+          summary: describeOwn(r.code),
         })),
     // describe reads byCode, which follows rows
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, byCode],
+    [rows, byCode, nameOf],
   );
   const periodText = `the last ${String(period)} days`;
   const labels = legend(encoding);
@@ -88,6 +157,12 @@ export function MapPage() {
             ))}
           </select>
         </label>
+        <ViewSelector
+          view={view}
+          onChange={setView}
+          facets={facets.data ?? []}
+          regionsAvailable={regions.isSuccess}
+        />
         <label className="flex flex-col text-sm">
           Colour by
           <select
@@ -112,7 +187,7 @@ export function MapPage() {
             ? ""
             : `${plural(entries.length, "jurisdiction", "jurisdictions")} with changes in ${periodText}${
                 selected
-                  ? `. Selected: ${jurisdictionName(selected)}, ${describe(selected)}`
+                  ? `. Selected: ${nameOf(selected)}, ${describeOwn(selected)}`
                   : ""
               }`}
       </p>
@@ -126,8 +201,12 @@ export function MapPage() {
           <WorldMap
             label={`Map of change activity in ${periodText}, coloured by ${encoding}; the list of jurisdictions has the same information`}
             steps={steps}
-            selected={selected}
-            onSelect={setSelected}
+            selected={view.by === "region" ? null : selected}
+            onSelect={(code) => {
+              setSelected(
+                view.by === "region" ? (regionOf.get(code) ?? null) : code,
+              );
+            }}
             describe={describe}
           />
           <ol aria-label="Legend" className="mt-2 flex flex-wrap gap-3 text-sm">
@@ -151,16 +230,34 @@ export function MapPage() {
           {selected && (
             <JurisdictionPanel
               code={selected}
+              name={nameOf(selected)}
+              scope={{
+                ...(view.by === "region"
+                  ? { regions: [selected] }
+                  : { jurisdictions: [selected] }),
+                ...(asked.facet && asked.term
+                  ? { terms: { [asked.facet]: [asked.term] } }
+                  : {}),
+              }}
+              link={
+                view.by === "region"
+                  ? null
+                  : {
+                      j: selected,
+                      days: period,
+                      ...(asked.facet && asked.term
+                        ? { t: `${asked.facet}:${asked.term}` }
+                        : {}),
+                    }
+              }
               row={byCode.get(selected)}
               periodDays={period}
               periodStart={activity.data?.period_start}
-              onClose={() => {
-                setSelected(null);
-              }}
+              onClose={closePanel}
             />
           )}
           <JurisdictionList
-            label={`Jurisdictions with changes in ${periodText}, newest first`}
+            label={`${view.by === "region" ? "Regions" : "Jurisdictions"} with changes in ${periodText}, newest first`}
             entries={entries}
             selected={selected}
             onSelect={setSelected}

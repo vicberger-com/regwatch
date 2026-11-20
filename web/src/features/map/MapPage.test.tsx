@@ -192,6 +192,144 @@ describe("map page", () => {
     expect(list).toHaveFocus();
   });
 
+  it('re-renders for the view "industry: finance" with finance-tagged activity (acceptance 2)', async () => {
+    const api = fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["items.read", "taxonomy.read"] },
+      ],
+      "GET /taxonomy/facets": [
+        200,
+        [
+          {
+            key: "industry",
+            label: "Industry",
+            show_in_view_selector: true,
+            show_in_filters: true,
+            terms: [
+              {
+                id: "t1",
+                facet_key: "industry",
+                key: "finance",
+                label: "Finance",
+                active: true,
+                children: [],
+              },
+              {
+                id: "t2",
+                facet_key: "industry",
+                key: "energy",
+                label: "Energy",
+                active: false,
+                children: [],
+              },
+            ],
+          },
+          {
+            key: "internal",
+            label: "Internal",
+            show_in_view_selector: false,
+            show_in_filters: false,
+            terms: [],
+          },
+        ],
+      ],
+      "GET /jurisdictions/regions": [
+        200,
+        [
+          {
+            code: "155",
+            name: "Western Europe",
+            jurisdiction_codes: ["DE", "FR"],
+          },
+        ],
+      ],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    const view = await screen.findByLabelText("View");
+    await waitFor(() => {
+      expect(
+        within(view)
+          .getAllByRole("option")
+          .map((o) => o.textContent),
+      ).toEqual(["Country", "Region", "Industry"]);
+    });
+    await userEvent.selectOptions(view, "facet:industry");
+    const value = screen.getByLabelText("Industry");
+    expect(
+      within(value)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Choose a value", "Finance"]);
+    await userEvent.selectOptions(value, "finance");
+    await waitFor(() => {
+      const urls = api.fetch.mock.calls.map(([r]) => new URL(r.url));
+      expect(
+        urls.some(
+          (u) =>
+            u.pathname.endsWith("/map/activity") &&
+            u.searchParams.get("filters") ===
+              JSON.stringify({ terms: { industry: ["finance"] } }),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("shades the member countries in the region view", async () => {
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["items.read", "taxonomy.read"] },
+      ],
+      "GET /taxonomy/facets": [200, []],
+      "GET /jurisdictions/regions": [
+        200,
+        [
+          {
+            code: "155",
+            name: "Western Europe",
+            jurisdiction_codes: ["DE", "FR"],
+          },
+        ],
+      ],
+      "GET /map/activity": [
+        200,
+        {
+          ...ACTIVITY,
+          view_by: "region",
+          rows: [
+            {
+              code: "155",
+              count: 4,
+              last_changed_at: "2026-11-18T09:00:00Z",
+              max_severity: "major",
+            },
+          ],
+        },
+      ],
+    });
+    renderAt("/");
+    const view = await screen.findByLabelText("View");
+    await within(view).findByRole("option", { name: "Region" });
+    await userEvent.selectOptions(view, "region");
+    const map = await engine();
+    await waitFor(() => {
+      expect(map.steps.get("DE")).toBe(4);
+    });
+    expect(map.steps.get("FR")).toBe(4);
+    const list = await screen.findByRole("listbox", {
+      name: /Regions with changes/,
+    });
+    expect(within(list).getByRole("option")).toHaveTextContent(
+      "Western Europe",
+    );
+    map.on.onSelect("FR");
+    expect(
+      await screen.findByRole("complementary", { name: "Western Europe" }),
+    ).toBeInTheDocument();
+  });
+
   it("names no country over a disputed area", async () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
