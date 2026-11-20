@@ -15,8 +15,10 @@ What it holds to (M8.1 review, BL-143 e):
 from __future__ import annotations
 
 import hashlib
+import re
 import smtplib
 import ssl
+from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from html import escape
@@ -37,18 +39,48 @@ class MailError(Exception):
         self.message = message
 
 
-def domain_of(address: str) -> str:
-    """The address's domain, lower-cased and in IDNA form, or "" when it has none."""
-    _, _, domain = address.strip().rpartition("@")
+# One plain address and nothing else: a dot-atom local part, one @, a domain of labels. No
+# spaces, quotes, brackets, comments, ; or , : anything the email library would read as another
+# address (M8.2 review: "attacker@evil.com x@example.org" was sent to evil.com).
+_LOCAL = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*")
+_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _ascii_domain(domain: str) -> str:
+    """``domain`` lower-cased in IDNA form, or "" when it is not a valid host name."""
     try:
-        return domain.strip().rstrip(".").encode("idna").decode("ascii").lower()
+        ascii_ = domain.strip().rstrip(".").encode("idna").decode("ascii").lower()
     except UnicodeError:
         return ""
+    labels = ascii_.split(".")
+    return ascii_ if len(labels) >= 2 and all(_LABEL.fullmatch(x) for x in labels) else ""
+
+
+def parse(address: str) -> Address | None:
+    """The address as an ``Address``, only if it is exactly one plain address."""
+    text = address.strip()
+    if text.count("@") != 1 or len(text) > 254:
+        return None
+    local, domain = text.split("@")
+    ascii_domain = _ascii_domain(domain)
+    if not _LOCAL.fullmatch(local) or len(local) > 64 or not ascii_domain:
+        return None
+    if "=?" in local:  # an encoded word, which a mail client could display decoded
+        return None
+    parsed = Address(username=local, domain=ascii_domain)
+    return parsed if parsed.addr_spec == f"{local}@{ascii_domain}" else None
+
+
+def domain_of(address: str) -> str:
+    """The domain of a plain address (lower-cased, IDNA), or "" when it is not one."""
+    parsed = parse(address)
+    return parsed.domain if parsed else ""
 
 
 def allowed(address: str, domains: list[str]) -> bool:
-    """Whether ``address`` is on an allowed domain (exactly, or a subdomain of one)."""
-    wanted = {domain_of("x@" + d) for d in domains if d.strip()}
+    """Whether ``address`` is one plain address on an allowed domain (exactly, or a subdomain;
+    the setting's help says so)."""
+    wanted = {_ascii_domain(d) for d in domains if d.strip()}
     got = domain_of(address)
     return bool(got) and any(got == d or got.endswith("." + d) for d in wanted if d)
 
@@ -59,9 +91,13 @@ def check_recipients(addresses: list[str], domains: list[str]) -> list[str]:
         raise ValueError("email is turned off: no recipient domains are allowed")
     seen: list[str] = []
     for address in addresses:
-        clean = address.strip()
-        if not clean or has_control(clean) or "\n" in clean or "\r" in clean or "," in clean:
+        raw = address.strip()
+        if not raw or has_control(raw) or "\n" in raw or "\r" in raw or "," in raw:
             raise ValueError("an address may hold no line breaks, commas or control characters")
+        parsed = parse(raw)
+        if parsed is None:
+            raise ValueError(f"{raw[:80]} is not a single plain email address")
+        clean = parsed.addr_spec  # the checked form, used for the header and the envelope
         if not allowed(clean, domains):
             raise ValueError(f"{clean} is not on an allowed domain")
         if clean.lower() not in {s.lower() for s in seen}:
@@ -88,9 +124,12 @@ def hashed(address: str) -> str:
 
 def build(to: str, subject: str, message: str, pdf: bytes, filename: str) -> EmailMessage:
     settings = get_settings()
+    checked = parse(to)
+    if checked is None:  # check_recipients ran first; never build from anything else
+        raise ValueError("not a single plain email address")
     mail = EmailMessage()
     mail["From"] = settings.smtp_from
-    mail["To"] = to
+    mail["To"] = checked
     mail["Subject"] = subject
     mail["Date"] = formatdate(localtime=False)
     mail["Message-ID"] = make_msgid(domain=domain_of(settings.smtp_from) or None)
@@ -103,19 +142,30 @@ def build(to: str, subject: str, message: str, pdf: bytes, filename: str) -> Ema
     return mail
 
 
-def _send_sync(messages: list[EmailMessage]) -> None:
+def _in_stack(host: str) -> bool:
+    """A relay on loopback or inside the stack's own network (a one-label service name)."""
+    return host in ("localhost", "127.0.0.1", "::1") or "." not in host
+
+
+def _send_sync(messages: list[tuple[EmailMessage, str]]) -> None:
     settings = get_settings()
+    login = bool(settings.smtp_username and settings.smtp_password is not None)
+    if login and not settings.smtp_starttls and not _in_stack(settings.smtp_host):
+        # Never the relay password in clear text over a network (M8.2 review).
+        raise smtplib.SMTPException("login without STARTTLS is refused")
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=TIMEOUT_S) as smtp:
         if settings.smtp_starttls:
             smtp.starttls(context=ssl.create_default_context())
-        if settings.smtp_username and settings.smtp_password is not None:
-            smtp.login(settings.smtp_username, settings.smtp_password.get_secret_value())
-        for message in messages:
-            smtp.send_message(message)
+        if login and settings.smtp_password is not None:
+            smtp.login(str(settings.smtp_username), settings.smtp_password.get_secret_value())
+        for message, to in messages:
+            # The envelope recipient is the checked address, never parsed from the header.
+            smtp.send_message(message, to_addrs=[to])
 
 
-async def send(messages: list[EmailMessage]) -> None:
-    """Send every message over one connection, off the event loop; a ``MailError`` by class."""
+async def send(messages: list[tuple[EmailMessage, str]]) -> None:
+    """Send each (message, checked recipient) over one connection, off the event loop; a
+    ``MailError`` by class."""
     try:
         await anyio.to_thread.run_sync(_send_sync, messages)
     except smtplib.SMTPRecipientsRefused:

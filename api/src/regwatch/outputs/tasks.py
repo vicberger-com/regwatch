@@ -113,11 +113,26 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
         return await fail(exc.error_class, exc.message)
     if kind == "email":
         name = f"regwatch-{job.id}.pdf"
-        messages = [mail.build(to, destination.get("subject", "regwatch report"),
-                               destination.get("message", ""), data, name)
-                    for to in recipients]  # fmt: skip
+        done = set(destination.get("sent", []))  # those a failed attempt already reached
         try:
-            await mail.send(messages)
+            for to in [r for r in recipients if mail.hashed(r) not in done]:
+                await mail.send(
+                    [
+                        (
+                            mail.build(
+                                to,
+                                destination.get("subject", "regwatch report"),
+                                destination.get("message", ""),
+                                data,
+                                name,
+                            ),
+                            to,
+                        )
+                    ]
+                )
+                done.add(mail.hashed(to))  # one at a time: a retry never sends twice (review)
+                job.destination = {**destination, "sent": sorted(done)}
+                await db.commit()
         except mail.MailError as exc:
             if job.attempts >= services.MAX_ATTEMPTS:
                 return await fail(exc.error_class, exc.message)
@@ -140,6 +155,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
                                 "layout_version": layout.version}  # fmt: skip
     if kind == "email":
         after["recipients"] = [mail.hashed(r) for r in recipients]  # never the addresses
+        after["recipient_domains"] = sorted({mail.domain_of(r) for r in recipients})  # review
     audit(db, "output.sent", "output_job", job.id, actor=job.requested_by, after=after)
     await db.commit()
     _log.info("output_sent", job=str(job.id), kind=kind, pages=pages, bytes=len(data))

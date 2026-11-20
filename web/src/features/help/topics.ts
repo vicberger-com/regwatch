@@ -317,6 +317,8 @@ const SETTINGS: Topic[] = [
     "outputs.allowed_recipient_domains",
     "Allowed email domains",
     "Reports may only be emailed to addresses in these domains, one per line; an empty list blocks all email.",
+    "Subdomains count too: example.org also allows legal.example.org. So list your organisation's own domains only, never a shared provider's (such as a public mail service).",
+    "Each recipient must be one plain address. Every message is audited with the recipient domains.",
   ),
   T(
     "Settings",

@@ -238,14 +238,18 @@ class Smtp:
 
     def __init__(self) -> None:
         self.sent: list[Any] = []
+        self.envelope: list[str] = []
         self.down = False
+        self.fail_after: int | None = None  # fail once this many messages went out
 
-    def __call__(self, messages: list[Any]) -> None:
+    def __call__(self, messages: list[tuple[Any, str]]) -> None:
         import smtplib
 
-        if self.down:
+        if self.down or (self.fail_after is not None and len(self.sent) >= self.fail_after):
             raise smtplib.SMTPServerDisconnected("gone")
-        self.sent.extend(messages)
+        for message, to in messages:
+            self.sent.append(message)
+            self.envelope.append(to)
 
 
 @pytest.fixture
@@ -330,3 +334,37 @@ async def test_recipients_are_checked_again_when_sent(
     assert await tasks.run_email(db, uuid.UUID(job["id"])) == "failed"
     shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
     assert shown["error_class"] == "recipient-refused" and smtp.sent == []
+
+
+async def test_a_partial_failure_resends_only_to_the_rest(
+    admin: httpx.AsyncClient, db: AsyncSession, smtp: Smtp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M8.2 review Low: recipients reached before a failure are not sent the report again."""
+
+    async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
+        return None
+
+    monkeypatch.setattr(tasks, "enqueue", enqueue)
+    await _domains(admin, "example.org")
+    to = ["a@example.org", "b@example.org", "c@example.org"]
+    job = (await admin.post(_api("/outputs"), json=_email(to))).json()
+    smtp.fail_after = 1
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "retrying"
+    smtp.fail_after = None
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "sent"
+    assert smtp.envelope == to  # each once, in order
+
+
+async def test_the_bypass_addresses_are_refused(admin: httpx.AsyncClient, smtp: Smtp) -> None:
+    """M8.2 review High: each passed the old check but would have gone to evil.com."""
+    await _domains(admin, "example.org")
+    bypasses = (
+        "attacker@evil.com x@example.org",
+        "a@evil.com;x@example.org",
+        "<a@evil.com> x@example.org",
+        "attacker@evil.com (c) x@example.org",
+    )
+    for bypass in bypasses:
+        got = await admin.post(_api("/outputs"), json=_email([bypass]))
+        assert got.status_code == 422 and "single plain email address" in got.text, bypass
+    assert smtp.sent == []
