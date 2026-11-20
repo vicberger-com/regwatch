@@ -6,18 +6,22 @@ Every route is implemented (M3); the dry run runs on a worker (CP-13).
 from __future__ import annotations
 
 import json
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 from starlette.datastructures import UploadFile
 
-from regwatch.capture import catalogue, dryrun, manual, runs, services, tasks
+from regwatch.capture import catalogue, dryrun, manual, requests, runs, services, tasks
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
     CaptureRun,
     CatalogueEntry,
     DocumentAccepted,
+    FeedRequestDecision,
+    FeedRequestOut,
+    FeedRequestWrite,
     Source,
     SourceHealth,
     SourceKind,
@@ -226,3 +230,48 @@ async def unfollow_source(
 ) -> Response:
     await catalogue.set_following(db, id, principal.user.id, False, client_ip(request))
     return Response(status_code=204)
+
+
+# Feed requests (CP-26): users ask, editors decide.
+@router.post(
+    "/feed-requests",
+    **spec(FeedRequestOut, status=201, desc="Requested", perm="items.read", stub=False),
+)  # fmt: skip
+async def create_feed_request(
+    body: FeedRequestWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> FeedRequestOut:
+    return await requests.create(db, body, principal, client_ip(request))
+
+
+@router.get(
+    "/feed-requests",
+    **spec(list[FeedRequestOut], desc="Your feed requests; editors see all", perm="items.read",
+           stub=False),
+)  # fmt: skip
+async def list_feed_requests(
+    principal: CurrentPrincipal, db: DbSession,
+    status: Literal["pending", "approved", "declined", "withdrawn"] | None = None,
+) -> list[FeedRequestOut]:  # fmt: skip
+    return await requests.listed(db, principal, status)
+
+
+@router.delete(
+    "/feed-requests/{id}",
+    **spec(status=204, desc="Withdrawn", perm="items.read", stub=False),
+)  # fmt: skip
+async def withdraw_feed_request(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await requests.withdraw(db, id, principal, client_ip(request))
+    return Response(status_code=204)
+
+
+@router.post(
+    "/feed-requests/{id}/decision",
+    **spec(FeedRequestOut, desc="Decided", perm=MANAGE, stub=False),
+)  # fmt: skip
+async def decide_feed_request(
+    id: UUID, body: FeedRequestDecision, principal: CurrentPrincipal, request: Request,
+    db: DbSession,
+) -> FeedRequestOut:  # fmt: skip
+    return await requests.decide(db, id, body, principal, client_ip(request))

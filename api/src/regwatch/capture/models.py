@@ -70,6 +70,24 @@ class SourceFollower(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
 
+class FeedRequest(Base):
+    """A user's request for a feed not in the catalogue (CP-26, migration 0009)."""
+
+    __tablename__ = "feed_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    requested_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"))
+    url: Mapped[str]
+    reason: Mapped[str]
+    status: Mapped[str] = mapped_column(server_default=text("'pending'"))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"))
+    decided_at: Mapped[datetime | None]
+    decision_note: Mapped[str | None]
+    source_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("source.id"))
+
+
 def capturing() -> ColumnElement[bool]:
     """Whether a source is captured (ADR-0012): enabled, or a catalogue source that someone
     follows. Every capture gate uses this with ``CaptureJob.enabled``, so an admin still stops

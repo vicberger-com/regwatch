@@ -130,6 +130,21 @@ CREATE TABLE source_follower ( -- CP-25 (migration 0008): captured while its job
 );
 CREATE INDEX source_follower_user_idx ON source_follower (user_id);
 
+CREATE TABLE feed_request ( -- std; CP-26 (migration 0009): a user's request for a feed not in the catalogue
+  id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  requested_by uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  url text NOT NULL,                               -- https; never fetched for the request itself
+  reason text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined','withdrawn')),
+  decided_by uuid REFERENCES "user"(id),
+  decided_at timestamptz,
+  decision_note text,
+  source_id uuid REFERENCES source(id),            -- the source an editor created for it
+  CHECK (status <> 'approved' OR source_id IS NOT NULL)
+);
+CREATE INDEX feed_request_requester_idx ON feed_request (requested_by, status);
+CREATE INDEX feed_request_status_idx ON feed_request (status, created_at);
+
 CREATE TABLE capture_job ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   source_id uuid NOT NULL REFERENCES source(id) ON DELETE CASCADE,

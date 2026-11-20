@@ -95,6 +95,34 @@ class CatalogueEntry(BaseModel):
     following: bool  # the signed-in user follows it
 
 
+class FeedRequestWrite(BaseModel):
+    """CP-26: ask for a feed. The URL is checked for its form only, never fetched."""
+
+    url: str = Field(max_length=2048)
+    reason: str = Field(max_length=1000)
+
+
+class FeedRequestDecision(BaseModel):
+    """CP-26: an editor's decision. Approving names the source the editor created for it."""
+
+    decision: Literal["approved", "declined"]
+    note: str | None = Field(default=None, max_length=1000)
+    source_id: UUID | None = None
+    summary: str | None = Field(default=None, max_length=300)
+
+
+class FeedRequestOut(BaseModel):
+    id: UUID
+    created_at: datetime
+    url: str
+    reason: str
+    status: Literal["pending", "approved", "declined", "withdrawn"]
+    requested_by: str | None = None  # the requester's name, shown to editors only
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+    source_id: UUID | None = None
+
+
 class SourceWrite(BaseModel):
     name: str = Field(default=UNSET, max_length=200)
     kind: SourceKind = UNSET

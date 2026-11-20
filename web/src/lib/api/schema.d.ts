@@ -2288,6 +2288,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/feed-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-26: your feed requests; editors (sources.manage) see every request with the requester's name */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "pending" | "approved" | "declined" | "withdrawn";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Your feed requests; editors see all */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FeedRequest"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** @description CP-26: ask for a feed not in the catalogue. The URL is checked for its form only, never fetched. 409 past 10 waiting or for the same URL again; 429 past 10 an hour */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FeedRequestWrite"];
+                };
+            };
+            responses: {
+                /** @description Requested */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FeedRequest"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feed-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description CP-26: withdraw your own pending request */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Withdrawn */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feed-requests/{id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description CP-26: approve with the source created for the request (it joins the catalogue as added, and the requester follows it), or decline */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FeedRequestDecision"];
+                };
+            };
+            responses: {
+                /** @description Decided */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FeedRequest"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capture-jobs": {
         parameters: {
             query?: never;
@@ -3880,6 +4024,35 @@ export interface components {
             available: boolean;
             captured: boolean;
             following: boolean;
+        };
+        FeedRequestWrite: {
+            url: string;
+            reason: string;
+        };
+        FeedRequestDecision: {
+            /** @enum {string} */
+            decision: "approved" | "declined";
+            note?: string | null;
+            /** Format: uuid */
+            source_id?: string | null;
+            summary?: string | null;
+        };
+        FeedRequest: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            url: string;
+            reason: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "declined" | "withdrawn";
+            /** @description the requester's name, for editors only */
+            requested_by?: string | null;
+            /** Format: date-time */
+            decided_at?: string | null;
+            decision_note?: string | null;
+            /** Format: uuid */
+            source_id?: string | null;
         };
         SourceWrite: {
             name?: string;

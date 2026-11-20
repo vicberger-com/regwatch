@@ -320,6 +320,30 @@ paths:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     put: { tags: [capture], x-permission: items.read, description: "CP-25: follow a catalogue source; it is captured while anyone follows it. 409 when an administrator turned it off or the caller follows the most allowed; 429 past the per-user rate", responses: { "204": { description: Following } } }
     delete: { tags: [capture], x-permission: items.read, description: "CP-25: stop following a catalogue source", responses: { "204": { description: Not following } } }
+  /feed-requests:
+    get:
+      tags: [capture]
+      x-permission: items.read
+      description: "CP-26: your feed requests; editors (sources.manage) see every request with the requester's name"
+      parameters: [ { name: status, in: query, schema: { type: string, enum: [pending, approved, declined, withdrawn] } } ]
+      responses: { "200": { description: "Your feed requests; editors see all", content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/FeedRequest" } } } } } }
+    post:
+      tags: [capture]
+      x-permission: items.read
+      description: "CP-26: ask for a feed not in the catalogue. The URL is checked for its form only, never fetched. 409 past 10 waiting or for the same URL again; 429 past 10 an hour"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FeedRequestWrite" } } } }
+      responses: { "201": { description: Requested, content: { application/json: { schema: { $ref: "#/components/schemas/FeedRequest" } } } } }
+  /feed-requests/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    delete: { tags: [capture], x-permission: items.read, description: "CP-26: withdraw your own pending request", responses: { "204": { description: Withdrawn } } }
+  /feed-requests/{id}/decision:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    post:
+      tags: [capture]
+      x-permission: sources.manage
+      description: "CP-26: approve with the source created for the request (it joins the catalogue as added, and the requester follows it), or decline"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/FeedRequestDecision" } } } }
+      responses: { "200": { description: Decided, content: { application/json: { schema: { $ref: "#/components/schemas/FeedRequest" } } } } }
   /capture-jobs:
     get:
       tags: [capture]
@@ -658,6 +682,33 @@ components:
         available: { type: boolean, description: false when an administrator turned it off }
         captured: { type: boolean }
         following: { type: boolean }
+    FeedRequestWrite:
+      type: object
+      required: [url, reason]
+      properties:
+        url: { type: string, maxLength: 2048 }
+        reason: { type: string, maxLength: 1000 }
+    FeedRequestDecision:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approved, declined] }
+        note: { type: string, nullable: true, maxLength: 1000 }
+        source_id: { type: string, format: uuid, nullable: true }
+        summary: { type: string, nullable: true, maxLength: 300 }
+    FeedRequest:
+      type: object
+      required: [id, created_at, url, reason, status]
+      properties:
+        id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        url: { type: string }
+        reason: { type: string }
+        status: { type: string, enum: [pending, approved, declined, withdrawn] }
+        requested_by: { type: string, nullable: true, description: "the requester's name, for editors only" }
+        decided_at: { type: string, format: date-time, nullable: true }
+        decision_note: { type: string, nullable: true }
+        source_id: { type: string, format: uuid, nullable: true }
     SourceWrite:
       type: object
       properties:
