@@ -3,6 +3,7 @@
  * with the report palette, and the server preview appears in a sandboxed frame. The axe and
  * keyboard checks for the builder come with the BL-16 layer (M7.4b).
  */
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { signInByKeyboard } from "./session";
@@ -42,6 +43,72 @@ test("a report is created, edited in Puck and previewed", async ({ page }) => {
     fullPage: true,
   });
   // Clean up every report this journey made, including any a failed run left.
+  await page.goto("/reports");
+  page.on("dialog", (d) => void d.accept());
+  const leftovers = page.getByRole("button", {
+    name: "Delete New report",
+    exact: true,
+  });
+  while ((await leftovers.count()) > 0) {
+    await leftovers.first().click();
+    await page.waitForResponse((r) => r.request().method() === "DELETE");
+  }
+});
+
+test("the builder works by keyboard alone and passes axe (BL-16)", async ({
+  page,
+}) => {
+  await signInByKeyboard(page);
+  await page.goto("/reports");
+  await page.getByRole("button", { name: "New report", exact: true }).click();
+  await expect(
+    page.getByText("Items table", { exact: true }).first(),
+  ).toBeVisible({ timeout: 20_000 });
+  const items = page.locator("[data-report-editor] [data-puck-component]");
+  const order = async () =>
+    Promise.all(
+      (await items.all()).map(async (i) => (await i.innerText()).slice(0, 12)),
+    );
+  await expect(items).toHaveCount(2);
+
+  // Insert by keyboard: focus the picker, choose Paragraph with the arrow keys, Tab, Enter.
+  const picker = page.getByLabel("Add a component");
+  await picker.focus();
+  await picker.selectOption({ label: "Paragraph" });
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Add", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(items).toHaveCount(3);
+  await expect(
+    page.locator("[data-report-editor] > [role=status]"),
+  ).toContainText("Paragraph added");
+
+  // Select by keyboard, then move it up with the action bar's button.
+  const before = await order();
+  await items.nth(2).focus();
+  await page.keyboard.press("Enter");
+  const up = page.getByRole("button", { name: "Move up" });
+  await up.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(order).not.toEqual(before);
+  expect((await order())[1]).toBe(before[2]);
+  await expect(
+    page.locator("[data-report-editor] > [role=status]"),
+  ).toContainText("Moved to position 2 of 3");
+
+  const found = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(
+    found.violations
+      .filter((v) => v.impact === "serious" || v.impact === "critical")
+      .map(
+        (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`,
+      ),
+  ).toEqual([]);
+
   await page.goto("/reports");
   page.on("dialog", (d) => void d.accept());
   const leftovers = page.getByRole("button", {
