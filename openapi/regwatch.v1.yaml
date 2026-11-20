@@ -314,6 +314,12 @@ paths:
   /sources/{id}/health:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     get: { tags: [capture], x-permission: sources.read, responses: { "200": { description: Health, content: { application/json: { schema: { $ref: "#/components/schemas/SourceHealth" } } } } } }
+  /catalogue:
+    get: { tags: [capture], x-permission: items.read, description: "CP-25: the curated feed catalogue, with whether the caller follows each source", responses: { "200": { description: The curated feed catalogue, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CatalogueEntry" } } } } } } }
+  /catalogue/{id}/follow:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    put: { tags: [capture], x-permission: items.read, description: "CP-25: follow a catalogue source; it is captured while anyone follows it. 409 when an administrator turned it off or the caller follows the most allowed; 429 past the per-user rate", responses: { "204": { description: Following } } }
+    delete: { tags: [capture], x-permission: items.read, description: "CP-25: stop following a catalogue source", responses: { "204": { description: Not following } } }
   /capture-jobs:
     get:
       tags: [capture]
@@ -629,6 +635,29 @@ components:
         consecutive_failures: { type: integer }
         job: { $ref: "#/components/schemas/CaptureJob" }
         created_at: { type: string, format: date-time }
+        catalogue_key: { type: string, nullable: true, description: "CP-25: set on a catalogue source" }
+        summary: { type: string, nullable: true }
+        followers: { type: integer, description: "CP-25: how many users follow it (never who)" }
+        captured: { type: boolean, description: "CP-25: fetched now: its job is on, and it is enabled or followed" }
+    CatalogueEntry:
+      type: object
+      description: "CP-25: a catalogue source as users see it"
+      required: [id, key, name, summary, kind, credibility, jurisdictions, health, available, captured, following]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        summary: { type: string }
+        kind: { $ref: "#/components/schemas/SourceKind" }
+        url: { type: string, nullable: true }
+        terms_url: { type: string, nullable: true }
+        credibility: { type: string, enum: [official, secondary, news] }
+        language: { type: string, nullable: true }
+        jurisdictions: { type: array, items: { type: string } }
+        health: { type: string, enum: [unknown, healthy, degraded, unhealthy] }
+        available: { type: boolean, description: false when an administrator turned it off }
+        captured: { type: boolean }
+        following: { type: boolean }
     SourceWrite:
       type: object
       properties:

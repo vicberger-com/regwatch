@@ -43,11 +43,11 @@ def _routed(app: FastAPI) -> dict[tuple[str, str], APIRoute]:
     return pairs
 
 
-def test_contract_has_73_paths_and_96_operations() -> None:
+def test_contract_has_75_paths_and_99_operations() -> None:
     # CP-07, CP-08, CP-10 (GET /admin/audit/export), CP-17 (POST /sources/{id}/documents)
-    # and CP-24 (GET /me/interest-options)
-    assert len(CONTRACT["paths"]) == 73
-    assert len(operations(CONTRACT)) == 96
+    # CP-24 (GET /me/interest-options) and CP-25 (/catalogue, /catalogue/{id}/follow)
+    assert len(CONTRACT["paths"]) == 75
+    assert len(operations(CONTRACT)) == 99
 
 
 def test_every_contract_operation_is_routed(app: FastAPI) -> None:

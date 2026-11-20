@@ -11,11 +11,12 @@ from uuid import UUID
 from fastapi import APIRouter, Request, Response
 from starlette.datastructures import UploadFile
 
-from regwatch.capture import dryrun, manual, runs, services, tasks
+from regwatch.capture import catalogue, dryrun, manual, runs, services, tasks
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
     CaptureRun,
+    CatalogueEntry,
     DocumentAccepted,
     Source,
     SourceHealth,
@@ -193,3 +194,35 @@ async def list_capture_runs(
     paging: Paging, db: DbSession, job_id: UUID | None = None, status: str | None = None
 ) -> Page[CaptureRun]:
     return await services.list_runs(db, paging.page, paging.page_size, job_id, status)
+
+
+# The feed catalogue (CP-25): every user who reads items may follow its sources.
+@router.get(
+    "/catalogue",
+    **spec(list[CatalogueEntry], desc="The curated feed catalogue", perm="items.read",
+           stub=False),
+)  # fmt: skip
+async def list_catalogue(principal: CurrentPrincipal, db: DbSession) -> list[CatalogueEntry]:
+    return await catalogue.list_catalogue(db, principal.user.id)
+
+
+@router.put(
+    "/catalogue/{id}/follow",
+    **spec(status=204, desc="Following", perm="items.read", stub=False),
+)  # fmt: skip
+async def follow_source(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await catalogue.set_following(db, id, principal.user.id, True, client_ip(request))
+    return Response(status_code=204)
+
+
+@router.delete(
+    "/catalogue/{id}/follow",
+    **spec(status=204, desc="Not following", perm="items.read", stub=False),
+)  # fmt: skip
+async def unfollow_source(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await catalogue.set_following(db, id, principal.user.id, False, client_ip(request))
+    return Response(status_code=204)

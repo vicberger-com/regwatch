@@ -70,6 +70,29 @@ class Source(BaseModel):
     consecutive_failures: int = UNSET
     job: CaptureJob = UNSET
     created_at: datetime = UNSET
+    catalogue_key: str | None = None  # CP-25: a catalogue source
+    summary: str | None = None
+    followers: int = UNSET  # how many users follow it; never who
+    captured: bool = UNSET  # fetched now: job on, and enabled or followed
+
+
+class CatalogueEntry(BaseModel):
+    """A catalogue source as users see it (CP-25)."""
+
+    id: UUID
+    key: str
+    name: str
+    summary: str
+    kind: SourceKind
+    url: str | None = None
+    terms_url: str | None = None
+    credibility: Credibility
+    language: str | None = None
+    jurisdictions: list[str]
+    health: Literal["unknown", "healthy", "degraded", "unhealthy"]
+    available: bool  # false: an administrator turned it off
+    captured: bool  # someone follows it, or an administrator enabled it
+    following: bool  # the signed-in user follows it
 
 
 class SourceWrite(BaseModel):

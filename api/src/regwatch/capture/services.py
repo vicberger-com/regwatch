@@ -34,7 +34,7 @@ from regwatch.capture.connectors.config import (
 from regwatch.capture.connectors.search_query import check as search_check
 from regwatch.capture.connectors.web_crawl import check as crawl_check
 from regwatch.capture.execution import RUN_DEADLINE_S
-from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.capture.models import CaptureJob, CaptureRun, Source, SourceFollower, is_capturing
 from regwatch.capture.safe_fetch.policy import (
     FetchRefusedError,
     Resolver,
@@ -381,6 +381,11 @@ async def source_out(db: AsyncSession, source: Source, job: CaptureJob | None) -
     )  # fmt: skip
     if job is not None:
         out.job = JobOut.model_validate(job, from_attributes=True)
+    # What admins need to see outbound fetching: a followed catalogue source is fetched while
+    # it shows enabled: false (11.2a review).
+    out.followers = await db.scalar(select(func.count()).where(
+        SourceFollower.source_id == source.id)) or 0  # fmt: skip
+    out.captured = bool(job is not None and job.enabled and await is_capturing(db, source.id))
     return out
 
 

@@ -2194,6 +2194,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalogue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-25: the curated feed catalogue, with whether the caller follows each source */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The curated feed catalogue */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CatalogueEntry"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/catalogue/{id}/follow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** @description CP-25: follow a catalogue source; it is captured while anyone follows it. 409 when an administrator turned it off or the caller follows the most allowed; 429 past the per-user rate */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Following */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** @description CP-25: stop following a catalogue source */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Not following */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/capture-jobs": {
         parameters: {
             query?: never;
@@ -3758,6 +3852,34 @@ export interface components {
             job?: components["schemas"]["CaptureJob"];
             /** Format: date-time */
             created_at?: string;
+            /** @description CP-25: set on a catalogue source */
+            catalogue_key?: string | null;
+            summary?: string | null;
+            /** @description CP-25: how many users follow it (never who) */
+            followers?: number;
+            /** @description CP-25: fetched now: its job is on, and it is enabled or followed */
+            captured?: boolean;
+        };
+        /** @description CP-25: a catalogue source as users see it */
+        CatalogueEntry: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            summary: string;
+            kind: components["schemas"]["SourceKind"];
+            url?: string | null;
+            terms_url?: string | null;
+            /** @enum {string} */
+            credibility: "official" | "secondary" | "news";
+            language?: string | null;
+            jurisdictions: string[];
+            /** @enum {string} */
+            health: "unknown" | "healthy" | "degraded" | "unhealthy";
+            /** @description false when an administrator turned it off */
+            available: boolean;
+            captured: boolean;
+            following: boolean;
         };
         SourceWrite: {
             name?: string;
@@ -3953,7 +4075,7 @@ export interface components {
             columns?: string[];
         };
         QueryFilters: {
-            /** @description jurisdiction codes */
+            /** @description jurisdiction codes (CP-24 raised 50 to 300) */
             jurisdictions?: string[];
             regions?: string[];
             /** @description facet key to term keys; OR within a facet, AND across facets */
