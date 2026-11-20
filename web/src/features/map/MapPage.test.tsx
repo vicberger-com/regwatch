@@ -449,7 +449,16 @@ describe("map page", () => {
             key: "industry",
             label: "Industry",
             show_in_view_selector: true,
-            terms: [],
+            terms: [
+              {
+                id: "t1",
+                facet_key: "industry",
+                key: "finance",
+                label: "Finance",
+                active: true,
+                children: [],
+              },
+            ],
           },
         ],
       ],
@@ -521,6 +530,41 @@ describe("map page", () => {
       ),
     ).toBe(true);
     expect(screen.getByLabelText("View")).toHaveValue("country");
+  });
+
+  it("shows live changes: the activity is asked again every minute (G3)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let rows = ACTIVITY.rows.slice(0, 1);
+      const api = fakeApi({
+        "GET /auth/me": [200, ADMIN],
+        "GET /map/activity": () => [200, { ...ACTIVITY, rows }],
+      });
+      renderAt("/");
+      expect(
+        await screen.findByText(
+          "1 jurisdiction with changes in the last 30 days",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/refreshed every minute/)).toBeInTheDocument();
+      rows = ACTIVITY.rows;
+      const before = api.calls.filter(
+        (c) => c.key === "GET /map/activity",
+      ).length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(61_000);
+      });
+      expect(
+        await screen.findByText(
+          "3 jurisdictions with changes in the last 30 days",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        api.calls.filter((c) => c.key === "GET /map/activity").length,
+      ).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("names no country over a disputed area", async () => {

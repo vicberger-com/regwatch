@@ -46,4 +46,7 @@ export const activityQuery = (
       return result.data;
     },
     staleTime: 60_000,
+    // Live changes (G3): asked again every minute while the page is visible.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });

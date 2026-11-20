@@ -20,7 +20,7 @@ import {
   type Encoding,
   type Step,
 } from "./scale";
-import { ViewSelector } from "./ViewSelector";
+import { flatTerms, ViewSelector } from "./ViewSelector";
 import { WorldMap } from "./WorldMap";
 
 const ENCODINGS: { value: Encoding; label: string }[] = [
@@ -105,10 +105,18 @@ export function MapPage() {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- answers are unchecked
         Object.entries(landing.filters?.terms ?? {})[0] ?? [];
       const term = Array.isArray(terms) ? terms[0] : undefined;
-      const offered = (Array.isArray(facets.data) ? facets.data : []).some(
+      // The term must be one the View select lists: an offered facet, an active term in it.
+      const shown = (Array.isArray(facets.data) ? facets.data : []).find(
         (f) =>
-          typeof f === "object" && f.key === facet && f.show_in_view_selector,
+          typeof f === "object" &&
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- answers are unchecked
+          f !== null &&
+          f.key === facet &&
+          f.show_in_view_selector,
       );
+      const offered =
+        shown !== undefined &&
+        flatTerms(shown.terms).some((t) => t.key === term);
       const regionsShown =
         regions.isSuccess && validRegions(regions.data).length > 0;
       setViewState({
@@ -280,6 +288,14 @@ export function MapPage() {
                   : ""
               }`}
       </p>
+      {activity.isSuccess && (
+        // Not a live region: it changes every minute and would interrupt screen readers.
+        <p className="text-xs text-text-muted">
+          Updated {new Date(activity.dataUpdatedAt).toLocaleTimeString()};
+          refreshed every minute
+          {activity.data.stale ? " (from a summary up to 5 minutes old)" : ""}
+        </p>
+      )}
       {activity.isError && (
         <p role="alert" className="mt-2 text-critical">
           {problemText(activity.error, "The activity could not be loaded.")}
