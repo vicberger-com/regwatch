@@ -22,8 +22,10 @@ def test_the_app_is_json_only_late_acked_and_beats_the_contract_tasks(
         "capture.schedule_tick",
         "capture.health_check",
         "search.reindex",
+        "outputs.schedule_tick",  # registries.yaml: every minute (M8)
     }
     assert conf.beat_schedule["capture.schedule_tick"]["schedule"] == 60.0
+    assert conf.beat_schedule["outputs.schedule_tick"]["schedule"] == 60.0
     assert app.conf.broker_url.startswith("redis://")
 
 
