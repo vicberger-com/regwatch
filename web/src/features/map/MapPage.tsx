@@ -3,6 +3,7 @@ import { useRouteContext } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import { regionsQuery } from "@/features/jurisdictions/api";
+import { preferencesQuery, viewsQuery } from "@/features/me/api";
 import { facetsQuery } from "@/features/taxonomy/api";
 import { hasPermission, problemText } from "@/lib/auth/session";
 
@@ -54,6 +55,21 @@ export function validRegions(
   return out;
 }
 
+/**
+ * The saved view chosen as the landing view: undefined while unknown, null when there is none
+ * (or it is no longer one the user can see), else the view.
+ */
+function useLandingView() {
+  const prefs = useQuery(preferencesQuery);
+  const id = prefs.data?.landing_view_id ?? null;
+  const views = useQuery({ ...viewsQuery, enabled: id !== null });
+  if (prefs.isPending) return undefined;
+  if (!prefs.isSuccess || id === null) return null;
+  if (views.isPending) return undefined;
+  const list = Array.isArray(views.data) ? views.data : [];
+  return list.find((v) => v.id === id) ?? null;
+}
+
 /** `/`: the world map of change activity with its accessible list (M6 acceptance 1, 5). */
 export function MapPage() {
   const [period, setPeriod] = useState<number>(30);
@@ -61,6 +77,34 @@ export function MapPage() {
   const [asTable, setAsTable] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setViewState] = useState<MapView>({ by: "country" });
+  // The user's landing view (M9 Defaults), applied once when it is known. A view that is
+  // gone or no longer visible to the user is simply not in their list: the map stays as is.
+  const landing = useLandingView();
+  const [applied, setApplied] = useState(false);
+  if (!applied && landing !== undefined) {
+    setApplied(true);
+    if (landing) {
+      setPeriod(
+        (PERIODS as readonly number[]).includes(landing.period_days)
+          ? landing.period_days
+          : 30,
+      );
+      if (
+        landing.color_scheme === "count" ||
+        landing.color_scheme === "severity"
+      )
+        setEncoding(landing.color_scheme);
+      const [facet, terms] =
+        Object.entries(landing.filters.terms ?? {})[0] ?? [];
+      const term = Array.isArray(terms) ? terms[0] : undefined;
+      setViewState({
+        by: landing.view_by === "region" ? "region" : "country",
+        ...(typeof facet === "string" && typeof term === "string"
+          ? { facet, term }
+          : {}),
+      });
+    }
+  }
   const { me } = useRouteContext({ from: "/authed" });
   const taxonomy = hasPermission(me, "taxonomy.read");
   const facets = useQuery({ ...facetsQuery, enabled: taxonomy });

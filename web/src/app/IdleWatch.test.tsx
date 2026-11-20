@@ -23,6 +23,37 @@ async function wait(ms: number) {
 }
 
 describe("idle sign-out (M9 acceptance 2)", () => {
+  it("keeps the warning when Stay cannot reach the server, and renews on input", async () => {
+    let up = true;
+    const api = fakeApi({
+      "GET /auth/me": () => (up ? [200, ADMIN] : [503, { title: "down" }]),
+      "GET /me/preferences": [200, PREFS],
+    });
+    renderAt("/me");
+    await screen.findByRole("heading", { level: 1, name: "User" });
+    const before = api.calls.filter((c) => c.key === "GET /auth/me").length;
+    await wait(2 * MIN);
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+    });
+    await waitFor(() => {
+      expect(api.calls.filter((c) => c.key === "GET /auth/me").length).toBe(
+        before + 1,
+      );
+    });
+    await wait(18 * MIN + 1000);
+    const stay = await screen.findByRole("button", { name: "Stay signed in" });
+    up = false;
+    act(() => {
+      stay.click();
+    });
+    expect(await screen.findByText(/could not be renewed/)).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  });
+
   it("warns before the timeout, makes the page inert, and signs out locally at zero", async () => {
     const api = fakeApi({
       "GET /auth/me": [200, ADMIN],

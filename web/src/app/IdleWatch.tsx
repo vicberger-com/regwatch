@@ -47,6 +47,8 @@ export function IdleWatch() {
   const client = useQueryClient();
   const navigate = useNavigate();
   const last = useRef(0);
+  const renewed = useRef(0); // when input last renewed the session on the server
+  const [failed, setFailed] = useState(false);
   const [left, setLeft] = useState<number | null>(null);
   const [said, setSaid] = useState("");
   const stay = useRef<HTMLButtonElement>(null);
@@ -73,6 +75,12 @@ export function IdleWatch() {
       if (left !== null) return; // while warning, only the dialog's buttons count
       last.current = Date.now();
       share(last.current);
+      // Input counts on the server too: reading without clicking still renews the session,
+      // at most once a minute (the server's own touch interval).
+      if (last.current - renewed.current >= SERVER_SLACK_S * 1000) {
+        renewed.current = last.current;
+        void api.GET("/auth/me").catch(() => undefined);
+      }
     };
     for (const name of ACTIVITY)
       window.addEventListener(name, touch, { passive: true });
@@ -99,11 +107,17 @@ export function IdleWatch() {
   }, [minutes, left, signOut]);
 
   const keep = useCallback(async () => {
-    const got = await api.GET("/auth/me");
-    if (got.response.status === 401) {
+    const got = await api.GET("/auth/me").catch(() => null);
+    if (got?.response.status === 401) {
       signOut(window.location.pathname + window.location.search); // the server ended it
       return;
     }
+    if (!got?.response.ok) {
+      setFailed(true); // not renewed: the warning stays, and says so
+      return;
+    }
+    setFailed(false);
+    renewed.current = Date.now();
     last.current = Date.now();
     share(last.current);
     setLeft(null);
@@ -159,6 +173,12 @@ export function IdleWatch() {
           You have been inactive. For your security you will be signed out in{" "}
           {String(left)} {left === 1 ? "second" : "seconds"}.
         </p>
+        {failed && (
+          <p role="alert" className="mt-2 text-critical">
+            The session could not be renewed. Check your connection and try
+            again.
+          </p>
+        )}
         {/* Announced at 60, 30 and 10 seconds only, not every second. */}
         <p className="sr-only" aria-live="assertive" aria-atomic="true">
           {said}

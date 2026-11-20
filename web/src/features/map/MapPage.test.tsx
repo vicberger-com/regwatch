@@ -417,6 +417,53 @@ describe("map page", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens with the user's landing view (M9 Defaults)", async () => {
+    const id = "0190a000-0000-7000-8000-0000000000d1";
+    const api = fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["items.read", "taxonomy.read"] },
+      ],
+      "GET /me/preferences": [
+        200,
+        { landing_view_id: id, session_idle_timeout_minutes: 480 },
+      ],
+      "GET /views": [
+        200,
+        [
+          {
+            id,
+            name: "EU finance",
+            view_by: "region",
+            period_days: 90,
+            color_scheme: "severity",
+            filters: { terms: { industry: ["finance"] } },
+            shared: false,
+          },
+        ],
+      ],
+      "GET /taxonomy/facets": [200, []],
+      "GET /jurisdictions/regions": [200, []],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    await waitFor(() => {
+      const urls = api.fetch.mock.calls
+        .map(([r]) => new URL(r.url))
+        .filter((u) => u.pathname.endsWith("/map/activity"));
+      expect(
+        urls.some(
+          (u) =>
+            u.searchParams.get("period_days") === "90" &&
+            u.searchParams.get("view_by") === "region" &&
+            u.searchParams.get("filters") ===
+              JSON.stringify({ terms: { industry: ["finance"] } }),
+        ),
+      ).toBe(true);
+    });
+    expect(screen.getByLabelText("Colour by")).toHaveValue("severity");
+  });
+
   it("names no country over a disputed area", async () => {
     fakeApi({
       "GET /auth/me": [200, ADMIN],
