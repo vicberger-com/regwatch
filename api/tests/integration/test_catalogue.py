@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 import pytest
@@ -110,3 +112,39 @@ async def test_the_catalogue_needs_items_read(admin: httpx.AsyncClient) -> None:
     assert (await nobody.get(_api("/catalogue"))).status_code == 403
     assert (await nobody.put(_api(f"/catalogue/{sid}/follow"))).status_code == 403
     await nobody.aclose()
+
+
+async def test_a_disabled_users_follows_keep_nothing_fetched(admin: httpx.AsyncClient) -> None:
+    """11.2b review: only active users' follows count, for capture and for admins' count."""
+    viewer = await _as_new_user(admin, "dora@example.org", ["viewer"])
+    vid = (await viewer.get(_api("/auth/me"))).json()["id"]
+    sid = (await _entries(admin))[FR]["id"]
+    assert (await viewer.put(_api(f"/catalogue/{sid}/follow"))).status_code == 204
+    assert (await admin.get(_api(f"/sources/{sid}"))).json()["captured"] is True
+    off = await admin.patch(_api(f"/admin/users/{vid}"), json={"status": "disabled"})
+    assert off.status_code == 200, off.text
+    shown = (await admin.get(_api(f"/sources/{sid}"))).json()
+    assert (shown["captured"], shown["followers"]) == (False, 0)
+    assert (await _entries(admin))[FR]["captured"] is False
+    on = await admin.patch(_api(f"/admin/users/{vid}"), json={"status": "active"})
+    assert on.status_code == 200, on.text
+    assert (await admin.get(_api(f"/sources/{sid}"))).json()["captured"] is True
+    await viewer.aclose()
+
+
+async def test_concurrent_follows_stay_under_the_cap(
+    admin: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """11.2b review: follows of different sources by one user are ordered by a per-user lock."""
+    ids = [e["id"] for e in (await _entries(admin)).values()]
+    monkeypatch.setattr(catalogue, "MAX_FOLLOWED", 1)
+    checked = catalogue.is_capturing
+
+    async def slow(db: Any, source_id: Any) -> bool:  # between the count and the insert
+        await asyncio.sleep(0.3)
+        return await checked(db, source_id)
+
+    monkeypatch.setattr(catalogue, "is_capturing", slow)
+    got = await asyncio.gather(*(admin.put(_api(f"/catalogue/{i}/follow")) for i in ids))
+    assert sorted(r.status_code for r in got) == [204, 409, 409, 409]
+    assert sum(e["following"] for e in (await _entries(admin)).values()) == 1

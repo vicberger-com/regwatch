@@ -80,6 +80,10 @@ async def set_following(db: AsyncSession, source_id: uuid.UUID, user_id: uuid.UU
     if follow:
         if not job_on:
             raise ProblemError(409, "conflict", "An administrator has turned this source off.")
+        # One user's follows of different sources lock different rows; this orders them, so
+        # concurrent follows cannot both count under the cap (11.2b review).
+        await db.execute(select(func.pg_advisory_xact_lock(
+            func.hashtextextended(f"source_follower:{user_id}", 0))))  # fmt: skip
         count = await db.scalar(select(func.count()).where(SourceFollower.user_id == user_id))
         if (count or 0) >= MAX_FOLLOWED:
             raise ProblemError(409, "conflict", f"You can follow at most {MAX_FOLLOWED} sources.")

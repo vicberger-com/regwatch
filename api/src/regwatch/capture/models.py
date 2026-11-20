@@ -7,7 +7,19 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ColumnElement, ForeignKey, and_, exists, or_, select, text
+from sqlalchemy import (
+    ColumnElement,
+    ForeignKey,
+    Select,
+    and_,
+    column,
+    exists,
+    func,
+    or_,
+    select,
+    table,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -61,9 +73,27 @@ class SourceFollower(Base):
 def capturing() -> ColumnElement[bool]:
     """Whether a source is captured (ADR-0012): enabled, or a catalogue source that someone
     follows. Every capture gate uses this with ``CaptureJob.enabled``, so an admin still stops
-    a followed source by turning its job off (``DELETE /sources/{id}``)."""
-    followed = exists().where(SourceFollower.source_id == Source.id)
-    return or_(Source.enabled, and_(Source.catalogue_key.is_not(None), followed))
+    a followed source by turning its job off (``DELETE /sources/{id}``). Only active users'
+    follows count: a disabled or locked user keeps nothing fetched (11.2b review)."""
+    return or_(Source.enabled, and_(Source.catalogue_key.is_not(None), _followed()))
+
+
+# The user table by name: capture never imports identity's models (one-way dependency).
+_USERS = table("user", column("id"), column("status"))
+
+
+def _followed() -> ColumnElement[bool]:
+    """Whether an active user follows the source in the enclosing query."""
+    return exists().where(SourceFollower.source_id == Source.id,
+                          _USERS.c.id == SourceFollower.user_id,
+                          _USERS.c.status == "active")  # fmt: skip
+
+
+def active_followers() -> Select[tuple[int]]:
+    """How many active users follow the source in the enclosing query (admins' count)."""
+    return (select(func.count()).select_from(SourceFollower)
+            .join(_USERS, _USERS.c.id == SourceFollower.user_id)
+            .where(SourceFollower.source_id == Source.id, _USERS.c.status == "active"))  # fmt: skip
 
 
 async def is_capturing(db: AsyncSession, source_id: uuid.UUID) -> bool:
