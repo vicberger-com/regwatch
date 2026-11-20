@@ -45,7 +45,7 @@ function Section(props: {
   );
 }
 
-function Choice<K extends keyof Preferences>(props: {
+function Choice<K extends Exclude<keyof Preferences, "interests">>(props: {
   label: string;
   field: K;
   value: Preferences[K] | undefined;
