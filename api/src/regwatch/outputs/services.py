@@ -239,11 +239,19 @@ def _visible(principal: Principal) -> list[Any]:
 
 
 async def list_outputs(db: AsyncSession, principal: Principal, page: int, page_size: int,
-                       scope: str) -> Page[JobOut]:  # fmt: skip
+                       scope: str, kind: str | None = None, status: str | None = None,
+                       scheduled: bool | None = None) -> Page[JobOut]:  # fmt: skip
     if scope == "all" and READ_ALL not in principal.permissions:
         raise ProblemError(403, "forbidden", "Everyone's outputs need outputs.read_all.")
     where = _visible(principal) if scope == "all" else [
         OutputJob.requested_by == principal.user.id]  # fmt: skip
+    if kind is not None:
+        where.append(OutputJob.kind == kind)
+    if status is not None:
+        where.append(OutputJob.status == status)
+    if scheduled is not None:  # the schedules themselves, or everything else (their runs too)
+        where.append(OutputJob.scheduled_cron.is_not(None) if scheduled
+                     else OutputJob.scheduled_cron.is_(None))  # fmt: skip
     total = await db.scalar(select(func.count()).select_from(OutputJob).where(*where)) or 0
     rows = (await db.scalars(select(OutputJob).where(*where)
                              .order_by(OutputJob.created_at.desc(), OutputJob.id)

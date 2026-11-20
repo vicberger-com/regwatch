@@ -394,6 +394,10 @@ async def test_a_weekly_schedule_runs_each_monday_at_seven_local(
     assert nxt - first == timedelta(days=7) and (nxt.hour, nxt.minute) == (7, 0)
     children = [j for j in (await admin.get(_api("/outputs"))).json()["items"] if j["id"] != sid]
     assert len(children) == 1 and children[0]["status"] == "queued"
+    listed = (await admin.get(_api("/outputs?scheduled=true"))).json()["items"]
+    assert [j["id"] for j in listed] == [sid]  # the Schedules tab (8.6)
+    runs = (await admin.get(_api("/outputs?scheduled=false&kind=pdf&status=queued"))).json()
+    assert [j["id"] for j in runs["items"]] == [children[0]["id"]]
     assert await tasks.run_pdf(db, uuid.UUID(sid)) == "skipped"  # the schedule never renders
     assert await tasks.run_pdf(db, uuid.UUID(children[0]["id"])) == "sent"
     assert (await admin.delete(_api(f"/outputs/{sid}"))).status_code == 204
@@ -537,3 +541,19 @@ async def test_files_older_than_the_retention_are_removed_and_jobs_kept(
     assert (await admin.get(_api(f"/outputs/{old}/artifact"))).status_code == 404
     kept = (await admin.get(_api(f"/outputs/{new}"))).json()
     assert kept["artifact_available"] and (tmp_path / "outputs" / f"{new}.pdf").exists()
+
+
+async def test_a_failing_sweep_does_not_stop_schedules(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """M8.7 review: each step of the tick stands alone."""
+    from regwatch.outputs import services
+
+    async def broken(db: AsyncSession, now: datetime | None = None) -> int:
+        raise OSError("the store is not writable")
+
+    monkeypatch.setattr(services, "sweep_retention", broken)
+    monkeypatch.setattr(services, "sweep_stale", broken)
+    await _pdf(admin, {"report_template_key": "source-health"}, schedule=WEEKLY)
+    assert await tasks.tick_once(db, now=datetime.now(UTC) + timedelta(days=8)) == 1

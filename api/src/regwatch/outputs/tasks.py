@@ -231,10 +231,14 @@ async def tick_once(db: AsyncSession, now: datetime | None = None) -> int:
     runs started."""
     from regwatch.outputs import schedules, services
 
-    if swept := await services.sweep_stale(db, now):
-        _log.info("outputs_swept", jobs=swept)
-    if expired := await services.sweep_retention(db, now):
-        _log.info("outputs_expired", jobs=expired)
+    # Each step on its own: a failing sweep must never keep due schedules from starting.
+    for step, sweep in (("swept", services.sweep_stale), ("expired", services.sweep_retention)):
+        try:
+            if done := await sweep(db, now):
+                _log.info(f"outputs_{step}", jobs=done)
+        except Exception as exc:  # noqa: BLE001 - logged; the next tick tries again
+            await db.rollback()
+            _log.error(f"outputs_{step}_failed", error=type(exc).__name__)
     started = await schedules.tick(db, now)
     for name, job_id in started:
         await enqueue(name, job_id)

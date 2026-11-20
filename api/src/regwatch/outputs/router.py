@@ -67,7 +67,9 @@ async def list_outputs(
     status: str | None = None,
     scheduled: bool | None = None,
 ) -> Page[OutputJob]:  # fmt: skip
-    return await services.list_outputs(db, principal, paging.page, paging.page_size, scope)
+    return await services.list_outputs(db, principal, paging.page, paging.page_size, scope,
+                                       kind=kind.value if kind else None, status=status,
+                                       scheduled=scheduled)  # fmt: skip
 
 
 @router.post(
