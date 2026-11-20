@@ -61,6 +61,31 @@ describe("help tips", () => {
     );
   });
 
+  it("shows on hover, dismisses with Escape while hovered, and a second click closes it", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /me/preferences": [200, PREFS],
+      "GET /me/sessions": [200, []],
+      "GET /views": [200, []],
+    });
+    renderAt("/me");
+    const button = await screen.findByRole("button", { name: "About Density" });
+    await userEvent.hover(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByText(/How much space there is around items/),
+    ).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(button).toHaveAttribute("aria-expanded", "false"); // dismissed without moving
+    await userEvent.unhover(button);
+    await userEvent.click(button); // focus and click: open
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    await userEvent.unhover(button);
+    await userEvent.click(button); // second click: closed
+    await userEvent.unhover(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("has a help section for every topic, and the link lands on it with focus", async () => {
     fakeApi({ "GET /auth/me": [200, ADMIN] });
     renderAt("/help#me-font-scale");

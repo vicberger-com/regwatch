@@ -145,3 +145,13 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
   3. Extend BL-130's CI check so it also requires that `api`, `worker` and `search` publish no ports. | proposal | M3, M10 | lead session | open |
 | BL-132 | CP proposal: add to screens.md's component conventions that every settings choice has a help tip (ⓘ toggletip with a link to its `/help` section), and keep `help/topics.ts` in step with registries.yaml. A test could fail when a setting in the registry has no topic. | proposal | M6 | lead session | open |
 | BL-133 | M11 Interests and catalogue (ADR-0012, owner request 2026-11-20): 11.1 a per-user interest profile as default filters on map, items, search and later reports; 11.2 a curated feed catalogue seeded from R-03, followed by ticking boxes on the User tab; 11.3 custom feed requests approved by editors; 11.4 groups with members, roles and a group profile. OIDC group mapping stays in M1b. | proposal | M11 | lead session | accepted on recommendation; owner may override at G3 |
+| BL-134 | Settings that nothing reads yet (help tips review, 2026-11-20). Their help says "Not in use yet" until each is wired or removed:
+  - `map.default_period_days`, `map.default_encoding` (the map starts at 30 days and recency) and `map.projection` (always Equal Earth, ADR-0004 amendment 1);
+  - `processing.change_threshold_pct` (each capture job has its own);
+  - `capture.default_rate_per_minute` (a constant 30 is used);
+  - `capture.snapshot_versions_kept`;
+  - `search.page_size_max` (fixed at 200) and `search.export_row_cap`;
+  - `outputs.artifact_retention_days` and `retention.audit_days` (M8, M10);
+  - the `remember_me_default` preference: the sign-in page has no 'keep me signed in' box.
+
+  Each needs wiring, or removing from registries.yaml through a CP. | defect | M1, M3, M4, M5, M6, M9 | lead session | open |
