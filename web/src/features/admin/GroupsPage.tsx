@@ -70,14 +70,18 @@ function RolePicker(props: {
       </p>
     );
   return (
-    <fieldset className="grid gap-1">
+    <fieldset className="grid gap-2">
       <legend className="text-sm font-semibold">Roles for every member</legend>
       {props.roles.map((r) => {
         const allowed = grantable(r);
         return (
-          <label key={r.key} className="flex items-center gap-2 text-sm">
+          <label
+            key={r.key}
+            className="flex min-h-6 items-center gap-2 text-sm"
+          >
             <input
               type="checkbox"
+              className="h-5 w-5 shrink-0"
               disabled={!allowed}
               checked={props.chosen.includes(r.key)}
               onChange={(e) => {

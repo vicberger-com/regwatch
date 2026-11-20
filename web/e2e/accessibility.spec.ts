@@ -59,6 +59,8 @@ for (const theme of THEMES) {
         ["/admin/sources", "Sources"],
         ["/admin/taxonomy", "Taxonomy"],
         ["/admin/users", "Users"],
+        ["/admin/groups", "Groups"],
+        ["/me", "User"],
         ["/legal", ""],
       ];
       for (const [route, heading] of routes) {
