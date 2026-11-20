@@ -249,7 +249,9 @@ export function BuilderPage(props: {
         {layout.data.name}
       </h1>
       <Settings
-        key={layout.data.id + String(layout.data.version)}
+        key={
+          layout.data.id
+        } /* not the version: a save must not remount the editor */
         layout={layout.data}
         userId={props.userId}
         canShare={props.canShare}
