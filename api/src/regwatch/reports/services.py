@@ -182,5 +182,9 @@ async def delete_layout(db: AsyncSession, layout_id: uuid.UUID, principal: Princ
     row = await _own(db, layout_id, principal)
     audit(db, "report_layout.delete", "report_layout", row.id, actor=principal.user.id, ip=ip,
           before={"name": row.name, "shared": row.shared, "version": row.version})  # fmt: skip
+    from regwatch.outputs.models import OutputJob
+    from regwatch.outputs.services import detach
+
+    await detach(db, OutputJob.report_layout_id, row.id, "layout")
     await db.delete(row)
     await db.commit()

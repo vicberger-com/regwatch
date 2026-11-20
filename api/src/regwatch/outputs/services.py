@@ -47,9 +47,11 @@ def _invalid(field: str, message: str) -> ProblemError:
 
 
 def out(job: OutputJob) -> JobOut:
+    deleted = (job.query or {}).get(DELETED)
     source = (f"layout {job.report_layout_id}" if job.report_layout_id
               else f"stock report {job.report_template_key}" if job.report_template_key
-              else "saved view" if job.saved_view_id else "query")  # fmt: skip
+              else "saved view" if job.saved_view_id
+              else f"deleted {deleted}" if deleted else "query")  # fmt: skip
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
         source_summary=source,
@@ -311,6 +313,27 @@ async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     job.status = "cancelled"
     audit(db, "output.cancel", "output_job", job.id, actor=principal.user.id, ip=ip)
     await db.commit()
+
+
+DELETED = "deleted_source"  # in ``query`` of a job whose layout or saved view was deleted
+
+
+async def detach(db: AsyncSession, column: Any, source_id: uuid.UUID, what: str) -> None:
+    """Before a layout or saved view is deleted: its outputs keep their history (and their
+    files) with the source marked deleted; any still to run, schedules too, are cancelled.
+    ``output_job`` references its source without ON DELETE, and exactly one source is set."""
+    from sqlalchemy import update
+
+    stopped = await db.execute(update(OutputJob).where(
+        column == source_id, OutputJob.status.in_(("queued", "rendering", "failed")))
+        .values(status="cancelled", error_class="source-deleted",
+                error_message=f"the {what} was deleted", next_run_at=None)
+        .returning(OutputJob.id, OutputJob.requested_by))  # fmt: skip
+    for job_id, owner in stopped.all():
+        audit(db, "output.cancel", "output_job", job_id, actor=owner,
+              after={"reason": "source-deleted", "source": what})  # fmt: skip
+    await db.execute(update(OutputJob).where(column == source_id)
+                     .values({column: None, OutputJob.query: {DELETED: what}}))  # fmt: skip
 
 
 async def sweep_stale(db: AsyncSession, now: datetime | None = None) -> int:

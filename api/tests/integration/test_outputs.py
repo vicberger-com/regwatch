@@ -489,3 +489,20 @@ async def test_a_run_that_cannot_succeed_pauses_its_schedule(
     shown = (await admin.get(_api(f"/outputs/{sid}"))).json()
     assert (shown["status"], shown["error_class"], shown["next_run_at"]) == (
         "failed", "recipient-refused", None)  # fmt: skip
+
+
+async def test_a_printed_layout_can_still_be_deleted(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    """Its outputs keep their history; a schedule of it stops (FK on output_job)."""
+    lid = (await admin.post(_api("/reports/layouts"), json=LAYOUT)).json()["id"]
+    done = (await _pdf(admin, {"report_layout_id": lid})).json()["id"]
+    assert await tasks.run_pdf(db, uuid.UUID(done)) == "sent"
+    sid = (await _pdf(admin, {"report_layout_id": lid}, schedule=WEEKLY)).json()["id"]
+    gone = await admin.delete(_api(f"/reports/layouts/{lid}"))
+    assert gone.status_code == 204, gone.text
+    kept = (await admin.get(_api(f"/outputs/{done}"))).json()
+    assert kept["status"] == "sent" and kept["artifact_available"]
+    assert kept["source_summary"] == "deleted layout"
+    stopped = (await admin.get(_api(f"/outputs/{sid}"))).json()
+    assert (stopped["status"], stopped["error_class"]) == ("cancelled", "source-deleted")

@@ -174,5 +174,9 @@ async def delete_view(db: AsyncSession, view_id: uuid.UUID, principal: Principal
     if view.shared:
         audit(db, "saved_view.delete", "saved_view", view.id, actor=principal.user.id, ip=ip,
               before={"name": view.name, "shared": True})  # fmt: skip
+    from regwatch.outputs.models import OutputJob
+    from regwatch.outputs.services import detach
+
+    await detach(db, OutputJob.saved_view_id, view.id, "saved view")
     await db.delete(view)
     await db.commit()
