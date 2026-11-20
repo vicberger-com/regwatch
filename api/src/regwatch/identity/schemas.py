@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -25,15 +26,27 @@ Code = Annotated[str, Field(min_length=2, max_length=16, pattern=r"^[A-Za-z0-9_-
 Key = Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]*$")]
 
 
+_FACET_KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _facet_keys(terms: dict[str, list[str]]) -> dict[str, list[str]]:
+    if bad := next((k for k in terms if not _FACET_KEY.fullmatch(k)), None):
+        raise ValueError(f"facet key {bad[:64]!r} is not a key")
+    return terms
+
+
 class Interests(BaseModel):
     """A user's interests (M11, ADR-0012): default filters on the map, items and search, never
     a limit on what they may see. The same shapes as ``QueryFilters``."""
 
     jurisdictions: list[Code] = Field(default_factory=list, max_length=50)
     regions: list[Code] = Field(default_factory=list, max_length=20)
-    # Facet keys are checked against the offered facets when saved (``_interest_errors``).
-    terms: dict[str, Annotated[list[Key], Field(max_length=20)]] = Field(default_factory=dict,
-                                                                         max_length=20)  # fmt: skip
+    # Facet keys get the term-key pattern by a validator (a typed dict key would change the
+    # contract's JSON schema); they are also checked against the offered facets when saved.
+    terms: Annotated[
+        dict[str, Annotated[list[Key], Field(max_length=20)]],
+        AfterValidator(_facet_keys),
+    ] = Field(default_factory=dict, max_length=20)
 
 
 class InterestOption(BaseModel):

@@ -213,7 +213,8 @@ async def update_preferences(body: Preferences, principal: CurrentPrincipal,
 
 @router.get(
     "/me/interest-options", tags=ME,
-    **spec(InterestOptions, desc="What a user may pick as interests", stub=False),
+    **spec(InterestOptions, desc="What a user may pick as interests", perm="items.read",
+           stub=False),
 )  # fmt: skip
 async def get_interest_options(principal: CurrentPrincipal, db: DbSession) -> InterestOptions:
     return await services.interest_options(db)

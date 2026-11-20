@@ -172,5 +172,14 @@ async def test_interests_are_checked_normalised_and_offered_to_everyone(
             assert refused.status_code in (400, 422), bad
         again = (await alice.get(_api("/me/preferences"))).json()["interests"]
         assert again["jurisdictions"] == ["CN", "DE"]  # unchanged by the refusals
+        huge = {"interests": {"terms": {"X" * 5000: ["a"]}}}
+        long_key = await alice.patch(_api("/me/preferences"), json=huge)
+        assert long_key.status_code == 422  # refused by the schema, before any query
+        # A term deactivated later is dropped when read, so default filters never fail.
+        term_id = term.json()["id"]
+        assert (await admin.patch(_api(f"/taxonomy/terms/{term_id}"),
+                                  json={"active": False})).status_code == 200  # fmt: skip
+        stale = (await alice.get(_api("/me/preferences"))).json()["interests"]
+        assert stale["terms"] == {} and stale["jurisdictions"] == ["CN", "DE"]
     finally:
         await alice.aclose()

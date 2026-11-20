@@ -452,7 +452,7 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }
       responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }, "400": { $ref: "#/components/responses/Problem" } }
   /me/interest-options:
-    get: { tags: [me], description: "CP-24: what a user may pick as interests; every signed-in user", responses: { "200": { description: What a user may pick as interests, content: { application/json: { schema: { $ref: "#/components/schemas/InterestOptions" } } } } } }
+    get: { tags: [me], x-permission: items.read, description: "CP-24: what a user may pick as interests", responses: { "200": { description: What a user may pick as interests, content: { application/json: { schema: { $ref: "#/components/schemas/InterestOptions" } } } } } }
   /me/sessions:
     get: { tags: [me], responses: { "200": { description: Active sessions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } } } }
   /me/sessions/{id}:

@@ -1026,7 +1026,26 @@ def preferences_of(user: User, cfg: dict[str, int]) -> Preferences:
 
 
 async def get_preferences(db: AsyncSession, principal: Principal) -> Preferences:
-    return preferences_of(principal.user, await auth_settings(db))
+    prefs = preferences_of(principal.user, await auth_settings(db))
+    return await _current(db, prefs)
+
+
+async def _current(db: AsyncSession, prefs: Preferences) -> Preferences:
+    """Interests that still exist: a facet, term or jurisdiction removed or deactivated since
+    they were saved is dropped, so default filters never fail (M11.1 review)."""
+    if prefs.interests is None:
+        return prefs
+    offered = await interest_options(db)
+    codes = {j.code for j in offered.jurisdictions}
+    regions_ = {r.key for r in offered.regions}
+    facets = {f.key: {t.key for t in f.terms} for f in offered.facets}
+    live = Interests(
+        jurisdictions=[c for c in prefs.interests.jurisdictions if c in codes],
+        regions=[r for r in prefs.interests.regions if r in regions_],
+        terms={f: kept for f, keys in prefs.interests.terms.items() if f in facets
+               if (kept := [k for k in keys if k in facets[f]])},
+    )  # fmt: skip
+    return prefs.model_copy(update={"interests": live})
 
 
 async def update_preferences(db: AsyncSession, principal: Principal,
@@ -1069,7 +1088,7 @@ async def update_preferences(db: AsyncSession, principal: Principal,
         raise ProblemError(401, "unauthenticated", "Sign in again.")
     user.preferences = {**(user.preferences or {}), **changes}
     await db.commit()
-    return preferences_of(user, cfg)
+    return await _current(db, preferences_of(user, cfg))
 
 
 # --- Interests (M11.1, ADR-0012) -----------------------------------------------------------

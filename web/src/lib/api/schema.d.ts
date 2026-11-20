@@ -3388,7 +3388,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description CP-24: what a user may pick as interests; every signed-in user */
+        /** @description CP-24: what a user may pick as interests */
         get: {
             parameters: {
                 query?: never;
