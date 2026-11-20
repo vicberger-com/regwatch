@@ -3,7 +3,7 @@ import { vi } from "vitest";
 
 export type Routes = Record<
   string,
-  [number, unknown] | ((body: unknown) => [number, unknown])
+  [number, unknown] | ((body: unknown, url: URL) => [number, unknown])
 >;
 
 /** Answers every test gets unless it routes the request itself: the map on `/` (M6) and the
@@ -40,7 +40,8 @@ export function fakeApi(given: Routes) {
     calls.push({ key, body, origin: request.headers.get("origin") });
     const route = routes[key];
     if (route === undefined) throw new Error(`unexpected request ${key}`);
-    const [status, payload] = typeof route === "function" ? route(body) : route;
+    const [status, payload] =
+      typeof route === "function" ? route(body, url) : route;
     const type =
       status >= 400 ? "application/problem+json" : "application/json";
     return new Response(

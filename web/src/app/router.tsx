@@ -17,6 +17,7 @@ import {
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
 import { GroupsPage } from "@/features/admin/GroupsPage";
 import { BuilderPage } from "@/features/reports/BuilderPage";
+import { OutputsPage } from "@/features/outputs/OutputsPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
 import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
@@ -248,6 +249,22 @@ const reportsRoute = createRoute({
   },
 });
 
+const outputsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/outputs",
+  staticData: { title: "Outputs" },
+  component: function Outputs() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "outputs.pdf")) return <NotPermitted />;
+    return (
+      <OutputsPage
+        userId={me.id}
+        canReadAll={hasPermission(me, "outputs.read_all")}
+      />
+    );
+  },
+});
+
 const reportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports/$id",
@@ -351,6 +368,7 @@ export const routeTree = rootRoute.addChildren([
     groupsRoute,
     reportsRoute,
     reportRoute,
+    outputsRoute,
     flagsRoute,
     jurisdictionsRoute,
     sourcesRoute,
