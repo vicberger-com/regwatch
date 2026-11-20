@@ -6,8 +6,10 @@ export type Routes = Record<
   [number, unknown] | ((body: unknown) => [number, unknown])
 >;
 
-/** Answers every test gets unless it routes the request itself: the map on `/` (M6). */
+/** Answers every test gets unless it routes the request itself: the map on `/` (M6) and the
+ * preferences the shell's idle watch reads (M9). */
 const DEFAULTS: Routes = {
+  "GET /me/preferences": [200, { session_idle_timeout_minutes: 480 }],
   "GET /map/activity": [
     200,
     {

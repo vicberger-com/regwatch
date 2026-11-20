@@ -92,6 +92,12 @@ export function useLogout() {
 export function forgetEverything(client: QueryClient): void {
   client.getMutationCache().clear();
   client.clear();
+  try {
+    // The last user's appearance hints at personal needs on a shared device (M9 review).
+    window.localStorage.removeItem("regwatch.appearance");
+  } catch {
+    // storage refused: nothing was kept
+  }
 }
 
 export function useChangePassword() {

@@ -246,6 +246,11 @@ export function MePage() {
         </>
       )}
       <Section id="sessions" title="Active sessions">
+        {revoke.isError && (
+          <p role="alert" className="text-critical">
+            {problemText(revoke.error, "That session could not be signed out.")}
+          </p>
+        )}
         {sessions.isError ? (
           <p role="alert" className="text-critical">
             {problemText(sessions.error, "The sessions could not be loaded.")}
@@ -300,6 +305,14 @@ export function MePage() {
                         }}
                       >
                         Sign out this session
+                        <span className="sr-only">
+                          {" "}
+                          (signed in{" "}
+                          {s.created_at
+                            ? new Date(s.created_at).toLocaleString()
+                            : ""}
+                          , {s.user_agent ?? "unknown browser"})
+                        </span>
                       </button>
                     )}
                   </td>

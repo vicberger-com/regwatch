@@ -25,7 +25,8 @@ export function ThemeSwitch() {
       const body = { theme: upcoming } as Schemas["Preferences"]; // a partial PATCH
       void api
         .PATCH("/me/preferences", { body })
-        .then(() => client.invalidateQueries({ queryKey: meQuery.queryKey }));
+        .then(() => client.invalidateQueries({ queryKey: meQuery.queryKey }))
+        .catch(() => undefined); // the theme still applies here; the next save retries
     }
   }
 

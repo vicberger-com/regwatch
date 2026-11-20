@@ -100,7 +100,7 @@ describe("user tab", () => {
     expect(within(rows[1] as HTMLElement).queryByRole("button")).toBeNull();
     await userEvent.click(
       within(rows[2] as HTMLElement).getByRole("button", {
-        name: "Sign out this session",
+        name: /^Sign out this session/,
       }),
     );
     await waitFor(() => {

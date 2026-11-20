@@ -8,6 +8,7 @@ import { meQuery, useLogout } from "@/lib/auth/session";
 import { applyAppearance, resolve, systemIsDark } from "./appearance";
 
 import { BrandMark, Footer } from "./BrandingShell";
+import { IdleWatch } from "./IdleWatch";
 import { LeftRail } from "./LeftRail";
 import { ThemeSwitch } from "./ThemeSwitch";
 
@@ -74,6 +75,7 @@ export function AppShell() {
         </main>
       </div>
       <Footer />
+      <IdleWatch />
     </div>
   );
 }
