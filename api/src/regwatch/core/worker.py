@@ -34,7 +34,7 @@ ADDRESS_SPACE_BYTES = 4 * 1024**3  # and never let one grow past 4 GiB during a 
 BROKER_TIMEOUT_S = 5.0
 PUBLISH_RETRY = {"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1}
 BEAT_SCHEDULER = "celery.beat:Scheduler"  # in memory; the default one unpickles a shelve file
-QUEUES = ("capture", "process")  # M3 capture; M4 processing of each run's manifest
+QUEUES = ("capture", "process", "outputs")  # M3 capture; M4 processing; M8 outputs
 BEAT = {
     "capture.schedule_tick": {"task": "capture.schedule_tick", "schedule": 60.0},
     "capture.health_check": {"task": "capture.health_check", "schedule": 3600.0},
@@ -77,6 +77,7 @@ def make_app(settings: Settings | None = None) -> Celery:
             "capture.*": {"queue": "capture"},
             "process.*": {"queue": "process"},
             "search.*": {"queue": "process"},
+            "outputs.*": {"queue": "outputs"},
         },  # fmt: skip
         beat_schedule=BEAT,
         timezone="UTC",
@@ -84,7 +85,7 @@ def make_app(settings: Settings | None = None) -> Celery:
         worker_hijack_root_logger=False,
     )
     app.conf.include = ["regwatch.capture.tasks", "regwatch.processing.tasks",
-                        "regwatch.search.tasks"]  # fmt: skip
+                        "regwatch.search.tasks", "regwatch.outputs.tasks"]  # fmt: skip
     return app
 
 

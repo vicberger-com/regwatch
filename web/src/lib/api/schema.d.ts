@@ -3674,9 +3674,13 @@ export interface paths {
             };
             cookie?: never;
         };
+        /** @description Without exp and sig: a redirect to this route signed for 10 minutes. With them, valid, and the caller still allowed: the file (CP-32) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    exp?: number | null;
+                    sig?: string | null;
+                };
                 header?: never;
                 path: {
                     id: components["parameters"]["id"];
@@ -3685,6 +3689,16 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
+                /** @description The file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                        "text/csv": string;
+                    };
+                };
                 /** @description Redirect to a signed URL valid for 10 minutes */
                 302: {
                     headers: {

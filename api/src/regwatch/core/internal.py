@@ -80,3 +80,41 @@ class InternalClient:
             return json.loads(bytes(body))
         except (ValueError, RecursionError):
             raise InternalError("sidecar-malformed", "the sidecar's answer is not JSON") from None
+
+    async def post_files(
+        self,
+        path: str,
+        files: dict[str, tuple[str, bytes, str]],
+        data: dict[str, str],
+        deadline_s: float = DEADLINE_S,
+    ) -> bytes:
+        """POST a multipart form to ``base_url + path`` (the PDF sidecar, M8); the bytes it
+        answers, at most ``max_answer``, with the same checks as ``get_json``."""
+        if not _PATH.fullmatch(path) or ".." in path or "//" in path:
+            raise ValueError("an internal path is a fixed path such as /forms/x")
+        body = bytearray()
+        async with httpx.AsyncClient(base_url=self.base_url, transport=self.transport,
+                                     timeout=TIMEOUT, follow_redirects=False,
+                                     trust_env=False) as client:  # fmt: skip
+            try:
+                headers = {"accept-encoding": "identity"}
+                async with asyncio.timeout(deadline_s), client.stream(
+                        "POST", path, files=files, data=data, headers=headers) as got:  # fmt: skip
+                    if not 200 <= got.status_code < 300:
+                        status = f"the sidecar answered HTTP {got.status_code}"
+                        raise InternalError("sidecar-status", status)
+                    if got.headers.get("content-encoding", "identity").lower() != "identity":
+                        raise InternalError("sidecar-encoding", "the sidecar's answer is "
+                                            "compressed, which is not accepted")  # fmt: skip
+                    async for chunk in got.aiter_raw():
+                        body += chunk
+                        if len(body) > self.max_answer:
+                            raise InternalError("sidecar-too-large", "the sidecar's answer is "
+                                                "larger than the limit")  # fmt: skip
+            except (httpx.TimeoutException, TimeoutError):
+                raise InternalError("sidecar-timeout", "the sidecar did not answer in time") \
+                    from None  # fmt: skip
+            except httpx.HTTPError:
+                raise InternalError("sidecar-unavailable", "the sidecar could not be reached") \
+                    from None  # fmt: skip
+        return bytes(body)

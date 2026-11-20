@@ -1,0 +1,184 @@
+"""Integration: PDF outputs (M8.1; acceptance 1 apart from the real Gotenberg, checked on the
+QA stack; the M7 reviews' rules for M8)."""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import httpx
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from regwatch.core.internal import InternalClient
+from regwatch.outputs import pdf, tasks
+from regwatch.reports import render
+from tests.integration.test_admin import _api, _as_new_user, admin
+from tests.integration.test_auth import clear_limits, db_url
+from tests.integration.test_capture_runs import db
+
+pytestmark = pytest.mark.integration
+__all__ = ["admin", "clear_limits", "db", "db_url"]  # shared fixtures
+
+PDF = b"%PDF-1.7\n1 0 obj << /Type /Pages /Count 2 >>\n<< /Type /Page >>\n<< /Type /Page >>\n%%EOF"
+LAYOUT = {"name": "Mine", "layout": {"root": {"props": {"title": "Mine"}}, "content": [
+    {"type": "Heading", "props": {"id": "h", "text": "Changes"}}]}}  # fmt: skip
+
+
+class Gotenberg:
+    def __init__(self) -> None:
+        self.answer: tuple[int, bytes] = (200, PDF)
+        self.seen: list[httpx.Request] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        request.read()  # the multipart body is a stream: read it once, here
+        self.seen.append(request)
+        status, body = self.answer
+        return httpx.Response(status, stream=httpx.ByteStream(body))  # unread, as sent
+
+
+@pytest.fixture
+def gotenberg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Gotenberg]:
+    from regwatch.core.settings import get_settings
+
+    monkeypatch.setenv("REGWATCH_OBJECT_STORE_PATH", str(tmp_path))
+    get_settings.cache_clear()
+    fake = Gotenberg()
+    monkeypatch.setattr(pdf, "client_factory", lambda max_bytes: InternalClient(
+        "http://pdf:3000", transport=httpx.MockTransport(fake), max_answer=max_bytes))  # fmt: skip
+    queued: list[tuple[str, uuid.UUID]] = []
+
+    async def enqueue(name: str, job_id: uuid.UUID) -> None:
+        queued.append((name, job_id))
+
+    monkeypatch.setattr(tasks, "enqueue", enqueue)
+    render.renders.clear()
+    yield fake
+
+
+async def _pdf(client: httpx.AsyncClient, source: dict[str, Any], **extra: Any) -> httpx.Response:
+    return await client.post(_api("/outputs"), json={"kind": "pdf", "source": source, **extra})
+
+
+async def test_a_pdf_is_rendered_and_downloaded_by_its_owner(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    ana = await _as_new_user(admin, "aya@example.org", ["analyst"])
+    bob = await _as_new_user(admin, "ben@example.org", ["analyst"])
+    lid = (await ana.post(_api("/reports/layouts"), json=LAYOUT)).json()["id"]
+    made = await _pdf(ana, {"report_layout_id": lid})
+    assert made.status_code == 202, made.text
+    job = made.json()
+    assert (job["status"], job["artifact_available"]) == ("queued", False)
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "sent"
+    sent = gotenberg.seen[0]
+    assert sent.url.path == "/forms/chromium/convert/html"
+    assert b'filename="index.html"' in sent.content and b"<script" not in sent.content
+    shown = (await ana.get(_api(f"/outputs/{job['id']}"))).json()
+    assert (shown["status"], shown["artifact_available"], shown["artifact_bytes"]) == (
+        "sent", True, len(PDF))  # fmt: skip
+
+    redirect = await ana.get(_api(f"/outputs/{job['id']}/artifact"))
+    assert redirect.status_code == 302
+    link = redirect.headers["location"]
+    parts = urlsplit(link)
+    got = await ana.get(parts.path + "?" + parts.query)
+    assert got.status_code == 200 and got.content == PDF
+    assert got.headers["content-type"] == "application/pdf"
+    assert got.headers["content-disposition"].startswith("attachment;")
+    forged = await ana.get(parts.path + "?" + parts.query.replace("sig=", "sig=0"))
+    assert forged.status_code == 403
+    expired = await ana.get(parts.path + "?exp=1&sig=" + parts.query.split("sig=")[1])
+    assert expired.status_code == 403
+    assert (await bob.get(parts.path + "?" + parts.query)).status_code == 404  # not his
+    assert (await bob.get(_api(f"/outputs/{job['id']}"))).status_code == 404
+    mine = (await bob.get(_api("/outputs"))).json()
+    assert mine["total"] == 0
+    assert (await bob.get(_api("/outputs"), params={"scope": "all"})).status_code == 403
+    every = (await admin.get(_api("/outputs"), params={"scope": "all"})).json()
+    assert job["id"] in [j["id"] for j in every["items"]]  # outputs.read_all
+    rows = (await admin.get(_api("/admin/audit"), params={"entity_type": "output_job"})).json()
+    assert [r["action"] for r in rows["items"]][:2] == ["output.sent", "output.create"]
+    await ana.aclose()
+    await bob.aclose()
+
+
+async def test_who_may_print_what(admin: httpx.AsyncClient, db: AsyncSession,
+                                  gotenberg: Gotenberg) -> None:  # fmt: skip
+    vic = await _as_new_user(admin, "vin@example.org", ["viewer"])  # reports.print, outputs.pdf
+    stock = await _pdf(vic, {"report_template_key": "source-health"})
+    assert stock.status_code == 202, stock.text
+    assert await tasks.run_pdf(db, uuid.UUID(stock.json()["id"])) == "sent"
+    shared = (await admin.post(_api("/reports/layouts"), json={**LAYOUT, "shared": True})).json()
+    assert (await _pdf(vic, {"report_layout_id": shared["id"]})).status_code == 403  # not own
+    needs = await _pdf(admin, {"report_template_key": "jurisdiction-profile"})
+    assert needs.status_code == 422 and "Jurisdiction is needed" in needs.text
+    ok = await _pdf(admin, {"report_template_key": "jurisdiction-profile"},
+                    params={"jurisdiction": "DE"})  # fmt: skip
+    assert ok.status_code == 202
+    for bad in ({"kind": "email", "source": {"report_template_key": "source-health"}},
+                {"kind": "pdf", "source": {"report_template_key": "source-health"},
+                 "schedule": {"cron": "0 7 * * 1"}},
+                {"kind": "pdf", "source": {}},
+                {"kind": "pdf", "source": {"report_template_key": "source-health",
+                                           "report_layout_id": shared["id"]}}):  # fmt: skip
+        assert (await admin.post(_api("/outputs"), json=bad)).status_code == 422, bad
+    await vic.aclose()
+
+
+async def test_a_run_uses_the_requesters_current_rights(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    ana = await _as_new_user(admin, "ari@example.org", ["analyst"])
+    aid = (await ana.get(_api("/auth/me"))).json()["id"]
+    shared = (await admin.post(_api("/reports/layouts"), json={**LAYOUT, "shared": True})).json()
+    first = (await _pdf(ana, {"report_layout_id": shared["id"]})).json()
+    second = (await _pdf(ana, {"report_layout_id": shared["id"]})).json()
+    await admin.patch(_api(f"/reports/layouts/{shared['id']}"), json={"shared": False})
+    assert await tasks.run_pdf(db, uuid.UUID(first["id"])) == "failed"  # no longer visible
+    assert (await ana.get(_api(f"/outputs/{first['id']}"))).json()["error_class"] == "not-found"
+    await admin.patch(_api(f"/admin/users/{aid}"), json={"status": "disabled"})
+    assert await tasks.run_pdf(db, uuid.UUID(second["id"])) == "failed"
+    shown = (await admin.get(_api(f"/outputs/{second['id']}"))).json()
+    assert shown["error_class"] == "requester-inactive"
+    await ana.aclose()
+
+
+async def test_pdf_failures_are_reported_and_can_be_retried(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    lid = (await admin.post(_api("/reports/layouts"), json=LAYOUT)).json()["id"]
+    job = (await _pdf(admin, {"report_layout_id": lid})).json()
+    gotenberg.answer = (500, b"boom")
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "failed"
+    shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert shown["error_class"] == "sidecar-status" and "boom" not in (shown["error_message"] or "")
+    gotenberg.answer = (200, b"<html>not a pdf</html>")
+    assert (await admin.post(_api(f"/outputs/{job['id']}/retry"))).status_code == 202
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "failed"
+    assert (await admin.get(_api(f"/outputs/{job['id']}"))).json()["error_class"] == "pdf-malformed"
+    gotenberg.answer = (200, PDF)
+    assert (await admin.post(_api(f"/outputs/{job['id']}/retry"))).status_code == 202
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "sent"
+    final = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert (final["status"], final["attempts"]) == ("sent", 3)
+    assert (await admin.post(_api(f"/outputs/{job['id']}/retry"))).status_code == 409
+    assert await tasks.run_pdf(db, uuid.UUID(job["id"])) == "skipped"  # not queued
+
+
+async def test_outputs_are_limited_per_hour(admin: httpx.AsyncClient,
+                                            gotenberg: Gotenberg) -> None:  # fmt: skip
+    limit = await admin.put(_api("/admin/settings/outputs.rate_per_hour_per_user"),
+                              json={"value": 1})  # fmt: skip
+    assert limit.status_code == 200, limit.text
+    source = {"report_template_key": "source-health"}
+    assert (await _pdf(admin, source)).status_code == 202
+    limited = await _pdf(admin, source)
+    assert limited.status_code == 429 and limited.headers["Retry-After"]
+
+
+def test_pages_are_counted_without_the_page_tree() -> None:
+    assert pdf.page_count(PDF) == 2

@@ -1,1 +1,222 @@
-"""Service layer; other modules call this module only through here (ADR-0001)."""
+"""Output jobs (M8; REQ-10, REQ-15). M8.1: PDF of a report layout or a stock report.
+
+Rules (the M7 reviews' list for M8):
+- What may be printed: a stock report with ``reports.print``; a layout the user can see with
+  ``reports.build``, or their own with ``reports.print``.
+- Each run re-checks the requester's *current* account, rights and the layout's and saved
+  view's visibility (``current_principal``): never what was allowed when the job was made.
+- At most ``outputs.rate_per_hour_per_user`` jobs an hour, counted in the database.
+- Artifacts are fetched through a link signed for 10 minutes, by their owner (or
+  ``outputs.read_all``), and every step is audited.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import time
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from regwatch.core.errors import ProblemError, ProblemFieldError
+from regwatch.core.schemas import Page
+from regwatch.core.services import audit
+from regwatch.core.settings import get_settings
+from regwatch.identity.models import User
+from regwatch.identity.services import Principal, roles_and_permissions
+from regwatch.outputs.models import OutputJob
+from regwatch.outputs.schemas import OutputJob as JobOut
+from regwatch.outputs.schemas import OutputRequest
+
+READ_ALL = "outputs.read_all"
+LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
+KINDS_NOW = {"pdf"}  # M8.1; email, csv, print and schedules follow
+
+
+def _invalid(field: str, message: str) -> ProblemError:
+    return ProblemError(422, "validation", "The output request is not valid.",
+                        errors=[ProblemFieldError(field=field, message=message)])  # fmt: skip
+
+
+def out(job: OutputJob) -> JobOut:
+    source = (f"layout {job.report_layout_id}" if job.report_layout_id
+              else f"stock report {job.report_template_key}" if job.report_template_key
+              else "saved view" if job.saved_view_id else "query")  # fmt: skip
+    return JobOut(
+        id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
+        source_summary=source, destination_summary="download",
+        artifact_available=job.artifact_ref is not None, artifact_bytes=job.artifact_bytes,
+        error_class=job.error_class, error_message=job.error_message,
+        scheduled_cron=job.scheduled_cron, next_run_at=job.next_run_at,
+        attempts=job.attempts, created_at=job.created_at, finished_at=job.finished_at,
+    )  # fmt: skip
+
+
+async def current_principal(db: AsyncSession, user_id: uuid.UUID) -> Principal | None:
+    """The requester as they are now: None once disabled, locked or gone."""
+    user = await db.get(User, user_id)
+    if user is None or user.status != "active":
+        return None
+    roles, perms = await roles_and_permissions(db, user.id)
+    return Principal(user=user, session_id=uuid.UUID(int=0), roles=roles, permissions=perms)
+
+
+async def check_source(db: AsyncSession, job: OutputJob, principal: Principal) -> Any:
+    """The layout (saved, or built from the stock report) the principal may print now."""
+    from regwatch.reports import services as reports
+    from regwatch.reports.models import ReportLayout, ReportTemplate
+
+    if job.report_template_key is not None:
+        if "reports.print" not in principal.permissions:
+            raise ProblemError(403, "forbidden", "Printing stock reports needs reports.print.")
+        template = await db.scalar(select(ReportTemplate).where(
+            ReportTemplate.key == job.report_template_key))  # fmt: skip
+        if template is None:
+            raise ProblemError(404, "not-found", "No such stock report.")
+        return ReportLayout(id=uuid.UUID(int=0), user_id=principal.user.id, name=template.label,
+                            layout=template.layout,
+                            query=(template.query or {}).get("data_source", {}),
+                            page_size="A4", orientation="portrait", shared=False,
+                            version=template.version,
+                            based_on_template_key=template.key)  # fmt: skip
+    if job.report_layout_id is None:
+        raise _invalid("source", "M8.1 prints a report layout or a stock report")
+    layout = await reports.get_layout(db, job.report_layout_id, principal)  # 404 if hidden
+    own = layout.user_id == principal.user.id
+    if "reports.build" not in principal.permissions and not (
+            own and "reports.print" in principal.permissions):  # fmt: skip
+        raise ProblemError(403, "forbidden", "Printing this report needs reports.build, or "
+                           "reports.print for your own reports.")  # fmt: skip
+    return layout
+
+
+async def _limited(db: AsyncSession, user_id: uuid.UUID) -> None:
+    from regwatch.admin.services import values
+
+    per_hour = int((await values(db, ["outputs.rate_per_hour_per_user"]))
+                   ["outputs.rate_per_hour_per_user"])  # fmt: skip
+    since = datetime.now(UTC) - timedelta(hours=1)
+    made = await db.scalar(select(func.count()).select_from(OutputJob).where(
+        OutputJob.requested_by == user_id, OutputJob.created_at >= since)) or 0  # fmt: skip
+    if made >= per_hour:
+        raise ProblemError(429, "rate-limited", f"At most {per_hour} outputs an hour; try "
+                           "again later.", headers={"Retry-After": "600"})  # fmt: skip
+
+
+async def create_output(db: AsyncSession, body: OutputRequest, principal: Principal,
+                        ip: str | None) -> JobOut:  # fmt: skip
+    from regwatch.reports import templates
+
+    if body.kind.value not in KINDS_NOW:
+        raise _invalid("kind", "M8.1 makes PDFs; email, CSV and print come next")
+    if body.schedule is not None:
+        raise _invalid("schedule", "schedules come in M8.3")
+    chosen = body.source.model_dump(exclude_unset=True)
+    if len(chosen) != 1:
+        raise _invalid("source", "exactly one of report_layout_id, report_template_key, "
+                       "saved_view_id and query")  # fmt: skip
+    params = body.params.model_dump() if "params" in body.model_fields_set else {}
+    job = OutputJob(requested_by=principal.user.id, kind=body.kind.value,
+                    report_layout_id=body.source.report_layout_id
+                    if "report_layout_id" in chosen else None,
+                    report_template_key=body.source.report_template_key
+                    if "report_template_key" in chosen else None,
+                    saved_view_id=None, query=None,
+                    destination={"report_params": params}, status="queued")  # fmt: skip
+    if "saved_view_id" in chosen or "query" in chosen:
+        raise _invalid("source", "M8.1 prints a report layout or a stock report")
+    layout = await check_source(db, job, principal)
+    from regwatch.search.schemas import Query
+
+    await templates.apply(db, Query(), layout.based_on_template_key, params)  # 422 early
+    await _limited(db, principal.user.id)
+    job.layout_version = layout.version
+    db.add(job)
+    await db.flush()
+    await db.refresh(job)
+    audit(db, "output.create", "output_job", job.id, actor=principal.user.id, ip=ip,
+          after={"kind": job.kind, "source": out(job).source_summary,
+                 "layout_version": job.layout_version})  # fmt: skip
+    result = out(job)
+    await db.commit()
+    from regwatch.outputs.tasks import enqueue
+
+    await enqueue("outputs.render_pdf", job.id)
+    return result
+
+
+def _visible(principal: Principal) -> list[Any]:
+    """Conditions for the jobs ``principal`` may see: their own, or all with read_all."""
+    return [] if READ_ALL in principal.permissions else [
+        OutputJob.requested_by == principal.user.id]  # fmt: skip
+
+
+async def list_outputs(db: AsyncSession, principal: Principal, page: int, page_size: int,
+                       scope: str) -> Page[JobOut]:  # fmt: skip
+    if scope == "all" and READ_ALL not in principal.permissions:
+        raise ProblemError(403, "forbidden", "Everyone's outputs need outputs.read_all.")
+    where = _visible(principal) if scope == "all" else [
+        OutputJob.requested_by == principal.user.id]  # fmt: skip
+    total = await db.scalar(select(func.count()).select_from(OutputJob).where(*where)) or 0
+    rows = (await db.scalars(select(OutputJob).where(*where)
+                             .order_by(OutputJob.created_at.desc(), OutputJob.id)
+                             .offset((page - 1) * page_size).limit(page_size))).all()  # fmt: skip
+    return Page[JobOut](items=[out(r) for r in rows], total=total, page=page,
+                        page_size=page_size)  # fmt: skip
+
+
+async def get_job(db: AsyncSession, job_id: uuid.UUID, principal: Principal) -> OutputJob:
+    job = await db.scalar(select(OutputJob).where(OutputJob.id == job_id,
+                                                  *_visible(principal)))  # fmt: skip
+    if job is None:
+        raise ProblemError(404, "not-found", "No such output.")
+    return job
+
+
+def _signature(job_id: uuid.UUID, expires: int) -> str:
+    key = get_settings().secret_key.get_secret_value().encode()
+    return hmac.new(key, f"artifact:{job_id}:{expires}".encode(), hashlib.sha256).hexdigest()
+
+
+def signed_link(job_id: uuid.UUID, prefix: str) -> str:
+    expires = int(time.time()) + LINK_S
+    return f"{prefix}/outputs/{job_id}/artifact?exp={expires}&sig={_signature(job_id, expires)}"
+
+
+def link_valid(job_id: uuid.UUID, exp: int, sig: str) -> bool:
+    return exp >= int(time.time()) and hmac.compare_digest(_signature(job_id, exp), sig)
+
+
+async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
+                ip: str | None) -> JobOut:  # fmt: skip
+    job = await get_job(db, job_id, principal)
+    if job.requested_by != principal.user.id:
+        raise ProblemError(403, "forbidden", "Only the requester can retry an output.")
+    if job.status != "failed":
+        raise ProblemError(409, "conflict", "Only a failed output can be tried again.")
+    await check_source(db, job, principal)
+    await _limited(db, principal.user.id)
+    job.status, job.error_class, job.error_message = "queued", None, None
+    audit(db, "output.retry", "output_job", job.id, actor=principal.user.id, ip=ip)
+    result = out(job)
+    await db.commit()
+    from regwatch.outputs.tasks import enqueue
+
+    await enqueue("outputs.render_pdf", job.id)
+    return result
+
+
+async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
+                 ip: str | None) -> None:  # fmt: skip
+    job = await get_job(db, job_id, principal)
+    if job.requested_by != principal.user.id:
+        raise ProblemError(403, "forbidden", "Only the requester can cancel an output.")
+    if job.status not in ("queued", "failed") and job.scheduled_cron is None:
+        raise ProblemError(409, "conflict", f"The output is already {job.status}.")
+    job.status = "cancelled"
+    audit(db, "output.cancel", "output_job", job.id, actor=principal.user.id, ip=ip)
+    await db.commit()

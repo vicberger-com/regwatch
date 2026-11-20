@@ -490,7 +490,12 @@ paths:
     delete: { tags: [outputs], x-permission: outputs.pdf, responses: { "204": { description: Cancelled (schedule removed or queued job cancelled) } } }
   /outputs/{id}/artifact:
     parameters: [ { $ref: "#/components/parameters/id" } ]
-    get: { tags: [outputs], x-permission: outputs.pdf, responses: { "302": { description: Redirect to a signed URL valid for 10 minutes }, "404": { $ref: "#/components/responses/Problem" } } }
+    get:
+      tags: [outputs]
+      x-permission: outputs.pdf
+      description: "Without exp and sig: a redirect to this route signed for 10 minutes. With them, valid, and the caller still allowed: the file (CP-32)"
+      parameters: [ { name: exp, in: query, schema: { type: integer, nullable: true } }, { name: sig, in: query, schema: { type: string, nullable: true } } ]
+      responses: { "302": { description: Redirect to a signed URL valid for 10 minutes }, "200": { description: The file, content: { application/pdf: { schema: { type: string, format: binary } }, text/csv: { schema: { type: string } } } }, "404": { $ref: "#/components/responses/Problem" } }
   /outputs/{id}/retry:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     post: { tags: [outputs], x-permission: outputs.pdf, responses: { "202": { description: Requeued, content: { application/json: { schema: { $ref: "#/components/schemas/OutputJob" } } } } } }
