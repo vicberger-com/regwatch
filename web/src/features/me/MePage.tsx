@@ -9,6 +9,7 @@ import { meTopic } from "@/features/help/topics";
 import { hasPermission, problemText } from "@/lib/auth/session";
 
 import {
+  myGroupsQuery,
   preferencesQuery,
   sessionsQuery,
   useRevokeSession,
@@ -94,6 +95,7 @@ export function MePage() {
   const views = useQuery(viewsQuery);
   const save = useSavePreferences();
   const revoke = useRevokeSession();
+  const groups = useQuery(myGroupsQuery);
   const p = prefs.data;
   const onSave = (changes: Partial<Preferences>) => {
     save.mutate(changes);
@@ -123,6 +125,12 @@ export function MePage() {
           <dd>{me.display_name}</dd>
           <dt className="text-text-muted">Email</dt>
           <dd>{me.email}</dd>
+          {groups.data && groups.data.length > 0 && (
+            <>
+              <dt className="text-text-muted">Groups</dt>
+              <dd>{groups.data.map((g) => g.name).join(", ")}</dd>
+            </>
+          )}
         </dl>
         <p>
           <Link to="/change-password" className="text-accent underline">

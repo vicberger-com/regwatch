@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-router";
 
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
+import { GroupsPage } from "@/features/admin/GroupsPage";
 import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { AuditPage } from "@/features/audit/AuditPage";
@@ -234,6 +235,17 @@ const rolesRoute = createRoute({
   },
 });
 
+const groupsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/groups",
+  staticData: { title: "Groups" },
+  component: function Groups() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "users.manage")) return <NotPermitted />;
+    return <GroupsPage canListRoles={hasPermission(me, "roles.manage")} />;
+  },
+});
+
 const flagsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/flags",
@@ -305,6 +317,7 @@ export const routeTree = rootRoute.addChildren([
     usersRoute,
     taxonomyRoute,
     rolesRoute,
+    groupsRoute,
     flagsRoute,
     jurisdictionsRoute,
     sourcesRoute,

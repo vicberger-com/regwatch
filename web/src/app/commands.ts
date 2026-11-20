@@ -92,6 +92,12 @@ export const ADMIN_AREAS = [
     permission: "users.manage",
   },
   {
+    to: "/admin/groups",
+    title: "Groups",
+    text: "Teams with shared roles and interests.",
+    permission: "users.manage",
+  },
+  {
     to: "/admin/roles",
     title: "Roles",
     text: "Permissions grouped by module.",

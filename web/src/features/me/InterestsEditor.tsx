@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useId, useState } from "react";
 
 import { HelpTip } from "@/features/help/HelpTip";
 import { meTopic } from "@/features/help/topics";
@@ -75,9 +75,26 @@ function Checks(props: {
  * "My interests" (M11.1, ADR-0012): regions, jurisdictions and topics that the map, the items
  * list and search open filtered to. They never limit what the user may see.
  */
-export function InterestsEditor({ saved }: { saved: Interests | undefined }) {
+export function InterestsEditor({
+  saved,
+  title = "My interests",
+  saveLabel = "Save my interests",
+  onSave,
+}: {
+  saved: Interests | undefined;
+  title?: string;
+  saveLabel?: string;
+  /** Saves somewhere else than the user's preferences, such as a group (M11.4c). */
+  onSave?: (interests: Interests) => Promise<unknown>;
+}) {
+  const headingId = useId();
   const options = useQuery(interestOptionsQuery);
-  const save = useSavePreferences();
+  const own = useSavePreferences();
+  const other = useMutation({
+    mutationFn: (interests: Interests) =>
+      onSave ? onSave(interests) : Promise.resolve(),
+  });
+  const save = onSave ? other : own;
   const [draft, setDraft] = useState<Interests>(() => ({
     jurisdictions: saved?.jurisdictions ?? [],
     regions: saved?.regions ?? [],
@@ -98,16 +115,17 @@ export function InterestsEditor({ saved }: { saved: Interests | undefined }) {
     Object.values(draft.terms ?? {}).reduce((n, keys) => n + keys.length, 0);
   return (
     <form
-      aria-labelledby="interests-heading"
+      aria-labelledby={headingId}
       className="grid gap-3"
       onSubmit={(e) => {
         e.preventDefault();
-        save.mutate({ interests: draft });
+        if (onSave) other.mutate(draft);
+        else own.mutate({ interests: draft });
       }}
     >
       <div className="flex items-center gap-1">
-        <h3 id="interests-heading" className="font-semibold">
-          My interests
+        <h3 id={headingId} className="font-semibold">
+          {title}
         </h3>
         <HelpTip id={meTopic("interests")} />
       </div>
@@ -151,7 +169,7 @@ export function InterestsEditor({ saved }: { saved: Interests | undefined }) {
           disabled={save.isPending}
           className="rounded bg-accent px-3 py-1 text-accent-contrast"
         >
-          Save my interests
+          {saveLabel}
         </button>
         <span role="status" className="text-sm text-text-muted">
           {save.isSuccess
