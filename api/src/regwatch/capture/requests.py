@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.models import FeedRequest, Source, SourceFollower
 from regwatch.capture.schemas import FeedRequestDecision, FeedRequestOut, FeedRequestWrite
-from regwatch.capture.services import _web_link, invalid
+from regwatch.capture.services import OVERRIDE, _web_link, invalid
 from regwatch.core.errors import ProblemError
 from regwatch.core.schemas import has_control
 from regwatch.core.services import audit
@@ -25,6 +26,7 @@ from regwatch.identity.models import User
 from regwatch.identity.services import Principal, SlidingWindow
 
 MANAGE = "sources.manage"
+CATALOGUE_KINDS = frozenset({"rss", "api_feed", "web_page"})  # as seed/catalogue.yaml
 MAX_PENDING = 10  # pending requests per user
 REQUEST_RATE = 10  # requests an hour, per user
 LISTED = 200  # newest requests listed
@@ -40,6 +42,40 @@ def _plain(field: str, value: str | None, *, required: bool) -> str | None:
     return text or None
 
 
+def _request_url(raw: str) -> str:
+    """An https URL with no credentials, its host in ASCII (punycode), so editors see the
+    real host: never ``trusted.gov@evil.example`` or a look-alike letter (review finding 4)."""
+    url = raw.strip()
+    if not (_web_link(url) and url.lower().startswith("https://")):
+        raise invalid("url", "an https URL of at most 2048 characters")
+    parts = urlsplit(url)
+    if parts.username is not None or parts.password is not None or " " in url:
+        raise invalid("url", "an address with no user name, password or spaces")
+    host = parts.hostname or ""
+    try:
+        ascii_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        raise invalid("url", "the host name is not valid") from None
+    netloc = ascii_host if parts.port is None else f"{ascii_host}:{parts.port}"
+    return urlunsplit(("https", netloc, parts.path, parts.query, parts.fragment))
+
+
+def _check_source(source: Source, request: FeedRequest, principal: Principal) -> None:
+    """What an approval may put in the catalogue (review finding 1): a source made for this
+    request, or one already in the catalogue; never a paused source, a kind the catalogue
+    leaves out, or a robots.txt override without the permission for it."""
+    if source.kind not in CATALOGUE_KINDS:
+        raise invalid("source_id", "the catalogue takes rss, api_feed and web_page sources")
+    if source.robots_policy != "respect" and OVERRIDE not in principal.permissions:
+        raise invalid("source_id", "this source overrides robots.txt; approving it needs the "
+                      "permission to override robots.txt")  # fmt: skip
+    if source.catalogue_key is None:
+        if not source.enabled:
+            raise invalid("source_id", "this source is turned off; turn it on first")
+        if source.created_at < request.created_at:
+            raise invalid("source_id", "choose the source created for this request")
+
+
 def _out(row: FeedRequest, name: str | None) -> FeedRequestOut:
     return FeedRequestOut.model_validate(
         {**{c.key: getattr(row, c.key) for c in FeedRequest.__table__.columns},
@@ -48,9 +84,7 @@ def _out(row: FeedRequest, name: str | None) -> FeedRequestOut:
 
 async def create(db: AsyncSession, body: FeedRequestWrite, principal: Principal,
                  ip: str | None) -> FeedRequestOut:  # fmt: skip
-    url = body.url.strip()
-    if not (_web_link(url) and url.lower().startswith("https://")):
-        raise invalid("url", "an https URL of at most 2048 characters")
+    url = _request_url(body.url)
     reason = _plain("reason", body.reason, required=True)
     me = principal.user.id
     key = str(me)
@@ -128,16 +162,21 @@ async def decide(db: AsyncSession, request_id: uuid.UUID, body: FeedRequestDecis
                                  .with_for_update())  # fmt: skip
         if source is None:
             raise invalid("source_id", "no such source")
+        _check_source(source, request, principal)
         if source.catalogue_key is None:  # it joins the catalogue as added, not curated
             if summary is None:
                 raise invalid("summary", "a one-line summary for the catalogue is required")
-            source.catalogue_key = f"added-{source.id.hex[:12]}"
+            # The whole id: a uuidv7's first 48 bits are only its millisecond (finding 2).
+            source.catalogue_key = f"added-{source.id.hex}"
             source.summary = summary
             after["catalogue_key"] = source.catalogue_key
         request.source_id = source.id
         after["source_id"] = str(source.id)
-        follow = insert(SourceFollower).values(source_id=source.id, user_id=request.requested_by)
-        await db.execute(follow.on_conflict_do_nothing())
+        active = await db.scalar(select(User.status).where(User.id == request.requested_by))
+        if active == "active":  # never subscribe a disabled or locked requester (finding 3)
+            follow = insert(SourceFollower).values(source_id=source.id,
+                                                   user_id=request.requested_by)  # fmt: skip
+            await db.execute(follow.on_conflict_do_nothing())
     request.status = body.decision
     request.decided_by = principal.user.id
     request.decided_at = datetime.now(UTC)

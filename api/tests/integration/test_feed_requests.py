@@ -115,3 +115,60 @@ async def test_feed_requests_need_items_read(admin: httpx.AsyncClient) -> None:
     assert (await nobody.post(_api("/feed-requests"), json=ASK)).status_code == 403
     assert (await nobody.get(_api("/feed-requests"))).status_code == 403
     await nobody.aclose()
+
+
+async def test_approval_never_revives_or_widens_a_source(admin: httpx.AsyncClient) -> None:
+    """Review finding 1: an approval cannot publish an older, paused, out-of-kind or
+    robots-overriding source, unless the approver may override robots.txt."""
+    older = (await admin.post(_api("/sources"), json=rss(name="Older"))).json()
+    rid = (await admin.post(_api("/feed-requests"), json=ASK)).json()["id"]
+    crawl = {"name": "Crawl", "kind": "web_crawl", "config": {
+        "seed_urls": ["https://feeds.example/"], "allowed_domains": ["feeds.example"]}}  # fmt: skip
+    crawler = (await admin.post(_api("/sources"), json=crawl)).json()
+    paused = (await admin.post(_api("/sources"), json=rss(name="Paused"))).json()
+    await admin.patch(_api(f"/sources/{paused['id']}"), json={"enabled": False})
+    overriding = (await admin.post(_api("/sources"), json=rss(
+        name="Override", robots_policy="override", override_reason="Owner agreed in writing",
+    ))).json()  # fmt: skip
+    editor = await _as_new_user(admin, "eve@example.org", ["editor"])
+
+    async def approve(client: httpx.AsyncClient, sid: str) -> httpx.Response:
+        return await client.post(_api(f"/feed-requests/{rid}/decision"), json={
+            "decision": "approved", "source_id": sid, "summary": "A feed."})  # fmt: skip
+
+    for sid, why in ((older["id"], "created for this request"), (crawler["id"], "rss, api_feed"),
+                     (paused["id"], "turned off")):  # fmt: skip
+        refused = await approve(admin, sid)
+        assert refused.status_code == 422 and why in refused.text, refused.text
+    refused = await approve(editor, overriding["id"])
+    assert refused.status_code == 422 and "override robots.txt" in refused.text
+    assert (await approve(admin, overriding["id"])).status_code == 200  # admin may override
+    curated = (await admin.get(_api("/catalogue"))).json()
+    assert {e["id"] for e in curated} >= {overriding["id"]}
+    assert all(e["key"] != f"added-{older['id']}" for e in curated)
+    await editor.aclose()
+
+
+async def test_request_urls_show_their_real_host(admin: httpx.AsyncClient) -> None:
+    """Review finding 4: no credentials, no spaces; an IDN host is stored in punycode."""
+    for bad in ("https://trusted.gov@evil.example/feed", "https://u:p@example.org/",
+                "https://example.org/a b"):  # fmt: skip
+        got = await admin.post(_api("/feed-requests"), json={**ASK, "url": bad})
+        assert got.status_code == 422, bad
+    made = await admin.post(_api("/feed-requests"),
+                            json={**ASK, "url": "https://gоv.uk/feed"})  # fmt: skip
+    assert made.status_code == 201 and made.json()["url"] == "https://xn--gv-fmc.uk/feed"
+
+
+async def test_a_disabled_requester_is_not_subscribed(admin: httpx.AsyncClient) -> None:
+    viewer = await _as_new_user(admin, "dan@example.org", ["viewer"])
+    vid = (await viewer.get(_api("/auth/me"))).json()["id"]
+    rid = (await viewer.post(_api("/feed-requests"), json=ASK)).json()["id"]
+    await viewer.aclose()
+    assert (await admin.patch(_api(f"/admin/users/{vid}"),
+                              json={"status": "disabled"})).status_code == 200  # fmt: skip
+    source = (await admin.post(_api("/sources"), json=rss())).json()
+    ok = await admin.post(_api(f"/feed-requests/{rid}/decision"), json={
+        "decision": "approved", "source_id": source["id"], "summary": "A feed."})  # fmt: skip
+    assert ok.status_code == 200
+    assert (await admin.get(_api(f"/sources/{source['id']}"))).json()["followers"] == 0
