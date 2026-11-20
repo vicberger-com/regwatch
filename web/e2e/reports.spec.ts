@@ -161,3 +161,62 @@ test("a report becomes a PDF through Gotenberg within two minutes (M8 acceptance
     body.toString("latin1").match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? [];
   expect(pages.length).toBeGreaterThan(0);
 });
+
+test("a stock report is emailed with its PDF and arrives in Mailpit (M8 acceptance 2)", async ({
+  page,
+}) => {
+  const mailpit = process.env.E2E_MAILPIT_URL;
+  test.skip(!mailpit, "set E2E_MAILPIT_URL to the stack's Mailpit");
+  test.setTimeout(180_000);
+  await signInByKeyboard(page);
+  const headers = { Origin: new URL(page.url()).origin };
+  const setting = "/api/v1/admin/settings/outputs.allowed_recipient_domains";
+  const before = (
+    (await (await page.request.get(setting)).json()) as { value: string[] }
+  ).value;
+  await page.request.put(setting, {
+    headers,
+    data: { value: ["example.org"] },
+  });
+  try {
+    const subject = `regwatch e2e ${String(Date.now())}`;
+    const made = await page.request.post("/api/v1/outputs", {
+      headers,
+      data: {
+        kind: "email",
+        source: { report_template_key: "source-health" },
+        destination: {
+          emails: ["one@example.org", "two@example.org"],
+          subject,
+        },
+      },
+    });
+    expect(made.status()).toBe(202);
+    const id = ((await made.json()) as { id: string }).id;
+    await expect
+      .poll(
+        async () =>
+          (
+            (await (
+              await page.request.get(`/api/v1/outputs/${id}`)
+            ).json()) as { status: string }
+          ).status,
+        { timeout: 120_000, intervals: [2_000] },
+      )
+      .toBe("sent");
+    const found = (await (
+      await page.request.get(
+        `${String(mailpit)}/api/v1/search?query=${encodeURIComponent(`subject:"${subject}"`)}`,
+      )
+    ).json()) as {
+      messages: { To: { Address: string }[]; Attachments: number }[];
+    };
+    expect(found.messages.map((m) => m.To[0]?.Address).sort()).toEqual([
+      "one@example.org",
+      "two@example.org",
+    ]);
+    expect(found.messages.every((m) => m.Attachments === 1)).toBe(true);
+  } finally {
+    await page.request.put(setting, { headers, data: { value: before } });
+  }
+});

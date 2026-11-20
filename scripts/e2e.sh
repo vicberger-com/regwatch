@@ -25,6 +25,7 @@ exec docker run --rm --network host --shm-size=2g \
   --user "$(id -u):$(id -g)" -e HOME=/tmp --cap-drop ALL --security-opt no-new-privileges \
   -e E2E_BASE_URL="$base" -e E2E_CREDENTIALS=/creds/admin.txt -e CI=1 \
   -e E2E_ALLOW_REMOTE="${E2E_ALLOW_REMOTE:-}" -e E2E_CANARY="${E2E_CANARY:-}" \
+  -e E2E_MAILPIT_URL="${E2E_MAILPIT_URL:-}" \
   -v "$root/web:/work:ro" -v "$(realpath "$creds"):/creds/admin.txt:ro" \
   -w /work "$image" \
   node node_modules/@playwright/test/cli.js test --output=/tmp/e2e-results "$@"
