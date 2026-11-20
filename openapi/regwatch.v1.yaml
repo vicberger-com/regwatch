@@ -932,7 +932,7 @@ components:
       properties: { name: { type: string, maxLength: 120 }, layout: { type: object }, data_source: { $ref: "#/components/schemas/ReportDataSource" }, page_size: { type: string, enum: [A4, Letter] }, orientation: { type: string, enum: [portrait, landscape] }, shared: { type: boolean } }
     ReportDataSource:
       type: object
-      properties: { saved_view_id: { type: string, format: uuid, nullable: true }, query: { $ref: "#/components/schemas/Query" }, limit: { type: integer, maximum: 5000, default: 500 } }
+      properties: { saved_view_id: { type: string, format: uuid, nullable: true }, query: { $ref: "#/components/schemas/Query" }, limit: { type: integer, minimum: 1, maximum: 5000, default: 500 } }
     OutputKind: { type: string, enum: [pdf, email, print, csv] }
     OutputRequest:
       type: object

@@ -113,3 +113,24 @@ async def test_the_data_source_is_one_the_owner_can_see(admin: httpx.AsyncClient
     made = await ana.post(_api("/reports/layouts"), json=query)
     assert made.status_code == 201 and made.json()["data_source"]["limit"] == 100
     await ana.aclose()
+
+
+async def test_sharing_never_exposes_a_private_view(admin: httpx.AsyncClient) -> None:
+    """M7.1 review: a shared layout needs a shared view; owners may always unshare."""
+    eve = await _as_new_user(admin, "eva@example.org", ["editor"])
+    eid = (await eve.get(_api("/auth/me"))).json()["id"]
+    mine = (await eve.post(_api("/views"), json={"name": "Mine", "period_days": 30})).json()
+    private = {**BODY, "data_source": {"saved_view_id": mine["id"]}}
+    refused = await eve.post(_api("/reports/layouts"), json={**private, "shared": True})
+    assert refused.status_code == 422 and "shared saved view" in refused.text
+    lid = (await eve.post(_api("/reports/layouts"), json=private)).json()["id"]
+    late = await eve.patch(_api(f"/reports/layouts/{lid}"), json={"shared": True})
+    assert late.status_code == 422
+    shared = (await eve.post(_api("/reports/layouts"), json={**BODY, "shared": True})).json()
+    demoted = await admin.patch(_api(f"/admin/users/{eid}"), json={"roles": ["analyst"]})
+    assert demoted.status_code == 200  # no reports.share any more
+    withdrawn = await eve.patch(_api(f"/reports/layouts/{shared['id']}"), json={"shared": False})
+    assert withdrawn.status_code == 200 and withdrawn.json()["shared"] is False
+    bad = await eve.post(_api("/reports/layouts"), json={**BODY, "data_source": {"limit": 0}})
+    assert bad.status_code == 422
+    await eve.aclose()

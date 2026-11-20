@@ -48,7 +48,7 @@ class ReportField(BaseModel):
 class ReportDataSource(BaseModel):
     saved_view_id: UUID | None = None
     query: Query = UNSET
-    limit: int = Field(default=500, le=5000)
+    limit: int = Field(default=500, ge=1, le=5000)
 
 
 class ReportLayout(BaseModel):

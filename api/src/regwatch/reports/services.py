@@ -106,7 +106,8 @@ async def _apply(db: AsyncSession, row: ReportLayout, body: ReportLayoutWrite,
             raise _invalid("name", "a name of plain text is required")
         row.name = name
     if values.get("shared") is not None and values["shared"] != row.shared:
-        if SHARE not in principal.permissions:
+        # Sharing needs reports.share; withdrawing never does (M7.1 review finding 2).
+        if values["shared"] and SHARE not in principal.permissions:
             raise ProblemError(403, "forbidden", "Sharing a layout needs reports.share.")
         row.shared = values["shared"]
     if "page_size" in values:
@@ -123,7 +124,22 @@ async def _apply(db: AsyncSession, row: ReportLayout, body: ReportLayoutWrite,
         query = await _data_source(db, body.data_source, principal)
         changed = changed or query != (row.query or {})
         row.query = query
+    await _shared_view(db, row)
     return changed
+
+
+async def _shared_view(db: AsyncSession, row: ReportLayout) -> None:
+    """A shared layout uses a shared saved view, or none: never shows others the owner's
+    private view (M7.1 review finding 1). The renderer checks again for whoever views it."""
+    from regwatch.search.models import SavedView
+
+    view_id = (row.query or {}).get("saved_view_id")
+    if not row.shared or view_id is None:
+        return
+    shared = await db.scalar(select(SavedView.shared).where(SavedView.id == uuid.UUID(view_id)))
+    if not shared:
+        raise _invalid("data_source.saved_view_id",
+                       "a shared layout needs a shared saved view, or a query")  # fmt: skip
 
 
 async def create_layout(db: AsyncSession, body: ReportLayoutWrite, principal: Principal,
