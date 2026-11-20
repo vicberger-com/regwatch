@@ -16,6 +16,8 @@ import {
 
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
 import { GroupsPage } from "@/features/admin/GroupsPage";
+import { BuilderPage } from "@/features/reports/BuilderPage";
+import { ReportsPage } from "@/features/reports/ReportsPage";
 import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { AuditPage } from "@/features/audit/AuditPage";
@@ -235,6 +237,35 @@ const rolesRoute = createRoute({
   },
 });
 
+const reportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports",
+  staticData: { title: "Reports" },
+  component: function Reports() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "reports.build")) return <NotPermitted />;
+    return <ReportsPage userId={me.id} />;
+  },
+});
+
+const reportRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/$id",
+  staticData: { title: "Report" },
+  component: function Report() {
+    const { me } = authedRoute.useRouteContext();
+    const { id } = reportRoute.useParams();
+    if (!hasPermission(me, "reports.build")) return <NotPermitted />;
+    return (
+      <BuilderPage
+        id={id}
+        userId={me.id}
+        canShare={hasPermission(me, "reports.share")}
+      />
+    );
+  },
+});
+
 const groupsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/groups",
@@ -318,6 +349,8 @@ export const routeTree = rootRoute.addChildren([
     taxonomyRoute,
     rolesRoute,
     groupsRoute,
+    reportsRoute,
+    reportRoute,
     flagsRoute,
     jurisdictionsRoute,
     sourcesRoute,

@@ -5,7 +5,7 @@
  * the control.
  */
 import type { LucideIcon } from "lucide-react";
-import { CircleHelp, List, Map, Settings, User } from "lucide-react";
+import { CircleHelp, FileText, List, Map, Settings, User } from "lucide-react";
 
 import { hasPermission } from "@/lib/auth/session";
 import type { Me } from "@/lib/auth/session";
@@ -153,7 +153,7 @@ export const ADMIN_PERMISSIONS = [
 ];
 
 /**
- * The shell's own commands. Reports (30) and Outputs (40) register theirs with their screens, so the rail never links to a page that does not exist yet.
+ * The shell's own commands. Outputs (40) registers its own with its screen, so the rail never links to a page that does not exist yet.
  */
 export function registerShellCommands(): void {
   registerCommand({
@@ -171,6 +171,14 @@ export function registerShellCommands(): void {
     to: "/items",
     order: 20,
     permission: "items.read",
+  });
+  registerCommand({
+    id: "nav.reports",
+    label: "Reports",
+    icon: FileText,
+    to: "/reports",
+    order: 30,
+    permission: "reports.build",
   });
   registerCommand({
     id: "nav.me",
