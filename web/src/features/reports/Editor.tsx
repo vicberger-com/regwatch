@@ -8,6 +8,7 @@
  * - Puck's loading spinner, a `<span aria-label>` with no role, is given `role="status"`.
  */
 import "@puckeditor/core/no-external.css";
+import "./editor.css";
 
 import { ActionBar, Puck, useGetPuck, type Data } from "@puckeditor/core";
 import {

@@ -1,0 +1,11 @@
+/* The report builder's own fixes to Puck 0.24.0 (BL-16): 24 px targets (WCAG 2.5.8). */
+[data-report-editor] button[title],
+[data-report-editor] [aria-roledescription="draggable"] {
+  min-height: 24px;
+  min-width: 24px;
+}
+[data-report-editor]
+  [aria-roledescription="draggable"]
+  + [aria-roledescription="draggable"] {
+  margin-top: 4px;
+}
