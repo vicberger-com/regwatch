@@ -100,7 +100,7 @@ async def check_source(db: AsyncSession, job: OutputJob, principal: Principal) -
     return layout
 
 
-async def _limited(db: AsyncSession, user_id: uuid.UUID) -> None:
+async def limited(db: AsyncSession, user_id: uuid.UUID) -> None:
     from regwatch.admin.services import values
 
     per_hour = int((await values(db, ["outputs.rate_per_hour_per_user"]))
@@ -119,8 +119,7 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
 
     if body.kind.value not in KINDS_NOW:
         raise _invalid("kind", "PDF and email for now; CSV and print come next")
-    if body.schedule is not None:
-        raise _invalid("schedule", "schedules come in M8.3")
+    planned = await _schedule(db, body, principal) if body.schedule is not None else None
     chosen = body.source.model_dump(exclude_unset=True)
     if len(chosen) != 1:
         raise _invalid("source", "exactly one of report_layout_id, report_template_key, "
@@ -142,8 +141,11 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     from regwatch.search.schemas import Query
 
     await templates.apply(db, Query(), layout.based_on_template_key, params)  # 422 early
-    await _limited(db, principal.user.id)
+    await limited(db, principal.user.id)
     job.layout_version = layout.version
+    if planned is not None and body.schedule is not None:
+        job.scheduled_cron = body.schedule.cron
+        job.next_run_at, job.schedule_timezone = planned
     db.add(job)
     await db.flush()
     await db.refresh(job)
@@ -152,10 +154,33 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
                  "layout_version": job.layout_version})  # fmt: skip
     result = out(job)
     await db.commit()
-    from regwatch.outputs.tasks import enqueue
+    if job.scheduled_cron is None:  # a schedule runs from the tick, when it falls due
+        from regwatch.outputs.tasks import enqueue
 
-    await enqueue(TASKS[job.kind], job.id)
+        await enqueue(TASKS[job.kind], job.id)
     return result
+
+
+async def _schedule(db: AsyncSession, body: OutputRequest,
+                    principal: Principal) -> tuple[datetime, str]:  # fmt: skip
+    """A checked schedule's first run and its time zone (M8.3)."""
+    from regwatch.outputs import schedules
+
+    assert body.schedule is not None  # noqa: S101 - the caller checked
+    if "outputs.schedule" not in principal.permissions:
+        raise ProblemError(403, "forbidden", "Scheduled outputs need outputs.schedule.")
+    zone = body.schedule.timezone if "timezone" in body.schedule.model_fields_set else (
+        (principal.user.preferences or {}).get("timezone") or "UTC")  # fmt: skip
+    if "cron" not in body.schedule.model_fields_set:
+        raise _invalid("schedule.cron", "a cron expression is required")
+    try:
+        first = schedules.check(body.schedule.cron, str(zone))
+    except ValueError as exc:
+        raise _invalid("schedule", str(exc)) from None
+    if await schedules.count_active(db, principal.user.id) >= schedules.MAX_SCHEDULES:
+        raise ProblemError(409, "conflict", f"At most {schedules.MAX_SCHEDULES} schedules; "
+                           "remove one first.")  # fmt: skip
+    return first, str(zone)
 
 
 async def _email_destination(db: AsyncSession, body: OutputRequest,
@@ -240,11 +265,25 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
         raise ProblemError(403, "forbidden", "Only the requester can retry an output.")
     if job.status != "failed":
         raise ProblemError(409, "conflict", "Only a failed output can be tried again.")
+    if job.scheduled_cron is not None:  # a paused schedule: resume it from now (M8.3)
+        from regwatch.capture.schedule import next_run
+
+        await check_source(db, job, principal)
+        if "outputs.schedule" not in principal.permissions:
+            raise ProblemError(403, "forbidden", "Scheduled outputs need outputs.schedule.")
+        job.status, job.error_class, job.error_message = "queued", None, None
+        job.next_run_at = next_run(job.scheduled_cron, None, job.schedule_timezone or "UTC",
+                                   datetime.now(UTC))  # fmt: skip
+        audit(db, "output.schedule_resumed", "output_job", job.id, actor=principal.user.id,
+              ip=ip)  # fmt: skip
+        resumed = out(job)
+        await db.commit()
+        return resumed
     if job.attempts >= MAX_ATTEMPTS:
         raise ProblemError(409, "conflict", f"This output was tried {job.attempts} times; "
                            "request a new one.")  # fmt: skip
     await check_source(db, job, principal)
-    await _limited(db, principal.user.id)
+    await limited(db, principal.user.id)
     job.status, job.error_class, job.error_message = "queued", None, None
     audit(db, "output.retry", "output_job", job.id, actor=principal.user.id, ip=ip)
     result = out(job)

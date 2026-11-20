@@ -20,7 +20,7 @@ from regwatch.outputs import pdf, tasks
 from regwatch.outputs.models import OutputJob
 from regwatch.reports import render
 from tests.integration.test_admin import _api, _as_new_user, admin
-from tests.integration.test_auth import clear_limits, db_url
+from tests.integration.test_auth import _login, clear_limits, db_url
 from tests.integration.test_capture_runs import db
 
 pytestmark = pytest.mark.integration
@@ -123,8 +123,6 @@ async def test_who_may_print_what(admin: httpx.AsyncClient, db: AsyncSession,
                     params={"jurisdiction": "DE"})  # fmt: skip
     assert ok.status_code == 202
     for bad in ({"kind": "email", "source": {"report_template_key": "source-health"}},
-                {"kind": "pdf", "source": {"report_template_key": "source-health"},
-                 "schedule": {"cron": "0 7 * * 1"}},
                 {"kind": "pdf", "source": {}},
                 {"kind": "pdf", "source": {"report_template_key": "source-health",
                                            "report_layout_id": shared["id"]}}):  # fmt: skip
@@ -370,3 +368,83 @@ async def test_the_bypass_addresses_are_refused(admin: httpx.AsyncClient, smtp: 
         got = await admin.post(_api("/outputs"), json=_email([bypass]))
         assert got.status_code == 422 and "single plain email address" in got.text, bypass
     assert smtp.sent == []
+
+
+WEEKLY = {"cron": "0 7 * * 1", "timezone": "Europe/Berlin"}
+
+
+async def test_a_weekly_schedule_runs_each_monday_at_seven_local(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    """Acceptance 4, with a frozen clock: one run each Monday 07:00 in the user's time zone."""
+    from zoneinfo import ZoneInfo
+
+    made = await _pdf(admin, {"report_template_key": "source-health"}, schedule=WEEKLY)
+    assert made.status_code == 202, made.text
+    sid = made.json()["id"]
+    first = datetime.fromisoformat(made.json()["next_run_at"]).astimezone(ZoneInfo("Europe/Berlin"))
+    assert (first.weekday(), first.hour, first.minute) == (0, 7, 0)
+    assert made.json()["scheduled_cron"] == "0 7 * * 1"
+    just_before = first.astimezone(UTC) - timedelta(minutes=1)
+    assert await tasks.tick_once(db, now=just_before) == 0
+    assert await tasks.tick_once(db, now=first.astimezone(UTC) + timedelta(seconds=30)) == 1
+    assert await tasks.tick_once(db, now=first.astimezone(UTC) + timedelta(minutes=5)) == 0  # once
+    shown = (await admin.get(_api(f"/outputs/{sid}"))).json()
+    nxt = datetime.fromisoformat(shown["next_run_at"]).astimezone(ZoneInfo("Europe/Berlin"))
+    assert nxt - first == timedelta(days=7) and (nxt.hour, nxt.minute) == (7, 0)
+    children = [j for j in (await admin.get(_api("/outputs"))).json()["items"] if j["id"] != sid]
+    assert len(children) == 1 and children[0]["status"] == "queued"
+    assert await tasks.run_pdf(db, uuid.UUID(sid)) == "skipped"  # the schedule never renders
+    assert await tasks.run_pdf(db, uuid.UUID(children[0]["id"])) == "sent"
+    assert (await admin.delete(_api(f"/outputs/{sid}"))).status_code == 204
+    assert await tasks.tick_once(db, now=nxt.astimezone(UTC) + timedelta(minutes=1)) == 0
+
+
+@pytest.mark.parametrize(
+    ("schedule", "message"),
+    [
+        ({"cron": "*/5 * * * *", "timezone": "UTC"}, "at least an hour"),
+        ({"cron": "0 7 * *", "timezone": "UTC"}, "five cron fields"),
+        ({"cron": "0 7 30 2 *", "timezone": "UTC"}, "never runs"),
+        ({"cron": "0 7 * * 1", "timezone": "Mars/Olympus"}, "IANA time zone"),
+    ],
+)
+async def test_bad_schedules_are_refused(
+    admin: httpx.AsyncClient, gotenberg: Gotenberg, schedule: dict[str, str], message: str
+) -> None:
+    got = await _pdf(admin, {"report_template_key": "source-health"}, schedule=schedule)
+    assert got.status_code == 422 and message in got.text, got.text
+
+
+async def test_schedules_are_capped_need_their_permission_and_pause(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    from regwatch.outputs import schedules
+
+    vic = await _as_new_user(admin, "vim@example.org", ["viewer"])  # no outputs.schedule
+    assert (await _pdf(vic, {"report_template_key": "source-health"}, schedule=WEEKLY)
+            ).status_code == 403  # fmt: skip
+    await vic.aclose()
+    monkeypatch.setattr(schedules, "MAX_SCHEDULES", 1)
+    ana = await _as_new_user(admin, "amo@example.org", ["analyst"])
+    aid = (await ana.get(_api("/auth/me"))).json()["id"]
+    sid = (await _pdf(ana, {"report_template_key": "source-health"}, schedule=WEEKLY)).json()["id"]
+    capped = await _pdf(ana, {"report_template_key": "source-health"}, schedule=WEEKLY)
+    assert capped.status_code == 409 and "At most 1 schedules" in capped.text
+    await admin.patch(_api(f"/admin/users/{aid}"), json={"status": "disabled"})
+    later = datetime.now(UTC) + timedelta(days=8)
+    assert await tasks.tick_once(db, now=later) == 0
+    shown = (await admin.get(_api(f"/outputs/{sid}"))).json()
+    assert (shown["status"], shown["error_class"], shown["next_run_at"]) == (
+        "failed",
+        "owner-inactive",
+        None,
+    )  # paused, audited
+    await admin.patch(_api(f"/admin/users/{aid}"), json={"status": "active"})
+    # Disabling ended her sessions: she signs in again to resume it.
+    assert (await _login(ana, "amo@example.org", "a long new passphrase")).status_code == 200
+    resumed = await ana.post(_api(f"/outputs/{sid}/retry"))
+    assert resumed.status_code == 202 and resumed.json()["status"] == "queued"
+    assert resumed.json()["next_run_at"] is not None
+    await ana.aclose()

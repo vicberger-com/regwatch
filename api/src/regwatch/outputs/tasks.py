@@ -73,8 +73,8 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
 
     job = await db.scalar(select(OutputJob).where(OutputJob.id == job_id, OutputJob.kind == kind)
                           .with_for_update(skip_locked=True))  # fmt: skip
-    if job is None or job.status != "queued":
-        return "skipped"
+    if job is None or job.status != "queued" or job.scheduled_cron is not None:
+        return "skipped"  # a schedule itself never renders: its runs do (M8.3)
     job.status, job.attempts = "rendering", job.attempts + 1
     await db.commit()
 
@@ -183,17 +183,26 @@ async def _run_email(job_id: uuid.UUID) -> None:
 @shared_task(name="outputs.schedule_tick", queue="outputs")  # type: ignore[untyped-decorator]
 def schedule_tick() -> None:
     """Every minute (beat): renders interrupted by a crashed worker are failed, so they can be
-    retried; scheduled outputs join this tick in M8.3."""
+    retried, and due schedules start their runs (M8.3)."""
     anyio.run(_tick)
 
 
 async def _tick() -> None:
-    from regwatch.outputs import services
-
     engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
     try:
         async with session_factory(engine)() as db:
-            if swept := await services.sweep_stale(db):
-                _log.info("outputs_swept", jobs=swept)
+            await tick_once(db)
     finally:
         await engine.dispose()
+
+
+async def tick_once(db: AsyncSession, now: datetime | None = None) -> int:
+    """One tick: sweep interrupted renders, start due schedules; how many runs started."""
+    from regwatch.outputs import schedules, services
+
+    if swept := await services.sweep_stale(db, now):
+        _log.info("outputs_swept", jobs=swept)
+    started = await schedules.tick(db, now)
+    for name, job_id in started:
+        await enqueue(name, job_id)
+    return len(started)
