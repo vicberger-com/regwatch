@@ -1108,7 +1108,9 @@ async def interest_options(db: AsyncSession) -> InterestOptions:
     """Facets shown in filters with their active terms, active jurisdictions, and regions."""
     from regwatch.search.query import CONTINENTS
     from regwatch.taxonomy.models import Facet, Jurisdiction, Term
-    from regwatch.taxonomy.services import M49_REGIONS
+    from regwatch.taxonomy.services import M49_CONTINENTS, M49_REGIONS
+
+    labels = {**M49_REGIONS, **M49_CONTINENTS}
 
     facets = (await db.scalars(select(Facet).where(Facet.show_in_filters)
                                .order_by(Facet.label))).all()  # fmt: skip
@@ -1128,9 +1130,10 @@ async def interest_options(db: AsyncSession) -> InterestOptions:
 
     used = {r for _, _, r in places if r} | set(CONTINENTS)
     regions = [
-        InterestRegion(key=code, label=M49_REGIONS.get(code, code), members=sorted(
+        InterestRegion(key=code, label=labels.get(code, code), members=sorted(
             {c for c, _, r in places if r in covered([code])} | SUPRANATIONAL.get(code, set())))
-        for code in sorted(used, key=lambda c: M49_REGIONS.get(c, c))
+        # Continents first, then sub-regions, each by name.
+        for code in sorted(used, key=lambda c: (c not in M49_CONTINENTS, labels.get(c, c)))
     ]  # fmt: skip
     return InterestOptions(
         facets=[InterestFacet(key=f.key, label=f.label, terms=by_facet.get(f.id, []))

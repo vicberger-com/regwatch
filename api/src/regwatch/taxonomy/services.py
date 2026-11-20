@@ -627,6 +627,11 @@ M49_REGIONS: dict[str, str] = {
     "053": "Australia and New Zealand", "054": "Melanesia", "057": "Micronesia",
     "061": "Polynesia",
 }  # fmt: skip
+# The M49 continents over those sub-regions (``search.query.CONTINENTS``). Jurisdictions never
+# carry them, so they are not valid ``region_code`` values.
+M49_CONTINENTS: dict[str, str] = {
+    "002": "Africa", "019": "Americas", "142": "Asia", "150": "Europe", "009": "Oceania",
+}  # fmt: skip
 CODE_PATTERNS = {
     "country": re.compile(r"[A-Z]{2}"),  # ISO 3166-1 alpha-2 (XK user-assigned)
     "subdivision": re.compile(r"[A-Z]{2}-[A-Z0-9]{1,3}"),  # ISO 3166-2

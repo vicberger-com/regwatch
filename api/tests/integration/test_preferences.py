@@ -154,6 +154,11 @@ async def test_interests_are_checked_normalised_and_offered_to_everyone(
         codes = {j["code"] for j in options["jurisdictions"]}
         europe = next(r for r in options["regions"] if r["key"] == "150")
         assert "DE" in codes and "DE" in europe["members"] and "EU" in europe["members"]
+        # Every region is named, continents first (owner report: 002, 019, 150, 009 and 142
+        # showed as numbers).
+        labels = [r["label"] for r in options["regions"]]
+        assert labels[:5] == ["Africa", "Americas", "Asia", "Europe", "Oceania"]
+        assert not any(label.isdigit() for label in labels)
         wanted = {"jurisdictions": ["de", "DE", "CN"], "regions": ["150"],
                   "terms": {facet["key"]: ["supply-chain", "supply-chain"]}}  # fmt: skip
         body = {"interests": wanted}
