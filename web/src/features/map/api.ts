@@ -22,23 +22,30 @@ export type Filters = NonNullable<Schemas["Query"]["filters"]>;
  * combine as any of within a facet, and every facet chosen must match. Without the options
  * (not loaded yet, or refused), regions are sent as they are.
  */
+export const MAX_JURISDICTIONS = 300; // the search filter's cap (CP-24)
+
 export function interestFilters(
   i: Schemas["Interests"] | undefined,
   options?: Schemas["InterestOptions"],
 ): Filters {
   const out: Filters = {};
+  const chosen = i?.jurisdictions ?? [];
   const chosenRegions = i?.regions ?? [];
   if (options && chosenRegions.length > 0) {
+    // Places are any-of: the chosen jurisdictions plus the members of the chosen regions.
     const members = options.regions
       .filter((r) => chosenRegions.includes(r.key))
       .flatMap((r) => r.members);
-    const places = [
-      ...new Set([...(i?.jurisdictions ?? []), ...members]),
-    ].sort();
-    if (places.length > 0) out.jurisdictions = places; // at most every jurisdiction (CP-24: 300)
-  } else {
-    if (i?.jurisdictions?.length) out.jurisdictions = i.jurisdictions;
-    if (chosenRegions.length) out.regions = chosenRegions;
+    const places = [...new Set([...chosen, ...members])].sort();
+    if (places.length > MAX_JURISDICTIONS)
+      out.regions = chosenRegions; // too many: regions alone
+    else if (places.length > 0) out.jurisdictions = places;
+  } else if (chosen.length > 0) {
+    // Without the region members (options not loaded), the jurisdictions alone: a part of
+    // the any-of, never the empty intersection of jurisdictions and regions.
+    out.jurisdictions = chosen;
+  } else if (chosenRegions.length > 0) {
+    out.regions = chosenRegions;
   }
   const terms = Object.fromEntries(
     Object.entries(i?.terms ?? {}).filter(([, keys]) => keys.length > 0),
