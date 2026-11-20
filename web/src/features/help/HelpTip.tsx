@@ -24,7 +24,7 @@ export function HelpTip({ id }: { id: string }) {
     if (!shown) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      e.stopPropagation(); // this tip's Escape only
+      e.stopImmediatePropagation(); // this tip's Escape only (listener runs first: capture)
       setOpen(false);
       setHover(false); // hidden until the pointer leaves and returns (WCAG 1.4.13 dismissible)
     };
@@ -32,10 +32,10 @@ export function HelpTip({ id }: { id: string }) {
       if (box.current && !box.current.contains(e.target as Node))
         setOpen(false);
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerdown", onPointer);
     return () => {
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [shown]);
@@ -78,12 +78,12 @@ export function HelpTip({ id }: { id: string }) {
         <Info aria-hidden="true" className="h-4 w-4" />
         <span className="sr-only">About {topic.title}</span>
       </button>
-      {/* The live region is always present and its text is added when the tip opens, so the
-          tip is announced reliably. Padding, not margin, above the tip: no hover gap. */}
+      {/* The live region is always displayed (empty while closed) and its text is added when
+          the tip opens, so the tip is announced reliably. Padding, not margin, above the tip: no hover gap. */}
       <span
         id={tipId}
         aria-live="polite"
-        className={`absolute left-0 top-full z-30 w-72 pt-1 ${shown ? "block" : "hidden"}`}
+        className={`absolute left-0 top-full z-30 w-72 pt-1 ${shown ? "" : "pointer-events-none"}`}
       >
         {shown && (
           <span className="block rounded border border-border bg-surface p-3 text-sm font-normal text-text shadow-menu">
