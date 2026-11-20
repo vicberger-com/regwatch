@@ -98,6 +98,29 @@ async def test_unknown_fields_are_not_stored(admin: httpx.AsyncClient) -> None:
         await alice.aclose()
 
 
+async def test_a_stored_value_no_longer_valid_falls_back(admin: httpx.AsyncClient,
+                                                         db: Any) -> None:  # fmt: skip
+    """M9 review info 1: a value a later schema refuses never locks the user out."""
+    from sqlalchemy import update
+
+    from regwatch.identity.models import User
+
+    alice, email = await viewer(admin)
+    try:
+        await db.execute(
+            update(User)
+            .where(User.email == email)
+            .values(preferences={"font_scale": 999, "theme": "dark", "x": 1})
+        )
+        await db.commit()
+        got = await alice.get(_api("/me/preferences"))
+        assert got.status_code == 200 and got.json()["font_scale"] == 100
+        assert got.json()["theme"] == "dark"
+        assert (await alice.get(_api("/auth/me"))).status_code == 200
+    finally:
+        await alice.aclose()
+
+
 async def test_anonymous_callers_have_no_preferences(admin: httpx.AsyncClient) -> None:
     anon = httpx.AsyncClient(transport=admin._transport, base_url="https://localhost",
                              headers=ORIGIN)  # fmt: skip

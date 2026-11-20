@@ -1,6 +1,11 @@
 import { Outlet, useNavigate, useRouteContext } from "@tanstack/react-router";
 
-import { useLogout } from "@/lib/auth/session";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+
+import { meQuery, useLogout } from "@/lib/auth/session";
+
+import { applyAppearance, resolve, systemIsDark } from "./appearance";
 
 import { BrandMark, Footer } from "./BrandingShell";
 import { LeftRail } from "./LeftRail";
@@ -14,6 +19,13 @@ export function AppShell() {
   const { me } = useRouteContext({ from: "/authed" });
   const logout = useLogout();
   const navigate = useNavigate();
+  // The signed-in user's appearance, applied at once and on every change (M9 acceptance 1);
+  // the live query, since the route context keeps the user as it was at sign-in.
+  const live = useQuery(meQuery).data ?? me;
+  const prefs = live.preferences;
+  useEffect(() => {
+    applyAppearance(resolve(prefs, systemIsDark()));
+  }, [prefs]);
 
   return (
     <div className="flex min-h-screen flex-col bg-bg text-text">

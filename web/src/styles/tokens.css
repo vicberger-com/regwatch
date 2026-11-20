@@ -35,12 +35,14 @@
   --font-sans:
     "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Roboto, sans-serif;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-base: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
+  /* Font scale (M9): 1 to 2, set on <html> from the user's preference. */
+  --font-scale: 1;
+  --text-xs: calc(12px * var(--font-scale));
+  --text-sm: calc(13px * var(--font-scale));
+  --text-base: calc(14px * var(--font-scale));
+  --text-lg: calc(16px * var(--font-scale));
+  --text-xl: calc(20px * var(--font-scale));
+  --text-2xl: calc(24px * var(--font-scale));
   --leading: 1.45;
 
   /* Spacing: 4 px base. Density (M9) multiplies paddings: 0.85 compact, 1 default, 1.2 comfortable. */
@@ -133,7 +135,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root:not([data-motion="full"]) {
     --motion-duration: 0ms;
   }
+}
+
+/* M9: the user's own choices win over the system's. */
+:root[data-motion="reduce"] {
+  --motion-duration: 0ms;
+}
+:root[data-hit="large"] {
+  --hit-target: 44px; /* the accessibility preset's larger targets */
 }

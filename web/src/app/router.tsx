@@ -32,6 +32,7 @@ import { AdminHome } from "@/features/admin/AdminHome";
 import { ItemPage } from "@/features/items/ItemPage";
 import { ItemsPage, parseItemsSearch } from "@/features/items/ItemsPage";
 import { MapPage } from "@/features/map/MapPage";
+import { MePage } from "@/features/me/MePage";
 
 import { AppShell } from "./AppShell";
 import { ADMIN_PERMISSIONS, registerShellCommands } from "./commands";
@@ -142,6 +143,13 @@ const itemRoute = createRoute({
     if (!hasPermission(me, "items.read")) return <NotPermitted />;
     return <ItemPage id={id} />;
   },
+});
+
+const meRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/me",
+  staticData: { title: "User" },
+  component: MePage,
 });
 
 const adminHomeRoute = createRoute({
@@ -283,6 +291,7 @@ export const routeTree = rootRoute.addChildren([
     changePasswordRoute,
     itemsRoute,
     itemRoute,
+    meRoute,
     adminHomeRoute,
     usersRoute,
     taxonomyRoute,

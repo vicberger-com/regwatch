@@ -22,6 +22,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from typing import Any
 
 from fastapi import Request, Response
@@ -328,7 +329,7 @@ def to_me(user: User, roles: tuple[str, ...], perms: frozenset[str]) -> Me:
         last_login_at=user.last_login_at,
         created_at=user.created_at,
         permissions=sorted(perms),
-        preferences=Preferences.model_validate(user.preferences or {}),
+        preferences=stored_preferences(user.preferences),
     )
 
 
@@ -980,9 +981,31 @@ async def list_permissions(db: AsyncSession) -> list[PermissionOut]:
 LOCALES = frozenset({"en"})  # UI strings shipped (M9 Q1: English; other locales are backlog E10)
 
 
+def stored_preferences(raw: dict[str, Any] | None) -> Preferences:
+    """The stored preferences, field by field: a value a later schema no longer accepts is
+    dropped (back to its default), so it can never lock the user out (M9 review, info 1)."""
+    kept: dict[str, Any] = {}
+    for key, value in (raw or {}).items():
+        if key not in Preferences.model_fields:
+            continue
+        try:
+            Preferences.model_validate({key: value})
+        except ValueError:
+            continue
+        kept[key] = value
+    return Preferences.model_validate(kept)
+
+
+@cache
+def _timezones() -> frozenset[str]:
+    from zoneinfo import available_timezones
+
+    return frozenset(available_timezones())
+
+
 def preferences_of(user: User, cfg: dict[str, int]) -> Preferences:
     """The stored preferences over the defaults, with the idle timeout actually in force."""
-    stored = Preferences.model_validate(user.preferences or {})
+    stored = stored_preferences(user.preferences)
     # Every field set explicitly, so the answer carries the defaults too (unset fields are
     # left out of responses).
     fields = {name: getattr(stored, name) for name in Preferences.model_fields
@@ -999,14 +1022,12 @@ async def update_preferences(db: AsyncSession, principal: Principal,
     """Merge the fields given into ``user.preferences`` (M9 acceptance 1: they follow the user
     to every device). Checked: the time zone is an IANA name, the locale is one the UI ships,
     the landing view is one the user can see, the idle timeout is within the admin's ceiling."""
-    from zoneinfo import available_timezones
-
     from regwatch.search.models import SavedView
 
     changes = body.model_dump(mode="json", exclude_unset=True)
     cfg = await auth_settings(db)
     errors: list[ProblemFieldError] = []
-    if "timezone" in changes and changes["timezone"] not in available_timezones():
+    if "timezone" in changes and changes["timezone"] not in _timezones():
         errors.append(
             ProblemFieldError(field="timezone", message="an IANA time zone, such as Europe/Berlin")
         )

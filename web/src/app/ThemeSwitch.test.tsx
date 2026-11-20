@@ -1,10 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render as renderRaw, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 
 import { THEME_STORAGE_KEY } from "./theme";
 import { ThemeSwitch } from "./ThemeSwitch";
 
 const html = () => document.documentElement;
+// Signed out (no user in the cache), so the switch saves nothing to the server.
+const render = (ui: ReactElement) =>
+  renderRaw(
+    <QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>,
+  );
 
 describe("ThemeSwitch", () => {
   it("cycles light, dark and high contrast without a reload and persists each choice", async () => {

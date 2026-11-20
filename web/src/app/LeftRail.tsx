@@ -1,6 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
 import { Pin, PinOff } from "lucide-react";
 import { useState } from "react";
+
+import { meQuery } from "@/lib/auth/session";
 
 import { railCommands } from "./commands";
 
@@ -20,9 +23,16 @@ function readPinned(): boolean {
  */
 export function LeftRail() {
   const { me } = useRouteContext({ from: "/authed" });
-  const [pinned, setPinned] = useState(readPinned);
+  const [pinnedByHand, setPinned] = useState(readPinned);
+  // Labels always shown when the user's preferences say so (M9 toolbar labels, the preset).
+  // The live query: the route context keeps the user as it was at sign-in.
+  const prefs = (useQuery(meQuery).data ?? me).preferences;
+  const pinned =
+    pinnedByHand ||
+    prefs?.toolbar_labels === "always" ||
+    prefs?.accessibility_preset === true;
   const toggle = () => {
-    const next = !pinned;
+    const next = !pinnedByHand;
     setPinned(next);
     try {
       localStorage.setItem(PINNED_KEY, next ? "1" : "0");
