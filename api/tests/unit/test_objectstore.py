@@ -25,6 +25,15 @@ async def test_put_then_get(store: Path) -> None:
     assert not [p for p in (store / "branding").iterdir() if p.name.startswith(".tmp-")]
 
 
+async def test_delete_removes_and_tolerates_a_missing_object(store: Path) -> None:
+    await objectstore.put("outputs/a.pdf", b"x")
+    await objectstore.delete("outputs/a.pdf")
+    assert await objectstore.get("outputs/a.pdf") is None
+    await objectstore.delete("outputs/a.pdf")  # already gone: nothing to do
+    with pytest.raises(objectstore.ObjectStoreError):
+        await objectstore.delete("../outside")
+
+
 async def test_missing_object_is_none(store: Path) -> None:
     assert await objectstore.get("branding/none.png") is None
 

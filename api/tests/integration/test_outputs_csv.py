@@ -125,7 +125,7 @@ async def test_a_large_export_stops_between_rows_and_says_so(
     made = (await _csv(admin, {"query": {"q": tag, "columns": ["title"]}})).json()["id"]
     real_build = csv_out.build
 
-    async def small(db: AsyncSession, src: csv_out.QuerySource) -> tuple[bytes, bool]:
+    async def small(db: AsyncSession, src: csv_out.QuerySource, _: int) -> tuple[bytes, bool]:
         return await real_build(db, src, max_bytes=100)  # the header and one batch
 
     monkeypatch.setattr(csv_out, "build", small)

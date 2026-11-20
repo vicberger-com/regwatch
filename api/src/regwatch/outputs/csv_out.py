@@ -5,8 +5,9 @@ checks, columns, row cap, order, UTF-8 with a BOM, and cells escaped against for
 injection. What differs:
 - It runs in the outputs worker, under the requester's *current* rights on each run
   (``outputs.csv`` and ``items.read``; a saved view only while they can still see it).
-- A file stops before ``MAX_BYTES``, between whole batches of rows, with a ``#`` line saying
-  so, as the stream ends one that takes too long; the job records that it was cut short.
+- A file stops before ``outputs.attachment_max_bytes`` (20 MB by default), between whole
+  batches of rows, with a ``#`` line saying so, as the stream ends one that takes too long;
+  the job records that it was cut short.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from regwatch.core.errors import ProblemError
 from regwatch.identity.services import Principal
 from regwatch.search.schemas import Query
 
-MAX_BYTES = 50 * 1024 * 1024  # held in the worker's memory, then stored
+MAX_BYTES = 20 * 1024 * 1024  # the setting's default; held in the worker's memory, then stored
 NEEDS = ("outputs.csv", "items.read")
 
 

@@ -102,7 +102,9 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
                 destination.get("emails", []),
                 list(settings["outputs.allowed_recipient_domains"] or []))  # fmt: skip
         if kind == "csv":
-            data, cut = await csv_out.build(db, layout)
+            data, cut = await csv_out.build(
+                db, layout, int(settings["outputs.attachment_max_bytes"])
+            )
         else:
             html = await render_layout(db, layout, principal,
                                        destination.get("report_params", {}))  # fmt: skip
@@ -225,11 +227,14 @@ async def _tick() -> None:
 
 
 async def tick_once(db: AsyncSession, now: datetime | None = None) -> int:
-    """One tick: sweep interrupted renders, start due schedules; how many runs started."""
+    """One tick: sweep interrupted renders and expired files, start due schedules; how many
+    runs started."""
     from regwatch.outputs import schedules, services
 
     if swept := await services.sweep_stale(db, now):
         _log.info("outputs_swept", jobs=swept)
+    if expired := await services.sweep_retention(db, now):
+        _log.info("outputs_expired", jobs=expired)
     started = await schedules.tick(db, now)
     for name, job_id in started:
         await enqueue(name, job_id)

@@ -329,6 +329,32 @@ async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     await db.commit()
 
 
+RETENTION_BATCH = 500  # files removed a tick at most
+
+
+async def sweep_retention(db: AsyncSession, now: datetime | None = None) -> int:
+    """Remove output files older than ``outputs.artifact_retention_days`` (M8.7; 90 by
+    default); the jobs and their history stay. How many."""
+    from regwatch.admin.services import values
+    from regwatch.core import objectstore
+
+    days = int((await values(db, ["outputs.artifact_retention_days"]))
+               ["outputs.artifact_retention_days"])  # fmt: skip
+    limit = (now or datetime.now(UTC)) - timedelta(days=max(1, days))
+    old = (await db.scalars(select(OutputJob).where(
+        OutputJob.artifact_ref.is_not(None), OutputJob.finished_at < limit)
+        .order_by(OutputJob.finished_at).limit(RETENTION_BATCH)
+        .with_for_update(skip_locked=True))).all()  # fmt: skip
+    for job in old:
+        await objectstore.delete(str(job.artifact_ref))  # the file first: never a lost ref
+        job.artifact_ref = None
+    if old:
+        audit(db, "output.artifacts_expired", "output_job", None,
+              after={"days": max(1, days), "jobs": [str(j.id) for j in old]})  # fmt: skip
+    await db.commit()
+    return len(old)
+
+
 DELETED = "deleted_source"  # in ``query`` of a job whose layout or saved view was deleted
 
 

@@ -513,3 +513,27 @@ async def test_a_printed_layout_can_still_be_deleted(
                                                  AuditLog.entity_id == sid))  # fmt: skip
     assert row is not None and str(row.actor_user_id) == me  # who deleted the layout
     assert row.after["reason"] == "source-deleted" and row.after["owner"] == me
+
+
+async def test_files_older_than_the_retention_are_removed_and_jobs_kept(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg, tmp_path: Path
+) -> None:
+    """M8.7: a file past ``outputs.artifact_retention_days`` goes; the job stays in history."""
+    source = {"report_template_key": "source-health"}
+    old, new = [(await _pdf(admin, source)).json()["id"] for _ in range(2)]
+    for job in (old, new):
+        assert await tasks.run_pdf(db, uuid.UUID(job)) == "sent"
+    days = await admin.put(_api("/admin/settings/outputs.artifact_retention_days"),
+                           json={"value": 30})  # fmt: skip
+    assert days.status_code == 200, days.text
+    await db.execute(update(OutputJob).where(OutputJob.id == uuid.UUID(old))
+                     .values(finished_at=datetime.now(UTC) - timedelta(days=31)))  # fmt: skip
+    await db.commit()
+    assert (tmp_path / "outputs" / f"{old}.pdf").exists()
+    await tasks.tick_once(db)
+    assert not (tmp_path / "outputs" / f"{old}.pdf").exists()
+    gone = (await admin.get(_api(f"/outputs/{old}"))).json()
+    assert (gone["status"], gone["artifact_available"]) == ("sent", False)
+    assert (await admin.get(_api(f"/outputs/{old}/artifact"))).status_code == 404
+    kept = (await admin.get(_api(f"/outputs/{new}"))).json()
+    assert kept["artifact_available"] and (tmp_path / "outputs" / f"{new}.pdf").exists()

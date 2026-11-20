@@ -64,3 +64,8 @@ async def put(key: str, data: bytes) -> None:
 async def get(key: str) -> bytes | None:
     """The object's bytes, or None when there is no such object."""
     return await asyncio.to_thread(_read, _path(key))
+
+
+async def delete(key: str) -> None:
+    """Remove the object; nothing when there is none (retention, M8.7)."""
+    await asyncio.to_thread(_path(key).unlink, missing_ok=True)

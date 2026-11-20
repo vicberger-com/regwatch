@@ -323,14 +323,14 @@ const SETTINGS: Topic[] = [
   T(
     "Settings",
     "outputs.attachment_max_bytes",
-    "Largest email attachment",
-    "The largest attachment a report email may carry (20 MB by default).",
+    "Largest output file",
+    "The largest PDF or CSV an output may produce, and so the largest email attachment (20 MB by default). A CSV that would be larger stops at a whole row, with a last line saying so.",
   ),
   T(
     "Settings",
     "outputs.artifact_retention_days",
     "Output retention",
-    "Not in use yet: no part of the application reads this setting today (BL-134). Intended: how many days generated reports and exports are kept.",
+    "How many days the files of outputs (PDFs and CSVs) are kept (90 by default). Older files are removed; the output stays in the history, without its download.",
   ),
   T(
     "Settings",
