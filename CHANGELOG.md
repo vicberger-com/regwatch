@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- M6 table view (acceptance 5, REQ-18): the map page shows its data as a map or as a table of jurisdictions (or regions) with changes, sortable by name, items changed, last change and highest severity, with `aria-sort` on the sorted column; choosing a row opens the side panel (Refs: REQ-06, REQ-18).
 - M6 high contrast (ADR-0004 decision 7): in the high-contrast theme every map step has its own hatch pattern (sparse, anti-diagonal, cross, dense) in black or white over its grey, and the legend shows the same patterns; `/items` shows its active filters as removable chips (Refs: REQ-18, REQ-06).
 - M6 view selector (acceptance 2): the map's View is Country, Region (member countries shaded with their region) or a facet term such as Industry: Finance, which filters the map, the side panel and its items link (`/items?t=facet:term`) (Refs: REQ-06, REQ-08).
 - M6 items (REQ-07): `/items` searches by words, sort, page, jurisdictions and days from the URL, with escaped highlights and a result caption. `/items/:id` has Summary, Content (with the translation toggle), Versions and Diff tabs; the diff shows +/- markers and labels, so meaning never rests on colour alone. On the map, a selected jurisdiction opens a side panel with counts by severity, its latest ten changes and a link to its items; Escape closes the panel and focus returns (Refs: REQ-06, REQ-07, REQ-17).

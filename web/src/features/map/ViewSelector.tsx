@@ -11,7 +11,12 @@ export function flatTerms(
   return list
     .filter(
       (t) =>
-        t.active && typeof t.key === "string" && typeof t.label === "string",
+        typeof t === "object" &&
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- answers are unchecked
+        t !== null &&
+        t.active &&
+        typeof t.key === "string" &&
+        typeof t.label === "string",
     )
     .flatMap((t) => [
       { key: t.key, label: `${"  ".repeat(depth)}${t.label}` },
@@ -36,6 +41,9 @@ export function ViewSelector(props: {
     : [];
   const facets = given.filter(
     (f) =>
+      typeof f === "object" &&
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- answers are unchecked
+      f !== null &&
       f.show_in_view_selector &&
       typeof f.key === "string" &&
       typeof f.label === "string",

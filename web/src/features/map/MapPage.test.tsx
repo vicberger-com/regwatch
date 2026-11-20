@@ -300,7 +300,18 @@ describe("map page", () => {
         200,
         { ...ADMIN, permissions: ["items.read", "taxonomy.read"] },
       ],
-      "GET /taxonomy/facets": [200, { not: "a list" }],
+      "GET /taxonomy/facets": [
+        200,
+        [
+          null,
+          {
+            key: "industry",
+            label: "Industry",
+            show_in_view_selector: true,
+            terms: [null],
+          },
+        ],
+      ],
       "GET /jurisdictions/regions": [
         200,
         [{ code: 155, jurisdiction_codes: "DE" }, null],
@@ -309,7 +320,47 @@ describe("map page", () => {
     });
     renderAt("/");
     expect(await screen.findByRole("listbox")).toBeInTheDocument();
-    expect(screen.getByLabelText("View")).toBeInTheDocument();
+    const view = screen.getByLabelText("View");
+    await within(view).findByRole("option", { name: "Industry" });
+    await userEvent.selectOptions(view, "facet:industry");
+    expect(
+      within(screen.getByLabelText("Industry")).getAllByRole("option"),
+    ).toHaveLength(1);
+  });
+
+  it("shows the same data as a sortable table", async () => {
+    fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    await screen.findByRole("listbox");
+    await userEvent.click(screen.getByRole("radio", { name: "Table" }));
+    const table = screen.getByRole("table", {
+      name: /3 jurisdictions with changes/,
+    });
+    const names = () =>
+      within(table)
+        .getAllByRole("rowheader")
+        .map((h) => h.textContent);
+    expect(names()).toEqual(["Germany", "European Union", "France"]); // last change, newest first
+    expect(
+      within(table).getByRole("columnheader", { name: /Last change/ }),
+    ).toHaveAttribute("aria-sort", "descending");
+    await userEvent.click(
+      within(table).getByRole("button", { name: /Items changed/ }),
+    );
+    expect(names()).toEqual(["Germany", "European Union", "France"]); // most first
+    await userEvent.click(
+      within(table).getByRole("button", { name: /Items changed/ }),
+    );
+    expect(names()).toEqual(["France", "European Union", "Germany"]); // then fewest first
+    await userEvent.click(
+      within(table).getByRole("button", { name: "France" }),
+    );
+    expect(
+      await screen.findByRole("complementary", { name: "France" }),
+    ).toBeInTheDocument();
   });
 
   it("shades the member countries in the region view", async () => {

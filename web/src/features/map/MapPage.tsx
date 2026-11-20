@@ -8,6 +8,7 @@ import { hasPermission, problemText } from "@/lib/auth/session";
 
 import { activityQuery, PERIODS, type MapView } from "./api";
 import { jurisdictionName } from "./names";
+import { ActivityTable } from "./ActivityTable";
 import { JurisdictionList } from "./JurisdictionList";
 import { JurisdictionPanel } from "./JurisdictionPanel";
 import {
@@ -57,6 +58,7 @@ export function validRegions(
 export function MapPage() {
   const [period, setPeriod] = useState<number>(30);
   const [encoding, setEncoding] = useState<Encoding>("recency");
+  const [asTable, setAsTable] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [view, setViewState] = useState<MapView>({ by: "country" });
   const { me } = useRouteContext({ from: "/authed" });
@@ -156,6 +158,24 @@ export function MapPage() {
         role="group"
         aria-label="Map options"
       >
+        <fieldset className="flex flex-col text-sm">
+          <legend>Show as</legend>
+          <div className="mt-1 flex gap-3">
+            {(["Map", "Table"] as const).map((label) => (
+              <label key={label} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="show-as"
+                  checked={asTable === (label === "Table")}
+                  onChange={() => {
+                    setAsTable(label === "Table");
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <label className="flex flex-col text-sm">
           Period
           <select
@@ -213,36 +233,50 @@ export function MapPage() {
       )}
       <div className="mt-3 grid gap-4 lg:grid-cols-[1fr_20rem]">
         <div>
-          <WorldMap
-            label={`Map of change activity in ${periodText}, coloured by ${encoding}; the list of jurisdictions has the same information`}
-            steps={steps}
-            selected={view.by === "region" ? null : selected}
-            onSelect={(code) => {
-              setSelected(
-                view.by === "region" ? (regionOf.get(code) ?? null) : code,
-              );
-            }}
-            describe={describe}
-          />
-          <ol aria-label="Legend" className="mt-2 flex flex-wrap gap-3 text-sm">
-            {labels.map((text, i) => (
-              <li key={i} className="flex items-center gap-1">
-                <span
-                  aria-hidden="true"
-                  className="inline-block h-3 w-6 rounded-sm border border-border"
-                  style={{
-                    backgroundColor: `var(--map-${String(i)})`,
-                    backgroundImage: `var(--map-pattern-${String(i)})`,
-                  }}
-                />
-                {text || <span className="sr-only">step {String(i)}</span>}
-              </li>
-            ))}
-          </ol>
-          <p className="mt-1 text-sm text-text-muted">
-            Boundaries from Natural Earth; disputed areas are drawn neutral. The
-            map implies no endorsement of any boundary or claim.
-          </p>
+          {asTable ? (
+            <ActivityTable
+              rows={rows}
+              nameOf={nameOf}
+              caption={`${plural(entries.length, view.by === "region" ? "region" : "jurisdiction", view.by === "region" ? "regions" : "jurisdictions")} with changes in ${periodText}; choose a column to sort`}
+              onSelect={setSelected}
+            />
+          ) : (
+            <>
+              <WorldMap
+                label={`Map of change activity in ${periodText}, coloured by ${encoding}; the list of jurisdictions has the same information`}
+                steps={steps}
+                selected={view.by === "region" ? null : selected}
+                onSelect={(code) => {
+                  setSelected(
+                    view.by === "region" ? (regionOf.get(code) ?? null) : code,
+                  );
+                }}
+                describe={describe}
+              />
+              <ol
+                aria-label="Legend"
+                className="mt-2 flex flex-wrap gap-3 text-sm"
+              >
+                {labels.map((text, i) => (
+                  <li key={i} className="flex items-center gap-1">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-3 w-6 rounded-sm border border-border"
+                      style={{
+                        backgroundColor: `var(--map-${String(i)})`,
+                        backgroundImage: `var(--map-pattern-${String(i)})`,
+                      }}
+                    />
+                    {text || <span className="sr-only">step {String(i)}</span>}
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-1 text-sm text-text-muted">
+                Boundaries from Natural Earth; disputed areas are drawn neutral.
+                The map implies no endorsement of any boundary or claim.
+              </p>
+            </>
+          )}
         </div>
         <div className="flex flex-col gap-4">
           {selected && (
