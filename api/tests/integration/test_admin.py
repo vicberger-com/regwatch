@@ -121,7 +121,7 @@ async def test_role_lifecycle_and_guards(admin: httpx.AsyncClient) -> None:
                               json={"permissions": ["items.read"]})  # fmt: skip
     assert strip.status_code == 422
     perms = (await admin.get(_api("/admin/permissions"))).json()
-    assert len(perms) == 23 and perms[0]["key"] == "audit.read"
+    assert len(perms) == 24 and perms[0]["key"] == "audit.read"
 
 
 async def test_last_manager_cannot_be_removed(admin: httpx.AsyncClient) -> None:

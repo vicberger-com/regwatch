@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Added
+- M7.1 report layouts (REQ-13, acceptance 2). `GET /reports/fields` serves the field whitelist: item, source and jurisdiction fields, and one per visible facet. `/reports/layouts` creates, lists, reads, updates and deletes layouts. Each layout is Puck data, checked component by component before it is stored: nine components (Heading, Paragraph, FieldValue, ItemsTable, ChangeList, JurisdictionSummary, PageBreak, HeaderFooter, LegalMarkings); unknown types or props, text with control characters, fields off the whitelist, unsortable sorts, repeated ids, `zones` and layouts over 256 KB are refused. A layout is private until its owner shares it (`reports.share`); `reports.read_all` (CP-30, administrators) sees all; only the owner changes or deletes it. Its data source is a saved view the owner can see, or a query. A new layout or data source moves the version on. Each change is audited (Refs: REQ-12, REQ-13, BL-140).
+
 ## [G3] - 2026-11-20
 
 ### Fixed

@@ -14,6 +14,7 @@ permissions:
   reports.build:         { module: M7, description: Use the report builder and save layouts }
   reports.print:         { module: M7, description: Print or render stock reports and own layouts }
   reports.share:         { module: M7, description: Share a layout with all users }
+  reports.read_all:      { module: M7, description: See every user's report layouts }   # CP-30
   outputs.pdf:           { module: M8, description: Request PDF rendering }
   outputs.email:         { module: M8, description: Send outputs by email }
   outputs.print:         { module: M8, description: Send outputs to a registered printer }

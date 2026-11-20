@@ -1,13 +1,18 @@
-"""Report template, field and layout routes; mounted under /api/v1. Stubs until M7."""
+"""Report template, field and layout routes; mounted under /api/v1 (M7). Templates and the
+preview are stubs until M7.2 and M7.3."""
 
 from __future__ import annotations
 
 from typing import NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, Response
 
+from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, spec
+from regwatch.identity.permissions import CurrentPrincipal
+from regwatch.identity.services import client_ip
+from regwatch.reports import fields, services
 from regwatch.reports.schemas import (
     ReportField,
     ReportLayout,
@@ -37,41 +42,52 @@ async def instantiate_template(key: str) -> NoReturn:
 
 @router.get(
     "/reports/fields",
-    **spec(list[ReportField], desc="Whitelisted fields for the builder", perm=BUILD),
+    **spec(list[ReportField], desc="Whitelisted fields for the builder", perm=BUILD, stub=False),
 )
-async def list_fields() -> NoReturn:
-    not_implemented()
+async def list_fields(db: DbSession) -> list[ReportField]:
+    return await fields.report_fields(db)
 
 
 @router.get(
-    "/reports/layouts", **spec(list[ReportLayout], desc="Own and shared layouts", perm=BUILD)
+    "/reports/layouts",
+    **spec(list[ReportLayout], desc="Own and shared layouts", perm=BUILD, stub=False),
 )
-async def list_layouts() -> NoReturn:
-    not_implemented()
+async def list_layouts(principal: CurrentPrincipal, db: DbSession) -> list[ReportLayout]:
+    return await services.list_layouts(db, principal)
 
 
 @router.post(
-    "/reports/layouts", **spec(ReportLayout, status=201, desc="Created", perm=BUILD, errors=(422,))
+    "/reports/layouts",
+    **spec(ReportLayout, status=201, desc="Created", perm=BUILD, errors=(422,), stub=False),
 )
-async def create_layout(body: ReportLayoutWrite) -> NoReturn:
-    not_implemented()
+async def create_layout(
+    body: ReportLayoutWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> ReportLayout:
+    return await services.create_layout(db, body, principal, client_ip(request))
 
 
-@router.get("/reports/layouts/{id}", **spec(ReportLayout, desc="Layout", perm=BUILD))
-async def get_layout(id: UUID) -> NoReturn:
-    not_implemented()
+@router.get("/reports/layouts/{id}", **spec(ReportLayout, desc="Layout", perm=BUILD, stub=False))
+async def get_layout(id: UUID, principal: CurrentPrincipal, db: DbSession) -> ReportLayout:
+    return services.out(await services.get_layout(db, id, principal))
 
 
 @router.patch(
-    "/reports/layouts/{id}", **spec(ReportLayout, desc="Updated; version incremented", perm=BUILD)
+    "/reports/layouts/{id}",
+    **spec(ReportLayout, desc="Updated; version incremented", perm=BUILD, stub=False),
 )
-async def update_layout(id: UUID, body: ReportLayoutWrite) -> NoReturn:
-    not_implemented()
+async def update_layout(
+    id: UUID, body: ReportLayoutWrite, principal: CurrentPrincipal, request: Request,
+    db: DbSession,
+) -> ReportLayout:  # fmt: skip
+    return await services.update_layout(db, id, body, principal, client_ip(request))
 
 
-@router.delete("/reports/layouts/{id}", **spec(status=204, desc="Deleted", perm=BUILD))
-async def delete_layout(id: UUID) -> NoReturn:
-    not_implemented()
+@router.delete("/reports/layouts/{id}", **spec(status=204, desc="Deleted", perm=BUILD, stub=False))
+async def delete_layout(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await services.delete_layout(db, id, principal, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.post(

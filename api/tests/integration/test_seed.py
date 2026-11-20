@@ -18,9 +18,9 @@ TABLES = (
     "term", "source", "capture_job",
 )  # fmt: skip
 EXPECTED = {
-    "permission": 23,
+    "permission": 24,
     "role": 4,
-    "role_permission": 23 + 15 + 10 + 4,
+    "role_permission": 24 + 15 + 10 + 4,
     "setting": 40,
     "feature_flag": 8,
     "jurisdiction": 250 + 5,
@@ -84,7 +84,7 @@ def test_seeded_rows_follow_the_sources(postgres: Postgres, empty_db: str) -> No
     )
     assert q(empty_db, "SELECT count(*) FROM jurisdiction WHERE kind='supranational';") == "5\n"
     admin = "SELECT count(*) FROM role_permission rp JOIN role r ON r.id = rp.role_id"
-    assert q(empty_db, f"{admin} WHERE r.key = 'admin';") == "23\n"
+    assert q(empty_db, f"{admin} WHERE r.key = 'admin';") == "24\n"
     children = (
         "SELECT count(*) FROM term t JOIN facet f ON f.id = t.facet_id "
         "WHERE f.key = 'control_framework' AND t.parent_id IS NOT NULL;"

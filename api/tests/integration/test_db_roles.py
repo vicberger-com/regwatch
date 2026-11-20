@@ -130,4 +130,4 @@ def test_seed_runs_as_the_api_login(postgres: Postgres, migrated: str) -> None:
 
     seed_dir = Path(__file__).resolve().parents[2] / "seed"
     counts = asyncio.run(seed.run(seed_dir, postgres.app_url(migrated)))
-    assert counts["permission"] == 23 and counts["role"] == 4
+    assert counts["permission"] == 24 and counts["role"] == 4
