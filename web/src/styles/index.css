@@ -21,9 +21,9 @@
 
 /*
  * Browser printing (M8.5; screens.md "Print"; R-04: browser print at launch, the server print
- * bridge behind its flag). Paper gets the page and the footer with its required markings, in
- * dark ink on white whatever the theme, without the header, the rail or the page's buttons and
- * forms, and with table headers repeated on each page.
+ * bridge behind its flag). Paper gets the page in dark ink on white whatever the theme, without
+ * the header and the rail, with table headers repeated on each page; the required markings and
+ * page numbers are in each page's margin (printMarkings.ts), and in the footer at the end.
  */
 @media print {
   :root,
@@ -43,10 +43,14 @@
     padding: 0 !important;
   }
 
-  main button,
-  main [role="tablist"],
-  main form {
-    display: none !important;
+  /* Buttons stay on paper as plain text: some carry data, such as the place names and column
+     headings of the map's table (M8.5 review). */
+  main button {
+    border: 0 !important;
+    background: none !important;
+    padding: 0 !important;
+    color: inherit !important;
+    text-decoration: none !important;
   }
 
   thead {

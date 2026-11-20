@@ -220,3 +220,88 @@ test("a stock report is emailed with its PDF and arrives in Mailpit (M8 acceptan
     await page.request.put(setting, { headers, data: { value: before } });
   }
 });
+
+test("the PDF has the preview's pages (M8 acceptance 1, M7 acceptance 4)", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  await signInByKeyboard(page);
+  const headers = { Origin: new URL(page.url()).origin };
+  // A long report: the items table with up to 150 rows runs over several pages.
+  const made = await page.request.post("/api/v1/reports/layouts", {
+    headers,
+    data: {
+      name: `Pagination ${String(Date.now())}`,
+      layout: {
+        root: { props: { title: "Pagination" } },
+        content: [
+          {
+            type: "Heading",
+            props: { id: "h", text: "All changes", level: 1 },
+          },
+          {
+            type: "ItemsTable",
+            props: {
+              id: "t",
+              columns: [
+                "item.title",
+                "jurisdiction.names",
+                "item.last_changed_at",
+              ],
+              sort: "item.last_changed_at",
+              direction: "desc",
+              limit: 150,
+            },
+          },
+        ],
+      },
+    },
+  });
+  expect(made.status()).toBe(201);
+  const layout = ((await made.json()) as { id: string }).id;
+  const countPages = (pdf: Buffer) =>
+    (pdf.toString("latin1").match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
+
+  // The preview, printed by this browser's Chromium with the report's own @page rules.
+  const preview = await page.request.post(
+    `/api/v1/reports/layouts/${layout}/preview`,
+    { headers, data: {} },
+  );
+  expect(preview.status()).toBe(200);
+  const paper = await (
+    await browser.newContext({ javaScriptEnabled: false })
+  ).newPage();
+  await paper.setContent(await preview.text(), { waitUntil: "load" });
+  const previewPages = countPages(
+    await paper.pdf({ preferCSSPageSize: true, printBackground: true }),
+  );
+
+  // The same report through the outputs queue and Gotenberg.
+  const job = await page.request.post("/api/v1/outputs", {
+    headers,
+    data: { kind: "pdf", source: { report_layout_id: layout } },
+  });
+  expect(job.status()).toBe(202);
+  const id = ((await job.json()) as { id: string }).id;
+  await expect
+    .poll(
+      async () =>
+        (
+          (await (await page.request.get(`/api/v1/outputs/${id}`)).json()) as {
+            status: string;
+          }
+        ).status,
+      { timeout: 120_000, intervals: [2_000] },
+    )
+    .toBe("sent");
+  const file = await page.request.get(`/api/v1/outputs/${id}/artifact`);
+  const pdfPages = countPages(await file.body());
+  test.info().annotations.push({
+    type: "pages",
+    description: `preview ${String(previewPages)}, PDF ${String(pdfPages)}`,
+  });
+  expect(previewPages).toBeGreaterThan(0);
+  expect(pdfPages).toBe(previewPages);
+  await page.request.delete(`/api/v1/reports/layouts/${layout}`, { headers });
+});

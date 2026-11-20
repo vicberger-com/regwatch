@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { brandingQuery, COLOR } from "@/features/branding/api";
 import { api } from "@/lib/api/client";
 
+import { applyPrintMarkings } from "./printMarkings";
+
 const versionQuery = {
   queryKey: ["version"],
   queryFn: async () => {
@@ -49,6 +51,10 @@ export function BrandMark() {
 export function Footer() {
   const branding = useQuery(brandingQuery);
   const version = useQuery(versionQuery);
+  const markings = branding.data?.required_markings;
+  useEffect(() => {
+    applyPrintMarkings(markings); // on every printed page, not only after the last (M8.5)
+  }, [markings]);
   return (
     <footer className="flex flex-wrap items-center gap-4 border-t border-border bg-surface px-4 py-1 text-sm text-text-muted">
       <Link to="/legal">Legal</Link>
