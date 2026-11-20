@@ -231,3 +231,102 @@ async def test_an_interrupted_render_is_swept_and_attempts_are_capped(
         assert await tasks.run_pdf(db, jid) == "failed"
     capped = await admin.post(_api(f"/outputs/{job['id']}/retry"))
     assert capped.status_code == 409 and "tried 3 times" in capped.text
+
+
+class Smtp:
+    """Stands in for the mail server: records messages, or fails."""
+
+    def __init__(self) -> None:
+        self.sent: list[Any] = []
+        self.down = False
+
+    def __call__(self, messages: list[Any]) -> None:
+        import smtplib
+
+        if self.down:
+            raise smtplib.SMTPServerDisconnected("gone")
+        self.sent.extend(messages)
+
+
+@pytest.fixture
+def smtp(monkeypatch: pytest.MonkeyPatch, gotenberg: Gotenberg) -> Smtp:
+    from regwatch.outputs import mail
+
+    fake = Smtp()
+    monkeypatch.setattr(mail, "_send_sync", fake)
+    return fake
+
+
+async def _domains(admin: httpx.AsyncClient, *domains: str) -> None:
+    got = await admin.put(_api("/admin/settings/outputs.allowed_recipient_domains"),
+                          json={"value": list(domains)})  # fmt: skip
+    assert got.status_code == 200, got.text
+
+
+def _email(to: list[str], **extra: Any) -> dict[str, Any]:
+    return {"kind": "email", "source": {"report_template_key": "source-health"},
+            "destination": {"emails": to, **extra}}  # fmt: skip
+
+
+async def test_a_stock_report_is_emailed_to_allowed_addresses(
+    admin: httpx.AsyncClient, db: AsyncSession, smtp: Smtp
+) -> None:
+    """Acceptance 2: two allowed recipients get the PDF, audited; others refused clearly."""
+    off = await admin.post(_api("/outputs"), json=_email(["ana@example.org"]))
+    assert off.status_code == 422 and "email is turned off" in off.text
+    await _domains(admin, "example.org")
+    outside = await admin.post(_api("/outputs"), json=_email(["ana@example.org", "x@evil.com"]))
+    assert outside.status_code == 422 and "x@evil.com is not on an allowed domain" in outside.text
+    injected = _email(["ana@example.org"], subject="Hi\r\nBcc: x@evil.com")
+    header = await admin.post(_api("/outputs"), json=injected)
+    assert header.status_code == 422
+    two = _email(["ana@example.org", "bo@legal.example.org"], subject="Sources",
+                 message="For you.")  # fmt: skip
+    made = await admin.post(_api("/outputs"), json=two)
+    assert made.status_code == 202, made.text
+    job = made.json()
+    assert job["destination_summary"] == "email to 2 recipients"
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "sent"
+    assert sorted(m["To"] for m in smtp.sent) == ["ana@example.org", "bo@legal.example.org"]
+    attached = next(iter(smtp.sent[0].iter_attachments()))
+    assert attached.get_content() == PDF and smtp.sent[0]["Subject"] == "Sources"
+    rows = (await admin.get(_api("/admin/audit"), params={"entity_type": "output_job"})).json()
+    sent = next(r for r in rows["items"] if r["action"] == "output.sent")
+    assert len(sent["after"]["recipients"]) == 2 and "example.org" not in str(sent["after"])
+    viewer = await _as_new_user(admin, "vee@example.org", ["viewer"])  # no outputs.email
+    assert (await viewer.post(_api("/outputs"), json=_email(["ana@example.org"]))
+            ).status_code == 403  # fmt: skip
+    await viewer.aclose()
+
+
+async def test_a_failed_delivery_is_retried_with_backoff(
+    admin: httpx.AsyncClient, db: AsyncSession, smtp: Smtp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acceptance 5: three attempts with growing waits, then failed with its error class."""
+    waits: list[float] = []
+
+    async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
+        waits.append(countdown)
+
+    monkeypatch.setattr(tasks, "enqueue", enqueue)
+    await _domains(admin, "example.org")
+    job = (await admin.post(_api("/outputs"), json=_email(["ana@example.org"]))).json()
+    smtp.down = True
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "retrying"
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "retrying"
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "failed"
+    assert waits[-2:] == [30, 120]
+    shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert (shown["status"], shown["error_class"], shown["attempts"]) == (
+        "failed", "smtp-unavailable", 3)  # fmt: skip
+
+
+async def test_recipients_are_checked_again_when_sent(
+    admin: httpx.AsyncClient, db: AsyncSession, smtp: Smtp
+) -> None:
+    await _domains(admin, "example.org")
+    job = (await admin.post(_api("/outputs"), json=_email(["ana@example.org"]))).json()
+    await _domains(admin, "other.org")  # the admin narrowed the list meanwhile
+    assert await tasks.run_email(db, uuid.UUID(job["id"])) == "failed"
+    shown = (await admin.get(_api(f"/outputs/{job['id']}"))).json()
+    assert shown["error_class"] == "recipient-refused" and smtp.sent == []

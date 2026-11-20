@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.errors import ProblemError, ProblemFieldError
-from regwatch.core.schemas import Page
+from regwatch.core.schemas import Page, has_control
 from regwatch.core.services import audit
 from regwatch.core.settings import get_settings
 from regwatch.identity.models import User
@@ -34,7 +34,9 @@ from regwatch.outputs.schemas import OutputRequest
 
 READ_ALL = "outputs.read_all"
 LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
-KINDS_NOW = {"pdf"}  # M8.1; email, csv, print and schedules follow
+KINDS_NOW = {"pdf", "email"}  # M8.1 and M8.2; csv, print and schedules follow
+TASKS = {"pdf": "outputs.render_pdf", "email": "outputs.send_email"}
+RECIPIENTS_PER_HOUR = 100  # email recipients a user may reach in an hour (M8.1 review)
 MAX_ATTEMPTS = 3  # renders per job, first try and retries together (M8.1 review finding 3)
 STALE_AFTER = timedelta(minutes=5)  # a render outlives its 90-second limit: interrupted
 
@@ -50,7 +52,9 @@ def out(job: OutputJob) -> JobOut:
               else "saved view" if job.saved_view_id else "query")  # fmt: skip
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
-        source_summary=source, destination_summary="download",
+        source_summary=source,
+        destination_summary=(f"email to {len((job.destination or {}).get('emails', []))} "
+                             "recipients" if job.kind == "email" else "download"),
         artifact_available=job.artifact_ref is not None, artifact_bytes=job.artifact_bytes,
         error_class=job.error_class, error_message=job.error_message,
         scheduled_cron=job.scheduled_cron, next_run_at=job.next_run_at,
@@ -114,7 +118,7 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     from regwatch.reports import templates
 
     if body.kind.value not in KINDS_NOW:
-        raise _invalid("kind", "M8.1 makes PDFs; email, CSV and print come next")
+        raise _invalid("kind", "PDF and email for now; CSV and print come next")
     if body.schedule is not None:
         raise _invalid("schedule", "schedules come in M8.3")
     chosen = body.source.model_dump(exclude_unset=True)
@@ -122,13 +126,16 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
         raise _invalid("source", "exactly one of report_layout_id, report_template_key, "
                        "saved_view_id and query")  # fmt: skip
     params = body.params.model_dump() if "params" in body.model_fields_set else {}
+    destination: dict[str, Any] = {"report_params": params}
+    if body.kind.value == "email":
+        destination.update(await _email_destination(db, body, principal))
     job = OutputJob(requested_by=principal.user.id, kind=body.kind.value,
                     report_layout_id=body.source.report_layout_id
                     if "report_layout_id" in chosen else None,
                     report_template_key=body.source.report_template_key
                     if "report_template_key" in chosen else None,
                     saved_view_id=None, query=None,
-                    destination={"report_params": params}, status="queued")  # fmt: skip
+                    destination=destination, status="queued")  # fmt: skip
     if "saved_view_id" in chosen or "query" in chosen:
         raise _invalid("source", "M8.1 prints a report layout or a stock report")
     layout = await check_source(db, job, principal)
@@ -147,8 +154,41 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     await db.commit()
     from regwatch.outputs.tasks import enqueue
 
-    await enqueue("outputs.render_pdf", job.id)
+    await enqueue(TASKS[job.kind], job.id)
     return result
+
+
+async def _email_destination(db: AsyncSession, body: OutputRequest,
+                             principal: Principal) -> dict[str, Any]:  # fmt: skip
+    """Checked recipients, subject and message for an email output (M8.2)."""
+    from regwatch.admin.services import values
+    from regwatch.outputs import mail
+
+    if "outputs.email" not in principal.permissions:
+        raise ProblemError(403, "forbidden", "Sending outputs by email needs outputs.email.")
+    given = body.destination.model_dump(exclude_unset=True) \
+        if "destination" in body.model_fields_set else {}  # fmt: skip
+    domains = (await values(db, ["outputs.allowed_recipient_domains"]))[
+        "outputs.allowed_recipient_domains"] or []  # fmt: skip
+    try:
+        emails = mail.check_recipients(list(given.get("emails", [])), list(domains))
+    except ValueError as exc:
+        raise _invalid("destination.emails", str(exc)) from None
+    try:
+        subject = mail.plain_line(str(given.get("subject") or "regwatch report"), 200)
+    except ValueError:
+        raise _invalid("destination.subject", "one line of plain text") from None
+    message = str(given.get("message") or "")
+    if any(has_control(line) for line in message.splitlines()):
+        raise _invalid("destination.message", "plain text; no control characters")
+    since = datetime.now(UTC) - timedelta(hours=1)
+    recent = (await db.scalars(select(OutputJob.destination).where(
+        OutputJob.requested_by == principal.user.id, OutputJob.kind == "email",
+        OutputJob.created_at >= since))).all()  # fmt: skip
+    if sum(len(d.get("emails", [])) for d in recent) + len(emails) > RECIPIENTS_PER_HOUR:
+        raise ProblemError(429, "rate-limited", f"At most {RECIPIENTS_PER_HOUR} recipients an "
+                           "hour; try again later.", headers={"Retry-After": "600"})  # fmt: skip
+    return {"emails": emails, "subject": subject, "message": message[:5000]}
 
 
 def _visible(principal: Principal) -> list[Any]:
@@ -211,7 +251,7 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     await db.commit()
     from regwatch.outputs.tasks import enqueue
 
-    await enqueue("outputs.render_pdf", job.id)
+    await enqueue(TASKS[job.kind], job.id)
     return result
 
 

@@ -19,16 +19,16 @@ PUBLISH_DEADLINE_S = 15.0
 _PUBLISHERS = anyio.CapacityLimiter(4)
 
 
-def _send(name: str, job_id: uuid.UUID) -> None:
+def _send(name: str, job_id: uuid.UUID, countdown: float) -> None:
     from regwatch.core.worker import celery_app
 
-    celery_app().send_task(name, args=[str(job_id)], queue="outputs")
+    celery_app().send_task(name, args=[str(job_id)], queue="outputs", countdown=countdown)
 
 
-async def enqueue(name: str, job_id: uuid.UUID) -> None:
+async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
     """Hand a job to the outputs queue off the event loop (as capture's ``enqueue_run``)."""
     with anyio.fail_after(PUBLISH_DEADLINE_S):
-        await anyio.to_thread.run_sync(_send, name, job_id, limiter=_PUBLISHERS,
+        await anyio.to_thread.run_sync(_send, name, job_id, countdown, limiter=_PUBLISHERS,
                                        abandon_on_cancel=True)  # fmt: skip
 
 
@@ -47,18 +47,32 @@ async def _run(job_id: uuid.UUID) -> None:
 
 
 async def run_pdf(db: AsyncSession, job_id: uuid.UUID) -> str:
-    """Render one queued PDF job; its final status. Re-checks the requester's current rights."""
+    """Render one queued PDF job; its final status."""
+    return await run_job(db, job_id, "pdf")
+
+
+async def run_email(db: AsyncSession, job_id: uuid.UUID) -> str:
+    """Render one queued email job and send it; its final status (or "retrying")."""
+    return await run_job(db, job_id, "email")
+
+
+RETRY_AFTER_S = (30, 120)  # before the second and third attempts (acceptance 5: backoff)
+
+
+async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
+    """The shared run: claim the job, re-check the requester's current rights, render the PDF,
+    then store it (pdf) or send it (email). A cancel or sweep during the work wins."""
     from sqlalchemy import select
 
     from regwatch.admin.services import values
     from regwatch.core import objectstore
     from regwatch.core.services import audit
-    from regwatch.outputs import pdf, services
+    from regwatch.outputs import mail, pdf, services
     from regwatch.outputs.models import OutputJob
     from regwatch.reports.render import render_layout
 
-    job = await db.scalar(select(OutputJob).where(OutputJob.id == job_id).with_for_update(
-        skip_locked=True))  # fmt: skip
+    job = await db.scalar(select(OutputJob).where(OutputJob.id == job_id, OutputJob.kind == kind)
+                          .with_for_update(skip_locked=True))  # fmt: skip
     if job is None or job.status != "queued":
         return "skipped"
     job.status, job.attempts = "rendering", job.attempts + 1
@@ -75,19 +89,44 @@ async def run_pdf(db: AsyncSession, job_id: uuid.UUID) -> str:
     principal = await services.current_principal(db, job.requested_by)
     if principal is None:
         return await fail("requester-inactive", "the requester's account is not active")
+    destination = job.destination or {}
+    settings = await values(db, ["outputs.attachment_max_bytes",
+                                 "outputs.allowed_recipient_domains"])  # fmt: skip
     try:
         layout = await services.check_source(db, job, principal)
-        html = await render_layout(db, layout, principal,
-                                   (job.destination or {}).get("report_params", {}))  # fmt: skip
+        if kind == "email":  # the rights and the allowed domains as they are now
+            if "outputs.email" not in principal.permissions:
+                return await fail("forbidden", "sending by email needs outputs.email")
+            recipients = mail.check_recipients(
+                destination.get("emails", []),
+                list(settings["outputs.allowed_recipient_domains"] or []))  # fmt: skip
+        html = await render_layout(db, layout, principal, destination.get("report_params", {}))
     except ProblemError as exc:
         return await fail(exc.slug, exc.detail or exc.title)
-    limit = int((await values(db, ["outputs.attachment_max_bytes"]))
-                ["outputs.attachment_max_bytes"])  # fmt: skip
+    except ValueError as exc:
+        return await fail("recipient-refused", str(exc))
     try:
-        data, pages = await pdf.render(html, layout.name, limit)
+        data, pages = await pdf.render(
+            html, layout.name, int(settings["outputs.attachment_max_bytes"])
+        )
     except pdf.PdfError as exc:
         return await fail(exc.error_class, exc.message)
-    # Read again under a lock: a cancel during the render wins (M8.1 review finding 2).
+    if kind == "email":
+        name = f"regwatch-{job.id}.pdf"
+        messages = [mail.build(to, destination.get("subject", "regwatch report"),
+                               destination.get("message", ""), data, name)
+                    for to in recipients]  # fmt: skip
+        try:
+            await mail.send(messages)
+        except mail.MailError as exc:
+            if job.attempts >= services.MAX_ATTEMPTS:
+                return await fail(exc.error_class, exc.message)
+            job.status, job.error_class, job.error_message = "queued", exc.error_class, exc.message
+            await db.commit()
+            wait = RETRY_AFTER_S[min(job.attempts, len(RETRY_AFTER_S)) - 1]
+            await enqueue("outputs.send_email", job.id, countdown=wait)
+            return "retrying"
+    # Read again under a lock: a cancel during the work wins (M8.1 review finding 2).
     await db.refresh(job, with_for_update=True)
     if job.status != "rendering":
         await db.commit()
@@ -97,12 +136,28 @@ async def run_pdf(db: AsyncSession, job_id: uuid.UUID) -> str:
     job.status, job.artifact_ref, job.artifact_bytes = "sent", key, len(data)
     job.layout_version, job.finished_at = layout.version, datetime.now(UTC)
     job.error_class = job.error_message = None
-    audit(db, "output.sent", "output_job", job.id, actor=job.requested_by,
-          after={"kind": "pdf", "bytes": len(data), "pages": pages,
-                 "layout_version": layout.version})  # fmt: skip
+    after: dict[str, object] = {"kind": kind, "bytes": len(data), "pages": pages,
+                                "layout_version": layout.version}  # fmt: skip
+    if kind == "email":
+        after["recipients"] = [mail.hashed(r) for r in recipients]  # never the addresses
+    audit(db, "output.sent", "output_job", job.id, actor=job.requested_by, after=after)
     await db.commit()
-    _log.info("output_sent", job=str(job.id), pages=pages, bytes=len(data))
+    _log.info("output_sent", job=str(job.id), kind=kind, pages=pages, bytes=len(data))
     return "sent"
+
+
+@shared_task(name="outputs.send_email", queue="outputs")  # type: ignore[untyped-decorator]
+def send_email(output_job_id: str) -> None:
+    anyio.run(_run_email, uuid.UUID(output_job_id))
+
+
+async def _run_email(job_id: uuid.UUID) -> None:
+    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            await run_email(db, job_id)
+    finally:
+        await engine.dispose()
 
 
 @shared_task(name="outputs.schedule_tick", queue="outputs")  # type: ignore[untyped-decorator]
