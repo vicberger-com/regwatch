@@ -7,8 +7,12 @@ export function flatTerms(
   terms: readonly Term[] | undefined,
   depth = 0,
 ): { key: string; label: string }[] {
-  return (terms ?? [])
-    .filter((t) => t.active)
+  const list: readonly Term[] = Array.isArray(terms) ? terms : [];
+  return list
+    .filter(
+      (t) =>
+        t.active && typeof t.key === "string" && typeof t.label === "string",
+    )
     .flatMap((t) => [
       { key: t.key, label: `${"  ".repeat(depth)}${t.label}` },
       ...flatTerms(t.children, depth + 1),
@@ -27,7 +31,15 @@ export function ViewSelector(props: {
   regionsAvailable: boolean;
 }) {
   const { view, onChange } = props;
-  const facets = props.facets.filter((f) => f.show_in_view_selector);
+  const given: readonly Facet[] = Array.isArray(props.facets)
+    ? props.facets
+    : [];
+  const facets = given.filter(
+    (f) =>
+      f.show_in_view_selector &&
+      typeof f.key === "string" &&
+      typeof f.label === "string",
+  );
   const facet = facets.find((f) => f.key === view.facet);
   const value = view.facet ? `facet:${view.facet}` : view.by;
   return (

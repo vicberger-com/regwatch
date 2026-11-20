@@ -129,6 +129,29 @@ describe("items table", () => {
   });
 });
 
+describe("items filter chips", () => {
+  it("shows the active filters and removes one", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, ADMIN],
+      "POST /search": [200, { items: [], total: 0, page: 1, page_size: 25 }],
+    });
+    renderAt("/items?j=DE&t=industry:finance&days=30");
+    const chips = await screen.findByRole("list", { name: "Active filters" });
+    expect(chips).toHaveTextContent("Topic filter: industry: finance");
+    await userEvent.click(
+      within(chips).getByRole("button", {
+        name: /Remove the filter Topic filter/,
+      }),
+    );
+    await waitFor(() => {
+      const last = api.calls.filter((c) => c.key === "POST /search").at(-1)
+        ?.body as { filters: Record<string, unknown> };
+      expect(last.filters.terms).toBeUndefined();
+      expect(last.filters.jurisdictions).toEqual(["DE"]);
+    });
+  });
+});
+
 describe("items permissions", () => {
   it.each([[[]], [["users.manage"]]])(
     "refuses /items without items.read (%j)",

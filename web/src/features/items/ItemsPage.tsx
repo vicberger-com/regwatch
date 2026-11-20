@@ -118,6 +118,23 @@ function Title({ item }: { item: ItemSummary }) {
   );
 }
 
+/** A removable chip for one active filter (M6: active filters as removable chips). */
+function FilterChip(props: { label: string; onRemove: () => void }) {
+  return (
+    <li className="flex items-center gap-1 rounded border border-border bg-surface px-2 py-0.5">
+      {props.label}
+      <button
+        type="button"
+        onClick={props.onRemove}
+        className="rounded px-1 hover:bg-bg"
+      >
+        <span aria-hidden="true">×</span>
+        <span className="sr-only">Remove the filter {props.label}</span>
+      </button>
+    </li>
+  );
+}
+
 /** `/items`: the items table (screens.md), driven by the URL so views can be linked. */
 export function ItemsPage(props: {
   search: ItemsSearch;
@@ -199,13 +216,36 @@ export function ItemsPage(props: {
           </select>
         </label>
       </form>
-      {search.j && (
-        <p className="mt-2 text-sm text-text-muted">
-          Jurisdictions: {search.j.split(",").map(jurisdictionName).join(", ")}
-          {search.days
-            ? `; changed in the last ${String(search.days)} days`
-            : ""}
-        </p>
+      {(search.j ?? search.t ?? search.days) && (
+        <ul
+          aria-label="Active filters"
+          className="mt-2 flex flex-wrap gap-2 text-sm"
+        >
+          {search.j && (
+            <FilterChip
+              label={`Jurisdictions: ${search.j.split(",").map(jurisdictionName).join(", ")}`}
+              onRemove={() => {
+                onSearch(without(search, "j", "page"));
+              }}
+            />
+          )}
+          {search.t && (
+            <FilterChip
+              label={`Topic filter: ${search.t.replace(":", ": ")}`}
+              onRemove={() => {
+                onSearch(without(search, "t", "page"));
+              }}
+            />
+          )}
+          {search.days && (
+            <FilterChip
+              label={`Changed in the last ${String(search.days)} days`}
+              onRemove={() => {
+                onSearch(without(search, "days", "page"));
+              }}
+            />
+          )}
+        </ul>
       )}
       {result.isError && (
         <p role="alert" className="mt-3 text-critical">

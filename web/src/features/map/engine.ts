@@ -13,6 +13,7 @@ import {
 import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 
+import { hatch } from "./hatch";
 import type { Step } from "./scale";
 
 export interface Engine {
@@ -27,6 +28,8 @@ export interface Colours {
   border: string;
   selected: string;
   disputed: string;
+  /** Hatch patterns over the fills (the high-contrast theme). */
+  patterns: boolean;
 }
 
 export interface Handlers {
@@ -77,6 +80,16 @@ export function createEngine(
       layers: [
         { id: "background", type: "background", paint: { "background-color": "rgba(0,0,0,0)" } },
         { id: "fill", type: "fill", source: "countries", paint: { "fill-color": fill(colours) as never } },
+        // One hatch layer per step: fill-pattern cannot follow feature-state, so each layer
+        // is filtered to its step's codes (ADR-0004 decision 7).
+        ...[1, 2, 3, 4].map((n) => ({
+          id: `hatch-${String(n)}`,
+          type: "fill" as const,
+          source: "countries",
+          filter: ["in", ["get", "iso"], ["literal", []]] as never,
+          layout: { visibility: "none" as const },
+          paint: { "fill-pattern": `hatch-${String(n)}` },
+        })),
         { id: "border", type: "line", source: "countries", paint: { "line-color": colours.border, "line-width": 0.5 } },
         { id: "selected", type: "line", source: "countries", filter: ["==", ["get", "iso"], ""], paint: { "line-color": colours.selected, "line-width": 2 } },
         { id: "disputed", type: "fill", source: "disputed", paint: { "fill-color": colours.disputed } },
@@ -106,6 +119,23 @@ export function createEngine(
     map.setPaintProperty("disputed", "fill-color", palette.disputed);
     map.setPaintProperty("disputed-line", "line-color", palette.border);
     map.setPaintProperty("selected", "line-color", palette.selected);
+    for (let i = 0; i < 5; i++) {
+      const id = `hatch-${String(i)}`;
+      if (map.hasImage(id)) map.removeImage(id);
+      map.addImage(id, hatch(i, palette.steps[i] ?? "#000000"));
+    }
+    for (let n = 1; n <= 4; n++) {
+      const codes = [...current]
+        .filter(([, step]) => step === n)
+        .map(([code]) => code);
+      const layer = `hatch-${String(n)}`;
+      map.setFilter(layer, ["in", ["get", "iso"], ["literal", codes]]);
+      map.setLayoutProperty(
+        layer,
+        "visibility",
+        palette.patterns ? "visible" : "none",
+      );
+    }
   };
   const fit = () => {
     map.fitBounds(WORLD, { padding: 8, animate: false });

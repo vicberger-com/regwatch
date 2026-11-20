@@ -276,6 +276,42 @@ describe("map page", () => {
     });
   });
 
+  it("never asks for facets or regions without taxonomy.read, and offers only the country view", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [200, { ...ADMIN, permissions: ["items.read"] }],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    const view = await screen.findByLabelText("View");
+    await screen.findByRole("listbox");
+    expect(
+      within(view)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Country"]);
+    const keys = api.calls.map((c) => c.key);
+    expect(keys).not.toContain("GET /taxonomy/facets");
+    expect(keys).not.toContain("GET /jurisdictions/regions");
+  });
+
+  it("survives malformed region and facet answers", async () => {
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["items.read", "taxonomy.read"] },
+      ],
+      "GET /taxonomy/facets": [200, { not: "a list" }],
+      "GET /jurisdictions/regions": [
+        200,
+        [{ code: 155, jurisdiction_codes: "DE" }, null],
+      ],
+      "GET /map/activity": [200, ACTIVITY],
+    });
+    renderAt("/");
+    expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByLabelText("View")).toBeInTheDocument();
+  });
+
   it("shades the member countries in the region view", async () => {
     fakeApi({
       "GET /auth/me": [

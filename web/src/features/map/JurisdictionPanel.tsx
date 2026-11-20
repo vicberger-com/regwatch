@@ -147,7 +147,9 @@ export function JurisdictionPanel(props: {
           search={props.link}
           className="mt-3 inline-block text-accent underline"
         >
-          All items for {name} in the last {String(props.periodDays)} days
+          All items for {name}
+          {props.link.t ? ` (${props.link.t.replace(":", ": ")})` : ""} in the
+          last {String(props.periodDays)} days
         </Link>
       )}
     </aside>

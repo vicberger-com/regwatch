@@ -30,6 +30,29 @@ const ENCODINGS: { value: Encoding; label: string }[] = [
 const plural = (n: number, one: string, many: string) =>
   `${String(n)} ${n === 1 ? one : many}`;
 
+/** The regions of an answer that have the documented shape, with two-letter members only. */
+export function validRegions(
+  data: unknown,
+): { code: string; name: string; members: string[] }[] {
+  if (!Array.isArray(data)) return [];
+  const out: { code: string; name: string; members: string[] }[] = [];
+  for (const item of data as unknown[]) {
+    if (typeof item !== "object" || item === null) continue;
+    const r = item as Record<string, unknown>;
+    if (typeof r.code !== "string" || !Array.isArray(r.jurisdiction_codes))
+      continue;
+    const members = (r.jurisdiction_codes as unknown[]).filter(
+      (c): c is string => typeof c === "string" && /^[A-Z]{2}$/.test(c),
+    );
+    out.push({
+      code: r.code,
+      name: typeof r.name === "string" ? r.name : r.code,
+      members,
+    });
+  }
+  return out;
+}
+
 /** `/`: the world map of change activity with its accessible list (M6 acceptance 1, 5). */
 export function MapPage() {
   const [period, setPeriod] = useState<number>(30);
@@ -48,17 +71,12 @@ export function MapPage() {
   const asked: MapView = view.facet && !view.term ? { by: view.by } : view;
   const activity = useQuery(activityQuery(period, asked));
   // A region's member countries, and each country's region, for the region view.
-  const members = useMemo(() => {
-    const out = new Map<string, string[]>();
-    for (const r of regions.data ?? []) {
-      if (r.code)
-        out.set(
-          r.code,
-          (r.jurisdiction_codes ?? []).filter((c) => /^[A-Z]{2}$/.test(c)),
-        );
-    }
-    return out;
-  }, [regions.data]);
+  // Only well-formed regions: a broken answer must not take the map down.
+  const regionList = useMemo(() => validRegions(regions.data), [regions.data]);
+  const members = useMemo(
+    () => new Map(regionList.map((r) => [r.code, r.members])),
+    [regionList],
+  );
   const regionOf = useMemo(() => {
     const out = new Map<string, string>();
     for (const [region, codes] of members)
@@ -66,11 +84,8 @@ export function MapPage() {
     return out;
   }, [members]);
   const regionNames = useMemo(
-    () =>
-      new Map(
-        (regions.data ?? []).map((r) => [r.code ?? "", r.name ?? r.code ?? ""]),
-      ),
-    [regions.data],
+    () => new Map(regionList.map((r) => [r.code, r.name])),
+    [regionList],
   );
   const nameOf = useCallback(
     (code: string) =>
@@ -215,7 +230,10 @@ export function MapPage() {
                 <span
                   aria-hidden="true"
                   className="inline-block h-3 w-6 rounded-sm border border-border"
-                  style={{ background: `var(--map-${String(i)})` }}
+                  style={{
+                    backgroundColor: `var(--map-${String(i)})`,
+                    backgroundImage: `var(--map-pattern-${String(i)})`,
+                  }}
                 />
                 {text || <span className="sr-only">step {String(i)}</span>}
               </li>
@@ -232,7 +250,8 @@ export function MapPage() {
               code={selected}
               name={nameOf(selected)}
               scope={{
-                ...(view.by === "region"
+                // A body without a region (EU, COE) has its own row in the region view.
+                ...(view.by === "region" && members.has(selected)
                   ? { regions: [selected] }
                   : { jurisdictions: [selected] }),
                 ...(asked.facet && asked.term

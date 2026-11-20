@@ -18,6 +18,7 @@ function readColours(): Colours {
     border: cssVar("--border"),
     selected: cssVar("--focus"),
     disputed: cssVar("--map-0"),
+    patterns: document.documentElement.dataset.theme === "high-contrast",
   };
 }
 
