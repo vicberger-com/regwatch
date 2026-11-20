@@ -12,7 +12,7 @@ from regwatch.core.db import DbSession
 from regwatch.core.routing import not_implemented, spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.reports import fields, services
+from regwatch.reports import fields, render, services
 from regwatch.reports.schemas import (
     ReportField,
     ReportLayout,
@@ -92,7 +92,14 @@ async def delete_layout(
 
 @router.post(
     "/reports/layouts/{id}/preview",
-    **spec(desc="Server-rendered HTML identical to the PDF input", perm=BUILD, content="text/html"),
-)
-async def preview_layout(id: UUID, body: ReportParams | None = None) -> NoReturn:
-    not_implemented()
+    **spec(desc="Server-rendered HTML identical to the PDF input", perm=BUILD, content="text/html",
+           stub=False),
+)  # fmt: skip
+async def preview_layout(
+    id: UUID, principal: CurrentPrincipal, db: DbSession, body: ReportParams | None = None
+) -> Response:
+    html = await render.render_layout(db, await services.get_layout(db, id, principal), principal)
+    # The HTML holds hostile captured text: no scripts, no external loads, its own sandbox.
+    return Response(html, media_type="text/html; charset=utf-8", headers={
+        "Content-Security-Policy": render.CSP, "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})  # fmt: skip

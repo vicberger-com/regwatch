@@ -95,6 +95,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | readability-lxml | fallback extraction: not used (ADR-0009; needs LGPL chardet) | Apache-2.0 | V `7159b09` | not used | M3 |
 | html5lib 1.1 | HTML parsing for extraction, as browsers parse (ADR-0009) | MIT | V `f87487a` (1.1), R-01 C19 | dependency | M3 |
 | webencodings 0.5.1 | html5lib's character-encoding labels | BSD-3 | V `fa2cb5d` (v0.5.1), R-01 C20 | dependency | M3 |
+| Jinja2 3.1.6 | server-side report HTML with autoescape (M7 spec; ADR-0005 decision 3 deferred, BL-17) | BSD-3 | V: `LICENSE.txt` in the 3.1.6 wheel (Copyright 2007 Pallets, BSD 3-clause text), 2026-11-20 | dependency | M7 |
+| MarkupSafe 3.0.4 | Jinja2's escaping (already present through another dependency) | BSD-3 | V: `License-Expression: BSD-3-Clause` and `LICENSE.txt` in the 3.0.4 wheel, 2026-11-20 | dependency | M7 |
 | Playwright (Python) | JavaScript page rendering, E2E tests | Apache-2.0 | V `bcb9deb` | dependency, tooling | M3, tests |
 | changedetection.io | change-detection approach | Apache-2.0 | V `16974bf` | pattern | M3, M4 |
 | SearXNG | metasearch, discovery only (ADR-0010); image `searxng/searxng@sha256:0b9f3ddd…` (tag `2026.11.17-b99cf7496`) | AGPL-3.0 | V `9ded3be` (untagged HEAD, 2026-11-01) | service (unmodified) | M3 |
