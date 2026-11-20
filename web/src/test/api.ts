@@ -30,14 +30,24 @@ const DEFAULTS: Routes = {
 
 export function fakeApi(given: Routes) {
   const routes: Routes = { ...DEFAULTS, ...given };
-  const calls: { key: string; body: unknown; origin: string | null }[] = [];
+  const calls: {
+    key: string;
+    body: unknown;
+    origin: string | null;
+    passive: string | null;
+  }[] = [];
   const fetch = vi.fn(async (request: Request) => {
     const url = new URL(request.url);
     const key = `${request.method} ${url.pathname.replace("/api/v1", "")}`;
     const text = await request.text();
     const json = request.headers.get("Content-Type")?.includes("json") ?? false;
     const body: unknown = text && json ? JSON.parse(text) : text || undefined;
-    calls.push({ key, body, origin: request.headers.get("origin") });
+    calls.push({
+      key,
+      body,
+      origin: request.headers.get("origin"),
+      passive: request.headers.get("X-Regwatch-Passive"),
+    });
     const route = routes[key];
     if (route === undefined) throw new Error(`unexpected request ${key}`);
     const [status, payload] =

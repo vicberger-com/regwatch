@@ -19,6 +19,9 @@ export function outputsQuery(scope: Scope, scheduled: boolean, page: number) {
     queryFn: async () => {
       const result = await api.GET("/outputs", {
         params: { query: { scope, scheduled, page, page_size: PAGE_SIZE } },
+        // Passive: this list polls while jobs run, and must never keep an idle session alive
+        // on the server (M8.6 review), as the map's polling.
+        headers: { "X-Regwatch-Passive": "1" },
       });
       if (!result.response.ok || result.data === undefined)
         throw failure(result);

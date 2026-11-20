@@ -141,7 +141,9 @@ describe("outputs (M8.6)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The database is not available.",
     );
-    expect(api.calls.some((c) => c.key === "GET /outputs")).toBe(true);
+    const lists = api.calls.filter((c) => c.key === "GET /outputs");
+    expect(lists.length).toBeGreaterThan(0);
+    expect(lists.every((c) => c.passive === "1")).toBe(true); // never renews the session
   });
 
   it("is not offered without outputs.pdf", async () => {
