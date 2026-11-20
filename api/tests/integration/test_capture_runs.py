@@ -137,10 +137,14 @@ async def test_a_catalogue_source_runs_while_someone_follows_it(
     """CP-25: a disabled catalogue source is captured while it has a follower and its job is
     enabled; an admin's disable stops it even then."""
     made = (await admin.post(_api("/sources"), json=rss())).json()
+    other = (await admin.post(_api("/sources"), json=rss(name="Other"))).json()
     sid, jid = uuid.UUID(made["id"]), made["job"]["id"]
     me = uuid.UUID((await admin.get(_api("/auth/me"))).json()["id"])
     await db.execute(update(Source).where(Source.id == sid)
                      .values(enabled=False, catalogue_key="test-feed"))  # fmt: skip
+    # A second due catalogue source nobody follows: the follower check is per source.
+    await db.execute(update(Source).where(Source.id == uuid.UUID(other["id"]))
+                     .values(enabled=False, catalogue_key="other-feed"))  # fmt: skip
     await db.commit()
     later = datetime.now(UTC) + timedelta(seconds=5)
     assert await runs.tick(db, queue, now=later) == 0  # nobody follows it

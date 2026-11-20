@@ -121,7 +121,8 @@ async def _search_context(db: AsyncSession) -> tuple[Any, frozenset[str]]:
     client = (InternalClient(str(get_settings().search_url))
               if flag and provider == "searxng" else None)  # fmt: skip
     # Only sources whose addresses an admin chose: never search or manual sources, and only
-    # their URL fields (search review finding 4).
+    # their URL fields (search review finding 4). Enabled ones only, not followed catalogue
+    # sources (``capturing()``): following never makes a host official (11.2a review).
     rows = await db.execute(select(Source.url, Source.config)
                             .where(Source.enabled, Source.credibility == "official",
                                    Source.kind.in_(OFFICIAL_KINDS)))  # fmt: skip
