@@ -8,6 +8,7 @@ applies (DNS included), and then approves the request with that source; or decli
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from datetime import UTC, datetime
 from urllib.parse import urlsplit, urlunsplit
@@ -52,6 +53,12 @@ def _request_url(raw: str) -> str:
     if parts.username is not None or parts.password is not None or " " in url:
         raise invalid("url", "an address with no user name, password or spaces")
     host = parts.hostname or ""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:  # a feed has a name; an address literal only probes (review Info)
+        raise invalid("url", "a host name, not an IP address")
     try:
         ascii_host = host.encode("idna").decode("ascii")
     except UnicodeError:

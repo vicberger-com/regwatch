@@ -155,7 +155,7 @@ export function RequestFeed() {
                   type="button"
                   className={`${button} mt-1`}
                   disabled={withdraw.isPending}
-                  aria-label={`Withdraw the request for ${r.url}`}
+                  aria-label={`Withdraw the request for ${hostOf(r.url)}`}
                   onClick={() => {
                     withdraw.mutate(r.id);
                   }}
@@ -266,7 +266,7 @@ function Decide({ request }: { request: FeedRequest }) {
           type="button"
           className={button}
           disabled={!sourceId || decide.isPending}
-          aria-label={`Approve the request for ${request.url}`}
+          aria-label={`Approve the request for ${hostOf(request.url)}`}
           onClick={() => {
             decide.mutate("approved");
           }}
@@ -277,7 +277,7 @@ function Decide({ request }: { request: FeedRequest }) {
           type="button"
           className={button}
           disabled={decide.isPending}
-          aria-label={`Decline the request for ${request.url}`}
+          aria-label={`Decline the request for ${hostOf(request.url)}`}
           onClick={() => {
             decide.mutate("declined");
           }}

@@ -152,7 +152,8 @@ async def test_approval_never_revives_or_widens_a_source(admin: httpx.AsyncClien
 async def test_request_urls_show_their_real_host(admin: httpx.AsyncClient) -> None:
     """Review finding 4: no credentials, no spaces; an IDN host is stored in punycode."""
     for bad in ("https://trusted.gov@evil.example/feed", "https://u:p@example.org/",
-                "https://example.org/a b"):  # fmt: skip
+                "https://example.org/a b", "https://[2001:db8::1]/feed",
+                "https://192.0.2.1/feed"):  # fmt: skip
         got = await admin.post(_api("/feed-requests"), json={**ASK, "url": bad})
         assert got.status_code == 422, bad
     made = await admin.post(_api("/feed-requests"),
