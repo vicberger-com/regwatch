@@ -13,7 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture import runs, tasks
-from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.capture.models import CaptureJob, CaptureRun, Source, SourceFollower
 from regwatch.core.db import create_engine, session_factory
 from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
@@ -129,6 +129,39 @@ async def test_the_tick_starts_due_jobs_once(
     made = (await db.scalars(select(CaptureRun.id).where(CaptureRun.job_id == job.id))).all()
     assert len(made) == 1 and len(queue.sent) == 1
     assert (await _job(db, due["job"]["id"])).next_run_at > later
+
+
+async def test_a_catalogue_source_runs_while_someone_follows_it(
+    admin: httpx.AsyncClient, queue: Queue, db: AsyncSession
+) -> None:
+    """CP-25: a disabled catalogue source is captured while it has a follower and its job is
+    enabled; an admin's disable stops it even then."""
+    made = (await admin.post(_api("/sources"), json=rss())).json()
+    sid, jid = uuid.UUID(made["id"]), made["job"]["id"]
+    me = uuid.UUID((await admin.get(_api("/auth/me"))).json()["id"])
+    await db.execute(update(Source).where(Source.id == sid)
+                     .values(enabled=False, catalogue_key="test-feed"))  # fmt: skip
+    await db.commit()
+    later = datetime.now(UTC) + timedelta(seconds=5)
+    assert await runs.tick(db, queue, now=later) == 0  # nobody follows it
+    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 409
+
+    db.add(SourceFollower(source_id=sid, user_id=me))
+    await db.commit()
+    assert await runs.tick(db, queue, now=later) == 1
+    assert [str(j) for j, _ in queue.sent] == [jid]
+    await runs.execute(db, uuid.UUID(jid))  # it starts: no "disabled" skip
+    run = await db.scalar(select(CaptureRun).where(CaptureRun.job_id == uuid.UUID(jid)))
+    assert run is not None and run.error_class != "disabled"
+
+    await db.execute(update(Source).where(Source.id == sid).values(catalogue_key=None))
+    await db.commit()  # a follower of a source no longer in the catalogue does not keep it on
+    assert await runs.tick(db, queue, now=later + timedelta(hours=2)) == 0
+    await db.execute(update(Source).where(Source.id == sid).values(catalogue_key="test-feed"))
+    await db.commit()
+    assert (await admin.delete(_api(f"/sources/{sid}"))).status_code == 204  # job off
+    assert await runs.tick(db, queue, now=later + timedelta(hours=2)) == 0
+    assert (await admin.post(_api(f"/capture-jobs/{jid}/run-now"))).status_code == 409
 
 
 async def test_runs_fail_without_a_connector_and_move_health(

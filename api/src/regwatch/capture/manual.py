@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture import services
-from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.capture.models import CaptureJob, CaptureRun, Source, is_capturing
 from regwatch.capture.runs import Enqueue, _handed_over
 from regwatch.capture.safe_fetch.policy import FetchRefusedError, validate_source_url
 from regwatch.core.errors import ProblemError
@@ -116,7 +116,7 @@ async def add_document(db: AsyncSession, source_id: uuid.UUID, principal: Princi
         raise ProblemError(409, "conflict", "Documents can be added to manual sources only.")
     job = await db.scalar(select(CaptureJob).where(CaptureJob.source_id == source_id)
                           .with_for_update())  # fmt: skip
-    if job is None or not source.enabled or not job.enabled:
+    if job is None or not job.enabled or not await is_capturing(db, source.id):
         raise ProblemError(409, "conflict", "The source is disabled; enable it first.")
     unfinished = (CaptureRun.job_id == job.id, CaptureRun.finished_at.is_(None))
     busy = await db.scalar(select(CaptureRun.id).where(*unfinished))

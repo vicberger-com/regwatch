@@ -48,11 +48,11 @@ def test_upgrade_downgrade_upgrade_on_empty_database(postgres: Postgres, empty_d
     before = postgres.schema_dump(empty_db)
     upgrade(url)
     tables = postgres.psql(empty_db, "SELECT count(*) FROM pg_tables WHERE schemaname='public';")
-    assert int(tables) == 28  # 27 contract tables and alembic_version
+    assert int(tables) == 29  # 28 contract tables (CP-25: source_follower) and alembic_version
     downgrade(url)
     assert postgres.schema_dump(empty_db) == before
     upgrade(url)
-    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0007"
+    assert postgres.psql(empty_db, "SELECT version_num FROM alembic_version;").strip() == "0008"
 
 
 def test_schema_matches_contract(postgres: Postgres, empty_db: str) -> None:

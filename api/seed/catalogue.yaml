@@ -1,0 +1,85 @@
+# The curated feed catalogue (ADR-0012, CP-25, M11.2). Each entry becomes a source that is
+# disabled and captured only while someone follows it (or an admin enables it). Entries are
+# matched on `key`: a re-run adds new entries and leaves admins' edits alone.
+#
+# Only sources verified in research are listed, with the configurations checked there:
+# R-06 section 4 (2026-11-01), with max_items_per_run lowered from 500 to 250 to fit the
+# 45-minute run deadline (M3 run review finding 1). The other starter sources in
+# docs/04-data-model.md 4.5 wait for the same check (BL-136). Never list flk.npc.gov.cn
+# (R-03 C15: its robots.txt forbids any automated collection).
+catalogue:
+  - key: us-federal-register-it
+    name: Federal Register - IT and cybersecurity documents
+    summary: US federal rules, proposed rules, notices and presidential documents on cybersecurity, privacy, AI and supply-chain risk.
+    kind: api_feed
+    url: https://www.federalregister.gov/api/v1/documents.json
+    terms_url: https://www.federalregister.gov/reader-aids/policy/legal-status
+    credibility: official
+    language: en
+    jurisdictions: [US]
+    config:
+      provider: federal_register
+      params:
+        conditions[term]: 'cybersecurity | "information security" | "critical infrastructure" | "artificial intelligence" | privacy | "personal data" | "incident reporting" | encryption | "supply chain risk"'
+        conditions[type][]: [RULE, PRORULE, NOTICE, PRESDOCU]
+        conditions[publication_date][gte]: "{last_success_date - 3 days}"
+        order: newest
+        per_page: 100
+        fields[]: [document_number, title, type, abstract, publication_date, html_url, pdf_url, agencies, topics, effective_on, comments_close_on, cfr_references]
+    job: { cron: "20 7 * * 1-5", timezone: America/New_York, max_items_per_run: 250, rate_limit_per_minute: 10 }
+
+  - key: eu-eurlex-cellar-it
+    name: EUR-Lex via Cellar - IT and cybersecurity legal and preparatory acts
+    summary: EU legal acts and proposals tagged with EuroVoc concepts for cybersecurity, data protection, AI and electronic communications.
+    kind: api_feed
+    url: https://publications.europa.eu/webapi/rdf/sparql
+    terms_url: https://eur-lex.europa.eu/content/legal-notice/legal-notice.html
+    credibility: official
+    language: en
+    jurisdictions: [EU]
+    config:
+      provider: eur_lex
+      params:
+        method: sparql
+        sparql_endpoint: https://publications.europa.eu/webapi/rdf/sparql
+        eurovoc_concepts: [http://eurovoc.europa.eu/17280, http://eurovoc.europa.eu/c_04ae3ba8, http://eurovoc.europa.eu/3027, http://eurovoc.europa.eu/5181, http://eurovoc.europa.eu/5595, http://eurovoc.europa.eu/2828, http://eurovoc.europa.eu/3030, http://eurovoc.europa.eu/6370, http://eurovoc.europa.eu/6778, http://eurovoc.europa.eu/c_433922a6, http://eurovoc.europa.eu/c_b12a760a, http://eurovoc.europa.eu/7219]
+        celex_sectors: ["3", "5"]
+        exclude_celex_regex: "^5\\d{4}M"
+        lookback_days: 14
+        limit: 500
+        content_language: ENG
+        content_url_template: "https://publications.europa.eu/resource/celex/{celex}"
+        display_url_template: "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:{celex}"
+    job: { cron: "40 6 * * 1-6", timezone: Europe/Luxembourg, max_items_per_run: 250, rate_limit_per_minute: 10 }
+
+  - key: eu-eurlex-rss-ep-council
+    name: EUR-Lex RSS - Parliament and Council legislation
+    summary: Newly published acts of the European Parliament and the Council, as feed entries (titles and links only).
+    kind: rss
+    url: https://eur-lex.europa.eu/EN/display-feed.rss?rssId=162
+    terms_url: https://eur-lex.europa.eu/content/legal-notice/legal-notice.html
+    credibility: official
+    language: en
+    jurisdictions: [EU]
+    config: { feed_url: "https://eur-lex.europa.eu/EN/display-feed.rss?rssId=162", fetch_full_page: false, max_entries: 100, etag_conditional: true }
+    job: { interval_seconds: 21600, max_items_per_run: 100, rate_limit_per_minute: 6 }
+
+  - key: gb-legislation-it
+    name: legislation.gov.uk - new legislation on IT and cybersecurity
+    summary: New UK legislation whose title mentions cyber, data protection, electronic communications, AI, online safety or privacy.
+    kind: api_feed
+    url: https://www.legislation.gov.uk/all/data.feed
+    terms_url: https://www.legislation.gov.uk/fair-use-policy
+    credibility: official
+    language: en
+    jurisdictions: [GB]
+    config:
+      provider: legislation_gov_uk
+      params:
+        feed: search
+        type: all
+        title_terms: [cyber, "network and information systems", "data protection", "electronic communications", "telecommunications security", "product security", "artificial intelligence", "digital", "online safety", "electronic identification", "privacy"]
+        sort: published
+        max_pages_per_term: 2
+        fetch_format: data.xml
+    job: { cron: "10 8 * * *", timezone: Europe/London, max_items_per_run: 200, rate_limit_per_minute: 10 }

@@ -16,6 +16,7 @@ from tests.integration.test_admin import _api, _as_new_user, admin
 from tests.integration.test_auth import clear_limits, db_url
 
 pytestmark = pytest.mark.integration
+CATALOGUE = 4  # sources the seed adds from seed/catalogue.yaml (CP-25)
 __all__ = ["admin", "clear_limits", "db_url"]  # fixtures shared with test_admin and test_auth
 
 HOSTS = {"feeds.example": ["93.184.215.14"], "inside.example": ["10.0.0.5"],
@@ -65,7 +66,8 @@ async def test_create_read_update_and_disable(admin: httpx.AsyncClient) -> None:
     listed = (await admin.get(_api("/sources"), params={"q": "fe", "kind": "rss"})).json()
     assert listed["total"] == 1 and listed["items"][0]["job"]["id"] == source["job"]["id"]
     assert (await admin.get(_api("/sources"), params={"q": "%"})).json()["total"] == 0
-    assert (await admin.get(_api("/sources"), params={"health": "unknown"})).json()["total"] == 1
+    unknown = (await admin.get(_api("/sources"), params={"health": "unknown"})).json()
+    assert unknown["total"] == 1 + CATALOGUE
     jobs = (await admin.get(_api("/capture-jobs"), params={"source_id": sid})).json()
     assert [j["id"] for j in jobs] == [source["job"]["id"]]
 
@@ -174,7 +176,7 @@ async def test_invalid_sources_are_refused_with_the_field(
     assert not any("10.0.0.5" in e["message"] or "169.254" in e["message"] for e in errors)
     if field.startswith(("config.feed_url", "url", "config.seed")) and "{}" not in str(body):
         assert services._NOT_PUBLIC in [e["message"] for e in errors]
-    assert (await admin.get(_api("/sources"))).json()["total"] == 0
+    assert (await admin.get(_api("/sources"))).json()["total"] == CATALOGUE  # nothing added
 
 
 async def test_the_robots_override_needs_its_permission_and_is_audited(

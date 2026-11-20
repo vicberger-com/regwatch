@@ -41,7 +41,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.capture.execution import ContextFactory, Outcome, manifest_key, run_connector
-from regwatch.capture.models import CaptureJob, CaptureRun, Source
+from regwatch.capture.models import CaptureJob, CaptureRun, Source, capturing, is_capturing
 from regwatch.capture.schedule import CronError, next_run
 from regwatch.capture.schemas import CaptureRun as RunOut
 from regwatch.core.errors import ProblemError
@@ -207,7 +207,7 @@ async def tick(db: AsyncSession, enqueue: Enqueue, now: datetime | None = None,
     now = now or datetime.now(UTC)
     jobs = (await db.scalars(
         select(CaptureJob).join(Source, Source.id == CaptureJob.source_id)
-        .where(CaptureJob.enabled, Source.enabled, CaptureJob.next_run_at <= now)
+        .where(CaptureJob.enabled, capturing(), CaptureJob.next_run_at <= now)
         # A manual source runs only when a document is added (CP-17): an empty run each hour
         # would only make uploads in that window answer 409 (manual review info).
         .where(Source.kind != "manual")
@@ -262,7 +262,7 @@ async def queue_now(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     job = await db.scalar(select(CaptureJob).where(CaptureJob.id == job_id).with_for_update())
     if source is None or job is None:  # pragma: no cover - deleted between the two reads
         raise ProblemError(404, "not-found", "No such capture job.")
-    if not source.enabled or not job.enabled:
+    if not job.enabled or not await is_capturing(db, source.id):
         raise ProblemError(409, "conflict", "The source or its job is disabled; enable it first.")
     recent = await db.scalar(
         select(CaptureRun).where(CaptureRun.job_id == job.id)
@@ -320,7 +320,7 @@ async def execute(db: AsyncSession, job_id: uuid.UUID, make_context: ContextFact
     job = await db.scalar(select(CaptureJob).where(CaptureJob.id == job_id))
     source = await db.scalar(select(Source).where(Source.id == job.source_id)
                              ) if job is not None else None  # fmt: skip
-    if job is None or source is None or not source.enabled or not job.enabled:
+    if job is None or source is None or not job.enabled or not await is_capturing(db, source.id):
         await finish(db, run, "skipped", error_class="disabled",
                      error_message="the source or its job was disabled before the run")  # fmt: skip
         return "skipped"

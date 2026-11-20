@@ -117,8 +117,18 @@ CREATE TABLE source ( -- std
   owner_user_id uuid REFERENCES "user"(id),
   health text NOT NULL DEFAULT 'unknown' CHECK (health IN ('unknown','healthy','degraded','unhealthy')),
   consecutive_failures integer NOT NULL DEFAULT 0,
+  catalogue_key text UNIQUE,                       -- CP-25 (migration 0008): key in seed/catalogue.yaml; NULL = added by an admin
+  summary text,                                    -- CP-25: one line on what the source covers
   CHECK (robots_policy = 'respect' OR override_reason IS NOT NULL)
 );
+
+CREATE TABLE source_follower ( -- CP-25 (migration 0008): captured while its job is enabled and the source is enabled, or catalogue and followed
+  source_id uuid NOT NULL REFERENCES source(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source_id, user_id)
+);
+CREATE INDEX source_follower_user_idx ON source_follower (user_id);
 
 CREATE TABLE capture_job ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),

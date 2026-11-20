@@ -34,6 +34,7 @@ What exists today:
    - The User tab gets a "Feeds" section: a catalogue grouped by region and topic, with tick boxes.
    - Ticking a feed follows it: it joins the user's interest profile. A source is captured while it has at least one follower, or while an admin enables it.
    - Capture stays shared: one fetch per source, whoever follows it.
+   - As built (CP-25, migration 0008): `source.catalogue_key` and `source.summary`, and `source_follower`. Every capture gate checks one rule: the job is enabled, and the source is enabled or is a catalogue source with a follower. An admin stops a followed source by disabling it, which turns its job off, so no separate pause flag is needed. Topics for grouping wait for BL-136 (b): `default_term_ids` would tag every item.
 3. **Custom feeds are shared and marked as user-added.**
    - Users with `sources.manage` add a feed directly, as today. It joins the catalogue marked "added by …", and anyone can follow it.
    - Other users submit a feed request (URL, reason). An editor approves it, which creates the source, or declines it. Requests are audited.

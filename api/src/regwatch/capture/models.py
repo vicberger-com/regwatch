@@ -7,8 +7,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import ForeignKey, text
+from sqlalchemy import ColumnElement, ForeignKey, and_, exists, or_, select, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from regwatch.core.db import Base
@@ -39,6 +40,34 @@ class Source(Base):
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"))
     health: Mapped[str] = mapped_column(server_default=text("'unknown'"))
     consecutive_failures: Mapped[int] = mapped_column(server_default=text("0"))
+    catalogue_key: Mapped[str | None]  # CP-25: from seed/catalogue.yaml
+    summary: Mapped[str | None]
+
+
+class SourceFollower(Base):
+    """A user who follows a catalogue source (CP-25, migration 0008)."""
+
+    __tablename__ = "source_follower"
+
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+def capturing() -> ColumnElement[bool]:
+    """Whether a source is captured (ADR-0012): enabled, or a catalogue source that someone
+    follows. Every capture gate uses this with ``CaptureJob.enabled``, so an admin still stops
+    a followed source by turning its job off (``DELETE /sources/{id}``)."""
+    followed = exists().where(SourceFollower.source_id == Source.id)
+    return or_(Source.enabled, and_(Source.catalogue_key.is_not(None), followed))
+
+
+async def is_capturing(db: AsyncSession, source_id: uuid.UUID) -> bool:
+    return bool(await db.scalar(select(capturing()).where(Source.id == source_id)))
 
 
 class CaptureJob(Base):

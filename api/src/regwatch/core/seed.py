@@ -3,7 +3,8 @@
 Every ``*.yaml`` file in the seed directory (default ``./seed``, which is ``api/seed`` in a
 checkout and ``/app/seed`` in the image) may hold any of these top-level keys:
 ``permissions``, ``roles``, ``settings``, ``feature_flags`` (the shape of
-docs/contracts/registries.yaml), ``jurisdictions`` and ``facets``.
+docs/contracts/registries.yaml), ``jurisdictions``, ``facets`` and ``catalogue`` (the curated
+feeds, CP-25: disabled sources, captured while someone follows them).
 
 Rows are matched on their natural key and only inserted when missing, so a second run changes
 nothing and edits that administrators make later survive a re-run. Permission descriptions
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -27,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from regwatch.admin.models import FeatureFlag, Setting
 from regwatch.core.db import Base, create_engine
+from regwatch.core.schemas import has_control
 from regwatch.identity.models import Permission, Role, RolePermission
 from regwatch.taxonomy.models import Facet, Jurisdiction, Term
 
@@ -60,6 +63,7 @@ class SeedData:
     jurisdictions: dict[str, dict[str, Any]] = field(default_factory=dict)
     facets: dict[str, dict[str, Any]] = field(default_factory=dict)
     terms: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    catalogue: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _merge(target: dict[str, Any], items: dict[str, Any], what: str, source: str) -> None:
@@ -95,6 +99,7 @@ def load(seed_dir: Path) -> SeedData:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         unknown = set(doc) - _IGNORED_KEYS - {
             "permissions", "roles", "settings", "feature_flags", "jurisdictions", "facets",
+            "catalogue",
         }  # fmt: skip
         if unknown:
             raise SeedError(f"{path.name}: unknown top-level keys {sorted(unknown)}")
@@ -116,11 +121,68 @@ def load(seed_dir: Path) -> SeedData:
             raise SeedError(f"{path.name}: duplicate jurisdiction code")
         _merge(data.jurisdictions, jurisdictions, "jurisdiction", path.name)
         _add_facets(data, doc.get("facets", []), path.name)
+        entries = [_catalogue_entry(e, path.name) for e in doc.get("catalogue", [])]
+        catalogue = {e["catalogue_key"]: e for e in entries}
+        if len(catalogue) != len(entries):
+            raise SeedError(f"{path.name}: duplicate catalogue key")
+        _merge(data.catalogue, catalogue, "catalogue entry", path.name)
     for role, perms in data.roles.items():
         missing = [p for p in perms if p != "*" and p not in data.permissions]
         if missing:
             raise SeedError(f"role {role!r} names unknown permissions {missing}")
+    for key, entry in data.catalogue.items():
+        unknown_codes = [c for c in entry["jurisdictions"] if c not in data.jurisdictions]
+        if unknown_codes:
+            raise SeedError(f"catalogue entry {key!r} names unknown jurisdictions {unknown_codes}")
     return data
+
+
+_CATALOGUE_KEY = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+_CATALOGUE_KINDS = frozenset({"rss", "api_feed", "web_page"})
+_CATALOGUE_FIELDS = frozenset({
+    "key", "name", "summary", "kind", "url", "terms_url", "credibility", "language",
+    "jurisdictions", "config", "job",
+})  # fmt: skip
+
+
+def _catalogue_entry(entry: dict[str, Any], source: str) -> dict[str, Any]:
+    """One catalogue entry, checked as an admin's new source would be, short of DNS: SafeFetcher
+    checks its addresses on every fetch. Catalogue sources always respect robots.txt."""
+    from pydantic import ValidationError
+
+    from regwatch.capture.schemas import SourceWrite
+    from regwatch.capture.services import check_offline
+    from regwatch.core.errors import ProblemError
+
+    key = str(entry.get("key", ""))
+    where = f"{source}: catalogue entry {key!r}"
+    if not _CATALOGUE_KEY.fullmatch(key):
+        raise SeedError(f"{where}: the key is 1 to 64 lower-case letters, digits and hyphens")
+    if unknown := set(entry) - _CATALOGUE_FIELDS:
+        raise SeedError(f"{where}: unknown fields {sorted(unknown)}")
+    if entry.get("kind") not in _CATALOGUE_KINDS:  # the kinds whose checks need no network
+        raise SeedError(f"{where}: the kind is one of {sorted(_CATALOGUE_KINDS)}")
+    summary = entry.get("summary")
+    if not isinstance(summary, str) or not 0 < len(summary) <= 300 or has_control(summary):
+        raise SeedError(f"{where}: a summary of 1 to 300 plain characters is required")
+    codes = entry.get("jurisdictions", [])
+    if not isinstance(codes, list) or not all(isinstance(c, str) for c in codes):
+        raise SeedError(f"{where}: jurisdictions is a list of codes")
+    fields = {k: entry[k] for k in ("name", "kind", "url", "terms_url", "credibility",
+                                    "language", "config") if k in entry}  # fmt: skip
+    try:
+        body = SourceWrite.model_validate({**fields, "job": entry.get("job", {})})
+        values = body.model_dump(exclude_unset=True, exclude={"job"})
+        job = body.job.model_dump(exclude_unset=True)
+        check_offline(values, job)
+    except ValidationError as exc:
+        raise SeedError(f"{where}: {exc.errors(include_url=False)}") from None
+    except ProblemError as exc:
+        raise SeedError(f"{where}: {exc} {exc.errors or ''}".strip()) from None
+    job.pop("enabled", None)
+    job.setdefault("timezone", "UTC")
+    return {**values, "catalogue_key": key, "summary": summary, "jurisdictions": codes,
+            "job": job}  # fmt: skip
 
 
 def _text(entry: dict[str, Any]) -> str:
@@ -205,6 +267,7 @@ async def apply(conn: AsyncConnection, data: SeedData) -> dict[str, int]:
     counts["term"] = 0
     for facet_key, terms in data.terms.items():
         counts["term"] += await _apply_terms(conn, facet_ids[facet_key], terms)
+    counts["catalogue_source"] = await _apply_catalogue(conn, data.catalogue)
     if counts["facet"] or counts["term"]:
         # New facets or terms: workers drop cached attribute validation (M2 review 12c).
         await conn.execute(text(
@@ -231,6 +294,36 @@ async def _apply_terms(conn: AsyncConnection, facet_id: Any, terms: list[dict[st
         inserted += await _insert_missing(conn, _table(Term), rows, ["facet_id", "key"])
         pending = [t for t in pending if t not in ready]
     return inserted
+
+
+async def _apply_catalogue(conn: AsyncConnection, catalogue: dict[str, dict[str, Any]]) -> int:
+    """Add the catalogue entries that are missing, each disabled with an enabled job: it is
+    captured only while someone follows it (CP-25). Existing ones are never changed."""
+    from regwatch.capture.models import CaptureJob, Source
+    from regwatch.capture.services import reschedule
+
+    sources = _table(Source)
+    listed = select(sources.c.catalogue_key).where(sources.c.catalogue_key.is_not(None))
+    have = set((await conn.scalars(listed)).all())
+    jurisdiction_ids = await _ids(conn, _table(Jurisdiction), "code")
+    added = 0
+    for key, entry in catalogue.items():
+        if key in have:
+            continue
+        row = {k: v for k, v in entry.items() if k not in ("jurisdictions", "job")}
+        row["default_jurisdiction_ids"] = [jurisdiction_ids[c] for c in entry["jurisdictions"]]
+        source_id = await conn.scalar(
+            insert(sources).values(**row, enabled=False, robots_policy="respect")
+            .on_conflict_do_nothing(index_elements=["catalogue_key"])
+            .returning(sources.c.id))  # fmt: skip
+        if source_id is None:  # pragma: no cover - added by a concurrent seed run
+            continue
+        job = CaptureJob(**entry["job"])
+        reschedule(job, entry["job"], new=True)
+        await conn.execute(insert(_table(CaptureJob)).values(
+            source_id=source_id, next_run_at=job.next_run_at, **entry["job"]))  # fmt: skip
+        added += 1
+    return added
 
 
 async def run(seed_dir: Path, database_url: str) -> dict[str, int]:

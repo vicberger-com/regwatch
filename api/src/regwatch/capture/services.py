@@ -197,6 +197,28 @@ def check_plain(values: dict[str, Any], kind: str | None) -> str:
     return str(values.get("kind", kind))
 
 
+def check_offline(values: dict[str, Any], job_values: dict[str, Any]) -> None:
+    """A new source's checks that need neither the network nor the database, for sources
+    from the catalogue seed (CP-25): fields, config, query parameters and the job. Its URLs
+    are still checked by SafeFetcher on every fetch."""
+    kind = check_plain(values, None)
+    parsed = validate_config(kind, values["config"])
+    if isinstance(parsed, ApiFeedConfig):
+        try:
+            check_params(parsed)
+        except ConnectorError as exc:
+            raise invalid("config.params", exc.detail) from None
+    values["config"] = parsed.model_dump(mode="json", exclude_unset=True)
+    urls = [("url", values.get("url"))] + [
+        (f"config.{name}", getattr(parsed, name)) for name in _URL_FIELDS.get(kind, ())
+    ]
+    for field, value in urls:
+        for url in value if isinstance(value, list) else [value]:
+            if url is not None and not (_web_link(str(url)) and str(url).startswith("https://")):
+                raise invalid(field, "an https URL")
+    check_job(job_values, None)
+
+
 def check_robots(values: dict[str, Any], source: Source | None, principal: Principal) -> bool:
     """The robots.txt override: the permission and a reason (M3 acceptance 4, review 22 (a)).
 

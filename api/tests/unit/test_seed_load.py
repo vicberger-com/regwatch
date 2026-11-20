@@ -172,3 +172,73 @@ def test_registry_setting_definitions() -> None:
     assert defs["auth.lockout_threshold"].default == 10
     assert defs["general.contact_email"].note == "used in the crawler User-Agent and footers"
     assert "users.manage" in registry.permission_keys()
+
+
+FEED = {
+    "key": "test-feed",
+    "name": "Test feed",
+    "summary": "A feed for tests.",
+    "kind": "rss",
+    "url": "https://example.org/feed.xml",
+    "jurisdictions": ["FR"],
+    "config": {"feed_url": "https://example.org/feed.xml"},
+    "job": {"interval_seconds": 3600},
+}
+PLACES = {"jurisdictions": [{"code": "FR", "name": "France", "kind": "country"}]}
+
+
+def test_the_catalogue_is_checked_like_a_new_source(data: seed.SeedData) -> None:
+    """CP-25: every entry passes the checks an admin's new source gets, short of DNS."""
+    assert set(data.catalogue) == {
+        "us-federal-register-it", "eu-eurlex-cellar-it", "eu-eurlex-rss-ep-council",
+        "gb-legislation-it",
+    }  # fmt: skip
+    for key, entry in data.catalogue.items():
+        assert entry["catalogue_key"] == key and entry["summary"] and entry["terms_url"]
+        assert "enabled" not in entry and "enabled" not in entry["job"]  # the seed decides
+        assert "npc.gov.cn" not in str(entry)  # R-03 C15: never captured
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"key": "Bad Key"}, "lower-case letters"),
+        ({"owner": "x"}, "unknown fields"),
+        ({"summary": ""}, "a summary of 1 to 300"),
+        ({"summary": "x" * 301}, "a summary of 1 to 300"),
+        ({"summary": "bad‮text"}, "a summary of 1 to 300"),
+        ({"jurisdictions": "FR"}, "list of codes"),
+        ({"jurisdictions": ["ZZ"]}, "unknown jurisdictions"),
+        ({"config": {"feed_url": "ftp://example.org/x"}}, "not valid"),
+        ({"config": {"feed_url": "http://example.org/x"}}, "not valid"),
+        ({"url": "javascript:alert(1)"}, "not valid"),
+        ({"kind": "teleport"}, "the kind is one of"),
+        ({"kind": "web_crawl"}, "the kind is one of"),
+        (
+            {
+                "job": {
+                    "interval_seconds": 3600,
+                    "max_items_per_run": 2000,
+                    "rate_limit_per_minute": 1,
+                }
+            },
+            "not valid",
+        ),  # fmt: skip
+    ],
+)
+def test_bad_catalogue_entries_are_rejected(
+    tmp_path: Path, change: dict[str, Any], message: str
+) -> None:
+    _write(tmp_path, "a.yaml", {**PLACES, "catalogue": [{**FEED, **change}]})
+    with pytest.raises(seed.SeedError, match=message):
+        seed.load(tmp_path)
+
+
+def test_catalogue_keys_are_unique(tmp_path: Path) -> None:
+    _write(tmp_path, "a.yaml", {**PLACES, "catalogue": [FEED, FEED]})
+    with pytest.raises(seed.SeedError, match="duplicate catalogue key"):
+        seed.load(tmp_path)
+    _write(tmp_path, "a.yaml", {**PLACES, "catalogue": [FEED]})
+    _write(tmp_path, "b.yaml", {"catalogue": [FEED]})
+    with pytest.raises(seed.SeedError, match="duplicate catalogue entry"):
+        seed.load(tmp_path)

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.integration
 SEED_DIR = Path(__file__).resolve().parents[2] / "seed"
 TABLES = (
     "permission", "role", "role_permission", "setting", "feature_flag", "jurisdiction", "facet",
-    "term",
+    "term", "source", "capture_job",
 )  # fmt: skip
 EXPECTED = {
     "permission": 23,
@@ -26,6 +26,7 @@ EXPECTED = {
     "jurisdiction": 250 + 5,
     "facet": 6,
     "term": 14 + 10 + 9 + 9 + 6 + 22,
+    "catalogue_source": 4,
 }
 
 
@@ -52,10 +53,18 @@ def test_seed_keeps_administrator_edits(postgres: Postgres, empty_db: str) -> No
         empty_db,
         "UPDATE setting SET value = '\"Acme monitor\"' WHERE key = 'general.site_title';"
         "UPDATE feature_flag SET enabled = true WHERE key = 'auth.oidc';"
-        "UPDATE permission SET description = 'stale' WHERE key = 'items.read';",
+        "UPDATE permission SET description = 'stale' WHERE key = 'items.read';"
+        "UPDATE source SET name = 'Renamed' WHERE catalogue_key = 'gb-legislation-it';",
     )
     counts = asyncio.run(seed.run(SEED_DIR, url))
     assert counts["permission"] == 1  # the registry owns permission text
+    assert counts["catalogue_source"] == 0
+    assert (
+        postgres.psql(
+            empty_db, "SELECT name FROM source WHERE catalogue_key = 'gb-legislation-it';"
+        )
+        == "Renamed\n"
+    )
     out = postgres.psql(
         empty_db,
         "SELECT value #>> '{}' FROM setting WHERE key = 'general.site_title';"
@@ -83,3 +92,25 @@ def test_seeded_rows_follow_the_sources(postgres: Postgres, empty_db: str) -> No
     assert q(empty_db, children) == "22\n"
     enabled = "SELECT string_agg(key, ',' ORDER BY key) FROM feature_flag WHERE enabled;"
     assert q(empty_db, enabled) == "capture.js_rendering,outputs.email,reports.builder\n"
+
+
+def test_catalogue_sources_wait_for_a_follower(postgres: Postgres, empty_db: str) -> None:
+    """CP-25: catalogue sources are disabled, respect robots.txt, carry their jurisdictions
+    and have a scheduled job, so following one is all it takes to capture it."""
+    url = postgres.url(empty_db)
+    upgrade(url)
+    asyncio.run(seed.run(SEED_DIR, url))
+    rows = postgres.psql(
+        empty_db,
+        "SELECT s.catalogue_key, s.enabled, s.robots_policy, j.code, cj.enabled,"
+        " cj.next_run_at IS NOT NULL, s.summary IS NOT NULL, s.terms_url IS NOT NULL"
+        " FROM source s JOIN capture_job cj ON cj.source_id = s.id"
+        " JOIN jurisdiction j ON j.id = ANY(s.default_jurisdiction_ids)"
+        " ORDER BY s.catalogue_key;",
+    )
+    assert rows.split("\n")[:4] == [
+        "eu-eurlex-cellar-it|f|respect|EU|t|t|t|t",
+        "eu-eurlex-rss-ep-council|f|respect|EU|t|t|t|t",
+        "gb-legislation-it|f|respect|GB|t|t|t|t",
+        "us-federal-register-it|f|respect|US|t|t|t|t",
+    ]
