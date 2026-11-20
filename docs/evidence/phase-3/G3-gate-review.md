@@ -1,6 +1,6 @@
 # Gate G3 review: Phase 3 Interface (M6, M9)
 
-**Prepared by:** lead session · **Build under review:** `feat/M9-preferences` (top of the Phase 3 stack, on `feat/M6-shell`) at the commit that adds this record · **Date:** 2026-11-20 · **Decision:** **pending the owner**. Mirror it as the comment `approved` on the `Gate G3` issue (docs/06-process.md 6.1).
+**Prepared by:** lead session · **Build under review:** `feat/M9-preferences` (top of the Phase 3 stack, on `feat/M6-shell`) at the commit that adds this record · **Date:** 2026-11-20 · **Decision:** **approved by the owner on 2026-11-20** in the lead session, with the open items on their recommended defaults (the owner's standing instruction): the adversarial session is deferred to G5, as at G1; the manual screen-reader run moves to use testing round 2 (G4); CP-23 to CP-27 are confirmed; BL-125 and BL-126 are accepted as CPs; BL-127 and BL-128 move to Phase 4 and do not block G3. Mirror the decision as the comment `approved` on the `Gate G3` issue (docs/06-process.md 6.1).
 
 **Exit criterion (6.1):**
 - the map shows live changes;
@@ -32,7 +32,7 @@
 | License scan clean; register and notices updated | **Yes** | Register rows for lucide-react, Inter, MapLibre and its packages, and Playwright and axe. `web/THIRD_PARTY_NOTICES.md`. Shipping it with the bundle is BL-124. |
 | CHANGELOG release section cut; BACKLOG decisions recorded; CP issues summarised | **At the gate** | CP proposals BL-125 (view lists for `items.read`) and BL-126 (the passive header); the ADR-0004 amendment 1 for the build-time Equal Earth. |
 | Questioning-period issues closed or assumptions recorded | **Recorded** | The M6 and M9 bank defaults, approved 2026-11-19, and the P3 rows in ASSUMPTIONS. The issues are still to open on GitHub. |
-| Owner comment `approved` | **Pending** | |
+| Owner comment `approved` | **Approved 2026-11-20** in the lead session; to be mirrored on the `Gate G3` issue | |
 
 ## Owner actions before approval
 

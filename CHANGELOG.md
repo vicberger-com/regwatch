@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+## [G3] - 2026-11-20
+
 ### Fixed
 - CP-23: the API and the worker join a new outbound-only `fetch` network, so live sources can be saved (their DNS is checked) and captured. The dev stack had no route out, so every source address failed "the host must resolve to public addresses only". SafeFetcher still refuses non-public addresses, and the `search` sidecar stays on its own `egress` network (Refs: REQ-04, BL-130).
 - Use testing round 1. The map is drawn: its box was 0 px high, because MapLibre's stylesheet makes the map element `position: relative` (U-M6-1). Map colours that arrive before the lazy-loaded engine are applied when it starts (U-M6-2). Dates and times follow the user's time zone, and UTC is offered (U-M9-1). The theme button follows the theme on screen (Refs: REQ-06, REQ-14).
