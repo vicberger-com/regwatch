@@ -96,3 +96,23 @@ async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+
+MODEL_MODULES = (
+    "regwatch.core.models", "regwatch.admin.models", "regwatch.identity.models",
+    "regwatch.taxonomy.models", "regwatch.capture.models", "regwatch.processing.models",
+    "regwatch.search.models", "regwatch.reports.models", "regwatch.outputs.models",
+    "regwatch.api.models",
+)  # fmt: skip
+
+
+def load_models() -> None:
+    """Import every module's models, so foreign keys between modules resolve in a process that
+    did not import them all (the worker: M8.1 found ``output_job`` -> ``saved_view``)."""
+    import importlib
+
+    from sqlalchemy.orm import configure_mappers
+
+    for name in MODEL_MODULES:
+        importlib.import_module(name)
+    configure_mappers()

@@ -118,3 +118,46 @@ test("the builder works by keyboard alone and passes axe (BL-16)", async ({
     await page.waitForResponse((r) => r.request().method() === "DELETE");
   }
 });
+
+test("a report becomes a PDF through Gotenberg within two minutes (M8 acceptance 1)", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await signInByKeyboard(page);
+  const origin = new URL(page.url()).origin;
+  const headers = { Origin: origin };
+  const made = await page.request.post("/api/v1/outputs", {
+    headers,
+    data: {
+      kind: "pdf",
+      source: { report_template_key: "regulation-status-matrix" },
+    },
+  });
+  expect(made.status()).toBe(202);
+  const id = ((await made.json()) as { id: string }).id;
+  const started = Date.now();
+  let status = "queued";
+  while (
+    Date.now() - started < 120_000 &&
+    (status === "queued" || status === "rendering")
+  ) {
+    await page.waitForTimeout(2_000);
+    const job = (await (
+      await page.request.get(`/api/v1/outputs/${id}`)
+    ).json()) as {
+      status: string;
+      error_class: string | null;
+    };
+    status = job.status;
+    expect(job.error_class).toBeNull();
+  }
+  expect(status).toBe("sent");
+  const file = await page.request.get(`/api/v1/outputs/${id}/artifact`);
+  expect(file.status()).toBe(200);
+  expect(file.headers()["content-type"]).toBe("application/pdf");
+  const body = await file.body();
+  expect(body.subarray(0, 5).toString()).toBe("%PDF-");
+  const pages =
+    body.toString("latin1").match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? [];
+  expect(pages.length).toBeGreaterThan(0);
+});

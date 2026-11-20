@@ -104,5 +104,9 @@ worker_process_init.connect(limit_memory, weak=False)
 
 @cache
 def celery_app() -> Celery:
-    """The process's app, built on first use so importing the module needs no settings."""
+    """The process's app, built on first use so importing the module needs no settings. Every
+    model is loaded first, so tasks resolve foreign keys between modules (M8.1)."""
+    from regwatch.core.db import load_models
+
+    load_models()
     return make_app()
