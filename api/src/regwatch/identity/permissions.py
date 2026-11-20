@@ -26,6 +26,8 @@ from regwatch.core.settings import Settings, get_settings
 from regwatch.identity import services
 from regwatch.identity.services import Principal
 
+PASSIVE_HEADER = "x-regwatch-passive"  # polling that must not renew the session (M6 live map)
+
 PERMISSIONS: tuple[str, ...] = ()
 
 # M1 acceptance 2: with a temporary password the user can only see who they are, change it,
@@ -51,7 +53,10 @@ async def authorize(request: Request, settings: SettingsDep) -> None:
         raise services.unauthenticated()
     factory: async_sessionmaker[AsyncSession] = request.app.state.db
     async with factory() as db:
-        principal = await services.resolve_session(db, token)
+        # A client marks its own polling as passive, so it never keeps an idle session alive;
+        # the header can only make a session end sooner, never later.
+        passive = request.headers.get(PASSIVE_HEADER) == "1"
+        principal = await services.resolve_session(db, token, passive=passive)
     if principal is None:
         raise services.unauthenticated()
     name = route.name if isinstance(route, APIRoute) else ""

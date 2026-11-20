@@ -341,8 +341,10 @@ def _idle_minutes(user: User, cfg: dict[str, int]) -> int:
     return ceiling
 
 
-async def resolve_session(db: AsyncSession, token: str) -> Principal | None:
-    """The live session for a cookie value, or None; touches ``last_seen_at``."""
+async def resolve_session(db: AsyncSession, token: str, passive: bool = False) -> Principal | None:
+    """The live session for a cookie value, or None; touches ``last_seen_at`` unless the
+    request is ``passive`` (a page polling on its own, such as the live map): such a request
+    is checked against the idle limit like any other but never renews it."""
     found = (
         await db.execute(
             select(UserSession, User)
@@ -361,7 +363,7 @@ async def resolve_session(db: AsyncSession, token: str) -> Principal | None:
         sess.revoked_at = now
         await db.commit()
         return None
-    if now - sess.last_seen_at >= TOUCH_INTERVAL:
+    if not passive and now - sess.last_seen_at >= TOUCH_INTERVAL:
         sess.last_seen_at = now
         await db.commit()
     roles, perms = await roles_and_permissions(db, user.id)

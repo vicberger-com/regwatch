@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from regwatch.api.app import API_PREFIX, create_app
 from regwatch.core import seed
@@ -348,3 +349,38 @@ async def test_a_wrong_current_password_is_refused(client: httpx.AsyncClient) ->
     resp = await client.post(f"{API_PREFIX}/auth/password", headers=ORIGIN, json=change)
     assert resp.status_code == 400 and "current password is incorrect" in resp.json()["detail"]
     assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200  # unchanged
+
+
+async def test_passive_requests_never_renew_an_idle_session(
+    client: httpx.AsyncClient, db_url: str
+) -> None:
+    """M6 live map review: polling marked passive is checked but never touches last_seen_at,
+    so a visible map cannot keep an idle session alive; an ordinary request still renews."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    passive = {"X-Regwatch-Passive": "1"}
+    await _sql(db_url, "UPDATE session SET last_seen_at = now() - interval '7 hours'")
+    assert (await client.get(f"{API_PREFIX}/auth/me", headers=passive)).status_code == 200
+    engine = create_engine(db_url, poolclass_null=True)
+    async with session_factory(engine)() as db:
+        seen = await db.scalar(
+            text("SELECT max(last_seen_at) < now() - interval '6 hours' FROM session")
+        )
+    await engine.dispose()
+    assert seen is True  # not renewed by the passive request
+    await _sql(db_url, "UPDATE session SET last_seen_at = now() - interval '9 hours'")
+    assert (
+        await client.get(f"{API_PREFIX}/auth/me", headers=passive)
+    ).status_code == 401  # 8 h idle
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    await _sql(db_url, "UPDATE session SET last_seen_at = now() - interval '7 hours'")
+    assert (await client.get(f"{API_PREFIX}/auth/me")).status_code == 200  # ordinary: renews
+    engine = create_engine(db_url, poolclass_null=True)
+    async with session_factory(engine)() as db:
+        fresh = await db.scalar(
+            text(
+                "SELECT max(last_seen_at) > now() - interval '1 minute' FROM session"
+                " WHERE revoked_at IS NULL"
+            )
+        )
+    await engine.dispose()
+    assert fresh is True

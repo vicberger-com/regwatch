@@ -33,6 +33,8 @@ export const activityQuery = (
           ? JSON.stringify({ terms: { [view.facet]: [view.term] } })
           : undefined;
       const result = await api.GET("/map/activity", {
+        // Passive: the map's own polling never keeps an idle session alive on the server.
+        headers: { "X-Regwatch-Passive": "1" },
         params: {
           query: {
             period_days: periodDays,
