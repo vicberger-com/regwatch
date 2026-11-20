@@ -185,6 +185,6 @@ async def delete_layout(db: AsyncSession, layout_id: uuid.UUID, principal: Princ
     from regwatch.outputs.models import OutputJob
     from regwatch.outputs.services import detach
 
-    await detach(db, OutputJob.report_layout_id, row.id, "layout")
+    await detach(db, OutputJob.report_layout_id, row.id, "layout", principal.user.id)
     await db.delete(row)
     await db.commit()

@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.internal import InternalClient
@@ -506,3 +506,10 @@ async def test_a_printed_layout_can_still_be_deleted(
     assert kept["source_summary"] == "deleted layout"
     stopped = (await admin.get(_api(f"/outputs/{sid}"))).json()
     assert (stopped["status"], stopped["error_class"]) == ("cancelled", "source-deleted")
+    from regwatch.core.models import AuditLog
+
+    me = (await admin.get(_api("/auth/me"))).json()["id"]
+    row = await db.scalar(select(AuditLog).where(AuditLog.action == "output.cancel",
+                                                 AuditLog.entity_id == sid))  # fmt: skip
+    assert row is not None and str(row.actor_user_id) == me  # who deleted the layout
+    assert row.after["reason"] == "source-deleted" and row.after["owner"] == me

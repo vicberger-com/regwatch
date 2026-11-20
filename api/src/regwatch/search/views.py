@@ -177,6 +177,6 @@ async def delete_view(db: AsyncSession, view_id: uuid.UUID, principal: Principal
     from regwatch.outputs.models import OutputJob
     from regwatch.outputs.services import detach
 
-    await detach(db, OutputJob.saved_view_id, view.id, "saved view")
+    await detach(db, OutputJob.saved_view_id, view.id, "saved view", principal.user.id)
     await db.delete(view)
     await db.commit()

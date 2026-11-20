@@ -332,7 +332,8 @@ async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
 DELETED = "deleted_source"  # in ``query`` of a job whose layout or saved view was deleted
 
 
-async def detach(db: AsyncSession, column: Any, source_id: uuid.UUID, what: str) -> None:
+async def detach(db: AsyncSession, column: Any, source_id: uuid.UUID, what: str,
+                 actor: uuid.UUID) -> None:  # fmt: skip
     """Before a layout or saved view is deleted: its outputs keep their history (and their
     files) with the source marked deleted; any still to run, schedules too, are cancelled.
     ``output_job`` references its source without ON DELETE, and exactly one source is set."""
@@ -343,9 +344,9 @@ async def detach(db: AsyncSession, column: Any, source_id: uuid.UUID, what: str)
         .values(status="cancelled", error_class="source-deleted",
                 error_message=f"the {what} was deleted", next_run_at=None)
         .returning(OutputJob.id, OutputJob.requested_by))  # fmt: skip
-    for job_id, owner in stopped.all():
-        audit(db, "output.cancel", "output_job", job_id, actor=owner,
-              after={"reason": "source-deleted", "source": what})  # fmt: skip
+    for job_id, owner in stopped.all():  # by whoever deleted it, for the job's owner (review)
+        audit(db, "output.cancel", "output_job", job_id, actor=actor,
+              after={"reason": "source-deleted", "source": what, "owner": str(owner)})  # fmt: skip
     await db.execute(update(OutputJob).where(column == source_id)
                      .values({column: None, OutputJob.query: {DELETED: what}}))  # fmt: skip
 
