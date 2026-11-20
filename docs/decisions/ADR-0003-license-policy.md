@@ -111,3 +111,8 @@ The owner accepted one further decision found by the BL-68 component review:
 
 - **Unicode-3.0 joins the 3.5 allow-list** (BL-78). nh3 0.3.7, the HTML sanitizer named in 8.1 and needed by BL-68, statically links 18 ICU4X crates under the Unicode License v3 (`unicode-org/icu4x` tag `icu@2.3.0`, commit `b1cec62`; R-01 B3), pulled in by `url` through `idna`. The license is permissive with no copyleft: it grants use, copying, modification and distribution on condition that the copyright and permission notice accompany the copies. Its notice duty is met by `api/THIRD_PARTY_NOTICES.md` with the license text, copied into both API image stages. `scripts/license_policy.py` allows `Unicode-3.0` directly. Because the nh3 wheel declares only MIT, the bundled crates are recorded in the component register row and R-01 rather than found by the scan.
 
+## Amendment 4 (2026-11-20)
+
+Accepted on recommendation under the owner's standing instruction to take default recommendations (2026-11-20); the owner may override it.
+
+- **0BSD joins the 3.5 allow-list** (BL-142). tslib 2.9.1, a runtime dependency of the Puck editor (ADR-0005, M7.4), is licensed under the BSD Zero Clause License. It grants use, copying, modification and distribution with or without fee and attaches no conditions, not even keeping the notice: like MIT-0 (amendment 2), it is permissive with no copyleft. Read in `tslib@2.9.1` `LICENSE.txt` (Copyright (c) Microsoft Corporation), 2026-11-20. The notice is kept in `web/THIRD_PARTY_NOTICES.md` anyway. `scripts/license_policy.py` allows `0BSD` directly.

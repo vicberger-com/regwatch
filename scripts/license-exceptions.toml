@@ -16,6 +16,15 @@
 
 [[exception]]
 ecosystem = "python"
+package = "Jinja2"
+version = "3.1.6"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; LICENSE.txt is the 3-clause text"
+reviewed = "jinja2-3.1.6 wheel licenses/LICENSE.txt (Copyright 2007 Pallets, BSD 3-clause text), read 2026-11-20 (M7.2); register row V"
+
+[[exception]]
+ecosystem = "python"
 package = "httpx"
 version = "0.28.1"
 license = "BSD-3-Clause"
