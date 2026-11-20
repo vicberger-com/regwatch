@@ -34,7 +34,8 @@ test("a report is created, edited in Puck and previewed", async ({ page }) => {
   await expect(
     page
       .frameLocator("iframe[title='Report preview']")
-      .getByRole("heading", { name: "New report" }),
+      .getByRole("heading", { name: "New report" })
+      .first(),
   ).toBeVisible();
   await page.screenshot({
     path: test.info().outputPath("builder.png"),
