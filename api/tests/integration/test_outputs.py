@@ -444,7 +444,48 @@ async def test_schedules_are_capped_need_their_permission_and_pause(
     await admin.patch(_api(f"/admin/users/{aid}"), json={"status": "active"})
     # Disabling ended her sessions: she signs in again to resume it.
     assert (await _login(ana, "amo@example.org", "a long new passphrase")).status_code == 200
+    # Resuming counts against the cap, too (M8.3 review): with another schedule active, no.
+    other = (await _pdf(ana, {"report_template_key": "source-health"}, schedule=WEEKLY)).json()
+    refused = await ana.post(_api(f"/outputs/{sid}/retry"))
+    assert refused.status_code == 409 and "At most 1 schedules" in refused.text
+    assert (await ana.delete(_api(f"/outputs/{other['id']}"))).status_code == 204
     resumed = await ana.post(_api(f"/outputs/{sid}/retry"))
     assert resumed.status_code == 202 and resumed.json()["status"] == "queued"
     assert resumed.json()["next_run_at"] is not None
     await ana.aclose()
+
+
+async def test_one_tick_keeps_to_the_hourly_limit(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    """Schedules due together each count the runs the same tick has started (M8.3 review)."""
+    source = {"report_template_key": "source-health"}
+    ids = [(await _pdf(admin, source, schedule=WEEKLY)).json()["id"] for _ in range(2)]
+    limit = await admin.put(
+        _api("/admin/settings/outputs.rate_per_hour_per_user"), json={"value": 3}
+    )  # the two schedules, and room for one run
+    assert limit.status_code == 200, limit.text
+    assert await tasks.tick_once(db, now=datetime.now(UTC) + timedelta(days=8)) == 1
+    runs = [j for j in (await admin.get(_api("/outputs"))).json()["items"] if j["id"] not in ids]
+    assert len(runs) == 1  # the other run was skipped (audited), its schedule still active
+    shown = [(await admin.get(_api(f"/outputs/{i}"))).json()["status"] for i in ids]
+    assert shown == ["queued", "queued"]
+
+
+async def test_a_run_that_cannot_succeed_pauses_its_schedule(
+    admin: httpx.AsyncClient, db: AsyncSession, smtp: Smtp
+) -> None:
+    """A recipient's domain removed: the run fails, and its schedule pauses (M8.3 review)."""
+    await _domains(admin, "example.org")
+    made = await admin.post(_api("/outputs"), json={**_email(["kim@example.org"]),
+                                                    "schedule": WEEKLY})  # fmt: skip
+    assert made.status_code == 202, made.text
+    sid = made.json()["id"]
+    assert await tasks.tick_once(db, now=datetime.now(UTC) + timedelta(days=8)) == 1
+    run = next(j for j in (await admin.get(_api("/outputs"))).json()["items"] if j["id"] != sid)
+    await _domains(admin, "example.com")
+    assert await tasks.run_email(db, uuid.UUID(run["id"])) == "failed"
+    assert smtp.sent == []
+    shown = (await admin.get(_api(f"/outputs/{sid}"))).json()
+    assert (shown["status"], shown["error_class"], shown["next_run_at"]) == (
+        "failed", "recipient-refused", None)  # fmt: skip

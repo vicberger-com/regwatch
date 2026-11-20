@@ -5,10 +5,12 @@ A schedule is an ``output_job`` with ``scheduled_cron`` set: ``queued`` while it
 makes a child job (``parent_job_id``) that runs like any other output.
 
 What it holds to (M8.1 review, BL-143 f):
-- A valid five-field cron, at least an hour between runs, in an IANA time zone (the owner's
-  preference by default); at most ``MAX_SCHEDULES`` active schedules a user.
+- A valid five-field cron, at least an hour between runs (checked over a year, so clock changes
+  too), in an IANA time zone (the owner's preference by default); at most ``MAX_SCHEDULES``
+  active schedules a user, resumed ones included.
 - Each run is checked against the owner's *current* account and rights; a schedule whose owner
-  is no longer active, or whose report they can no longer see, is paused and audited.
+  is no longer active, or whose report they can no longer see, is paused and audited; so is
+  one whose run fails for a reason that would fail every run (``PAUSE_ON``).
 - Due schedules are claimed with ``SKIP LOCKED`` and their next run is set in the same
   transaction, so none runs twice; scheduled runs count in the owner's hourly limit.
 """
@@ -30,7 +32,8 @@ from regwatch.outputs.models import OutputJob
 MAX_SCHEDULES = 10
 MIN_GAP = timedelta(hours=1)
 TICK_BATCH = 50
-_CHECKED_RUNS = 50  # the gaps between this many runs are checked against MIN_GAP
+CHECKED_SPAN = timedelta(days=366)  # every gap in a year, so both clock changes are in it
+_MAX_RUNS = 9000  # an hourly schedule makes at most 8784 runs a year
 
 
 def check(cron: str, timezone: str, now: datetime | None = None) -> datetime:
@@ -46,9 +49,9 @@ def check(cron: str, timezone: str, now: datetime | None = None) -> datetime:
     start = now or datetime.now(UTC)
     runs: list[datetime] = []
     at = start
-    for _ in range(_CHECKED_RUNS):
+    for _ in range(_MAX_RUNS):
         nxt = next_run(cron, None, zone.key, at)
-        if nxt is None:
+        if nxt is None or nxt > start + CHECKED_SPAN:
             break
         runs.append(nxt)
         at = nxt
@@ -63,6 +66,21 @@ async def count_active(db: AsyncSession, user_id: Any) -> int:
     return await db.scalar(select(func.count()).select_from(OutputJob).where(
         OutputJob.requested_by == user_id, OutputJob.scheduled_cron.is_not(None),
         OutputJob.status == "queued")) or 0  # fmt: skip
+
+
+# A run failing for one of these will fail every time: its schedule is paused (M8.3 review).
+PAUSE_ON = frozenset({"requester-inactive", "forbidden", "not-found", "recipient-refused"})
+
+
+async def pause_parent(db: AsyncSession, child: OutputJob, error_class: str,
+                       message: str) -> None:  # fmt: skip
+    """Pause the schedule a run came from, when the run failed for a lasting reason."""
+    if child.parent_job_id is None or error_class not in PAUSE_ON:
+        return
+    parent = await db.scalar(select(OutputJob).where(OutputJob.id == child.parent_job_id)
+                             .with_for_update())  # fmt: skip
+    if parent is not None and parent.status == "queued":
+        _pause(db, parent, error_class, message)
 
 
 def _pause(db: AsyncSession, job: OutputJob, error_class: str, message: str) -> None:
@@ -109,8 +127,8 @@ async def tick(db: AsyncSession, now: datetime | None = None) -> list[Any]:
                           destination=dict(parent.destination or {}), status="queued",
                           parent_job_id=parent.id, layout_version=layout.version)  # fmt: skip
         db.add(child)
+        await db.flush()  # counted by ``limited`` for the owner's next due schedule (review)
         children.append(child)
-    await db.flush()
     for child in children:
         audit(db, "output.create", "output_job", child.id, actor=child.requested_by,
               after={"kind": child.kind, "scheduled": True,

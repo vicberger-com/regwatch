@@ -267,10 +267,14 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
         raise ProblemError(409, "conflict", "Only a failed output can be tried again.")
     if job.scheduled_cron is not None:  # a paused schedule: resume it from now (M8.3)
         from regwatch.capture.schedule import next_run
+        from regwatch.outputs import schedules
 
         await check_source(db, job, principal)
         if "outputs.schedule" not in principal.permissions:
             raise ProblemError(403, "forbidden", "Scheduled outputs need outputs.schedule.")
+        if await schedules.count_active(db, principal.user.id) >= schedules.MAX_SCHEDULES:
+            raise ProblemError(409, "conflict", f"At most {schedules.MAX_SCHEDULES} schedules; "
+                               "remove one first.")  # fmt: skip
         job.status, job.error_class, job.error_message = "queued", None, None
         job.next_run_at = next_run(job.scheduled_cron, None, job.schedule_timezone or "UTC",
                                    datetime.now(UTC))  # fmt: skip

@@ -67,7 +67,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
     from regwatch.admin.services import values
     from regwatch.core import objectstore
     from regwatch.core.services import audit
-    from regwatch.outputs import mail, pdf, services
+    from regwatch.outputs import mail, pdf, schedules, services
     from regwatch.outputs.models import OutputJob
     from regwatch.reports.render import render_layout
 
@@ -83,6 +83,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
         job.finished_at = datetime.now(UTC)
         audit(db, "output.failed", "output_job", job.id, actor=job.requested_by,
               after={"error_class": error_class})  # fmt: skip
+        await schedules.pause_parent(db, job, error_class, message)
         await db.commit()
         return "failed"
 
