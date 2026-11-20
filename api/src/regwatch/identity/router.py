@@ -15,9 +15,11 @@ from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, Tags, spec
 from regwatch.core.schemas import Page
 from regwatch.core.settings import Settings, get_settings
-from regwatch.identity import services
+from regwatch.identity import groups, services
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.schemas import (
+    Group,
+    GroupWrite,
     InterestOptions,
     Login,
     Me,
@@ -232,4 +234,62 @@ async def revoke_session(
     id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Response:
     await services.revoke_own_session(db, principal, id, request)
+    return Response(status_code=204)
+
+
+# Groups (CP-27): members get the group's roles alongside their own.
+@router.get("/admin/groups", tags=ADMIN, **spec(list[Group], desc="Groups", perm=USERS, stub=False))
+async def list_groups(db: DbSession) -> list[Group]:
+    return await groups.list_groups(db)
+
+
+@router.post(
+    "/admin/groups", tags=ADMIN, **spec(Group, status=201, desc="Created", perm=USERS, stub=False)
+)  # fmt: skip
+async def create_group(
+    body: GroupWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Group:
+    changes = body.model_dump(exclude_unset=True)
+    return await groups.create_group(db, changes, principal, services.client_ip(request))
+
+
+@router.patch(
+    "/admin/groups/{id}", tags=ADMIN, **spec(Group, desc="Updated", perm=USERS, stub=False)
+)  # fmt: skip
+async def update_group(
+    id: UUID, body: GroupWrite, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Group:
+    changes = body.model_dump(exclude_unset=True)
+    return await groups.update_group(db, id, changes, principal, services.client_ip(request))
+
+
+@router.delete(
+    "/admin/groups/{id}", tags=ADMIN, **spec(status=204, desc="Deleted", perm=USERS, stub=False)
+)  # fmt: skip
+async def delete_group(
+    id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await groups.delete_group(db, id, principal, services.client_ip(request))
+    return Response(status_code=204)
+
+
+@router.put(
+    "/admin/groups/{id}/members/{user_id}", tags=ADMIN,
+    **spec(status=204, desc="Member", perm=USERS, stub=False),
+)  # fmt: skip
+async def add_member(
+    id: UUID, user_id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await groups.set_member(db, id, user_id, True, principal, services.client_ip(request))
+    return Response(status_code=204)
+
+
+@router.delete(
+    "/admin/groups/{id}/members/{user_id}", tags=ADMIN,
+    **spec(status=204, desc="Not a member", perm=USERS, stub=False),
+)  # fmt: skip
+async def remove_member(
+    id: UUID, user_id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> Response:
+    await groups.set_member(db, id, user_id, False, principal, services.client_ip(request))
     return Response(status_code=204)

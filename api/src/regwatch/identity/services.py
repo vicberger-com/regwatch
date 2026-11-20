@@ -36,7 +36,16 @@ from regwatch.core.models import AuditLog
 from regwatch.core.schemas import Page
 from regwatch.core.services import audit
 from regwatch.core.settings import Settings
-from regwatch.identity.models import Permission, Role, RolePermission, User, UserRole, UserSession
+from regwatch.identity.models import (
+    GroupMember,
+    GroupRole,
+    Permission,
+    Role,
+    RolePermission,
+    User,
+    UserRole,
+    UserSession,
+)
 from regwatch.identity.schemas import (
     InterestFacet,
     InterestJurisdiction,
@@ -313,11 +322,15 @@ class Principal:
 async def roles_and_permissions(
     db: AsyncSession, user_id: uuid.UUID
 ) -> tuple[tuple[str, ...], frozenset[str]]:
+    # The user's own roles, and those of every group they are in (CP-27).
+    own = select(UserRole.role_id).where(UserRole.user_id == user_id)
+    via_groups = (select(GroupRole.role_id)
+                  .join(GroupMember, GroupMember.group_id == GroupRole.group_id)
+                  .where(GroupMember.user_id == user_id))  # fmt: skip
     rows = await db.execute(
         select(Role.key, RolePermission.permission_key)
-        .join(UserRole, UserRole.role_id == Role.id)
         .outerjoin(RolePermission, RolePermission.role_id == Role.id)
-        .where(UserRole.user_id == user_id)
+        .where(Role.id.in_(own.union(via_groups)))
     )
     roles: set[str] = set()
     perms: set[str] = set()
@@ -669,6 +682,8 @@ async def create_user(
 # --- Administration of users and roles (#32) -------------------------------------------
 
 USER_MANAGER = "users.manage"
+# Never granted through a group: who administers users and roles stays per user (CP-27).
+GROUP_FORBIDDEN = frozenset({USER_MANAGER, "roles.manage"})
 
 
 def validation(field: str, message: str) -> ProblemError:
@@ -952,6 +967,11 @@ async def update_role(
         _require_held(actor, set(perms) ^ set(perms_before), "change")
         if role.key == "admin" and role.system and perms != perms_before:
             raise validation("permissions", "The admin role always holds every permission.")
+        if set(perms) & GROUP_FORBIDDEN and await db.scalar(
+            select(GroupRole.group_id).where(GroupRole.role_id == role.id).limit(1)
+        ):
+            raise validation("permissions", "A role that groups hold cannot include "
+                             f"{' or '.join(sorted(GROUP_FORBIDDEN))} (CP-27).")  # fmt: skip
         await db.execute(delete(RolePermission).where(RolePermission.role_id == role.id))
         db.add_all(RolePermission(role_id=role.id, permission_key=p) for p in perms)
     role.updated_at = _now()
@@ -975,6 +995,10 @@ async def delete_role(
                               .where(UserRole.role_id == role.id))  # fmt: skip
     if holders:
         raise ProblemError(409, "conflict", f"The role is assigned to {holders} user(s).")
+    groups = await db.scalar(select(func.count()).select_from(GroupRole)
+                             .where(GroupRole.role_id == role.id))  # fmt: skip
+    if groups:
+        raise ProblemError(409, "conflict", f"The role is held by {groups} group(s).")
     perms = (await _perms_by_role(db)).get(role.id, [])
     audit(db, "role.delete", "role", role.id, actor=actor.user.id, ip=ip,
           before={"key": role.key, "label": role.label, "permissions": perms})  # fmt: skip

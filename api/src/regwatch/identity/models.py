@@ -84,3 +84,39 @@ class UserSession(Base):
     ip: Mapped[str | None] = mapped_column(INET)
     user_agent: Mapped[str | None]
     revoked_at: Mapped[datetime | None]
+
+
+class UserGroup(Base):
+    """A group of users with roles and an interest profile (CP-27, migration 0010)."""
+
+    __tablename__ = "user_group"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    key: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
+    description: Mapped[str | None]
+    interests: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+
+
+class GroupMember(Base):
+    __tablename__ = "group_member"
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_group.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class GroupRole(Base):
+    __tablename__ = "group_role"
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user_group.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("role.id", ondelete="CASCADE"), primary_key=True
+    )

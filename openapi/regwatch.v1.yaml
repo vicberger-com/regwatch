@@ -106,6 +106,26 @@ paths:
   /admin/users/{id}/reset-password:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     post: { tags: [admin], x-permission: users.manage, responses: { "200": { description: One-time temporary password, content: { application/json: { schema: { type: object, properties: { temporary_password: { type: string } } } } } } } }
+  /admin/groups:
+    get: { tags: [admin], x-permission: users.manage, description: "CP-27: groups, with their roles and members", responses: { "200": { description: Groups, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Group" } } } } } } }
+    post:
+      tags: [admin]
+      x-permission: users.manage
+      description: "CP-27: a group's roles apply to its members. A group cannot hold users.manage or roles.manage, and an administrator grants only what they hold"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/GroupWrite" } } } }
+      responses: { "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Group" } } } } }
+  /admin/groups/{id}:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    patch:
+      tags: [admin]
+      x-permission: users.manage
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/GroupWrite" } } } }
+      responses: { "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Group" } } } } }
+    delete: { tags: [admin], x-permission: users.manage, responses: { "204": { description: Deleted } } }
+  /admin/groups/{id}/members/{user_id}:
+    parameters: [ { $ref: "#/components/parameters/id" }, { name: user_id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    put: { tags: [admin], x-permission: users.manage, description: "CP-27: add a member; the administrator must hold the group's permissions", responses: { "204": { description: Member } } }
+    delete: { tags: [admin], x-permission: users.manage, responses: { "204": { description: Not a member } } }
   /admin/roles:
     get: { tags: [admin], x-permission: roles.manage, responses: { "200": { description: Roles, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Role" } } } } } } }
     post:
@@ -682,6 +702,23 @@ components:
         available: { type: boolean, description: false when an administrator turned it off }
         captured: { type: boolean }
         following: { type: boolean }
+    Group:
+      type: object
+      required: [id, key, name, roles, members]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        roles: { type: array, items: { type: string } }
+        members: { type: array, items: { type: string, format: uuid } }
+    GroupWrite:
+      type: object
+      properties:
+        key: { type: string, pattern: "^[a-z][a-z0-9_-]{1,40}$" }
+        name: { type: string, maxLength: 120 }
+        description: { type: string, nullable: true, maxLength: 500 }
+        roles: { type: array, items: { type: string } }
     FeedRequestWrite:
       type: object
       required: [url, reason]

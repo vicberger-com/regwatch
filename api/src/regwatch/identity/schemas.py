@@ -174,3 +174,23 @@ class SessionInfo(BaseModel):
     ip: str | None = None
     user_agent: str | None = None
     current: bool = UNSET
+
+
+class Group(BaseModel):
+    """CP-27: a group of users. Its roles apply to its members alongside their own."""
+
+    id: UUID
+    key: str
+    name: str
+    description: str | None = None
+    roles: list[str]
+    members: list[UUID]
+
+
+class GroupWrite(BaseModel):
+    key: str = Field(default=UNSET, pattern=r"^[a-z][a-z0-9_-]{1,40}$")
+    name: Annotated[str, AfterValidator(single_line(120))] = Field(default=UNSET, max_length=120)
+    description: Annotated[str, AfterValidator(single_line(500))] | None = Field(
+        default=UNSET, max_length=500
+    )
+    roles: RoleKeys = UNSET

@@ -145,6 +145,25 @@ CREATE TABLE feed_request ( -- std; CP-26 (migration 0009): a user's request for
 CREATE INDEX feed_request_requester_idx ON feed_request (requested_by, status);
 CREATE INDEX feed_request_status_idx ON feed_request (status, created_at);
 
+CREATE TABLE user_group ( -- std; CP-27 (migration 0010): a group of users with roles and an interest profile
+  id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  key text NOT NULL UNIQUE,
+  name text NOT NULL,
+  description text,
+  interests jsonb NOT NULL DEFAULT '{}'::jsonb      -- members' default interests (M11.4b)
+);
+CREATE TABLE group_member ( -- CP-27
+  group_id uuid NOT NULL REFERENCES user_group(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_id, user_id)
+);
+CREATE INDEX group_member_user_idx ON group_member (user_id);
+CREATE TABLE group_role ( -- CP-27: never a role with users.manage or roles.manage
+  group_id uuid NOT NULL REFERENCES user_group(id) ON DELETE CASCADE,
+  role_id uuid NOT NULL REFERENCES role(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_id, role_id)
+);
+
 CREATE TABLE capture_job ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   source_id uuid NOT NULL REFERENCES source(id) ON DELETE CASCADE,
