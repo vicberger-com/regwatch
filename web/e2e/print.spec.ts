@@ -22,7 +22,10 @@ test("the print layout keeps the page and the markings, not the frame", async ({
   const buttons = page.getByRole("main").getByRole("button");
   if ((await buttons.count()) > 0) await expect(buttons.first()).toBeVisible();
   const margin = await page.evaluate(
-    () => document.getElementById("regwatch-print-markings")?.textContent ?? "",
+    () =>
+      document.adoptedStyleSheets
+        .flatMap((sheet) => Array.from(sheet.cssRules, (r) => r.cssText))
+        .join("\n"), // a constructed sheet, which the production CSP allows (BL-76)
   );
   expect(margin).toContain("counter(pages)"); // page numbers (and markings) in every margin
   const ink = await page

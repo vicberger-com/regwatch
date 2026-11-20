@@ -2,7 +2,7 @@
 
 **Branch:** `feat/M7-reports` (M7 and M8, stacked on `feat/M11-interests`) · **Date:** 2026-11-20 · **Status:**
 - **Acceptance:** criteria 1, 2, 4 and 5 are met. Criterion 3 (server printing to an IPP printer) is deferred: browser printing ships, the print bridge stays behind its flag, and BL-15 is for the owner at G4.
-- **Security:** each slice (8.1 to 8.7) is signed off by the independent reviewer, with fixes re-verified; the print fixes (`eff7e6f`) are with the reviewer.
+- **Security:** each slice (8.1 to 8.7) is signed off by the independent reviewer, with every fix re-verified (the last, `eff7e6f`, included).
 - **Tests:**
   - `make test-api`: the full run at `9dfb93f` passed 1,529 unit tests (95.41% coverage) and 459 database tests. The later slices were run on their own suites (outputs: 24 integration, 5 CSV, 3 schedule unit; objectstore 17) and on the full unit suite (1,532). A full run at the branch head was in progress at the time of writing; its result goes in the pull request.
   - `make test-web`: 215 pass; `make lint` is clean.

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyPrintMarkings, cssText, printRule } from "./printMarkings";
+import {
+  applyPrintMarkings,
+  cssText,
+  currentPrintRule,
+  printRule,
+} from "./printMarkings";
 
 afterEach(() => {
   document.getElementById("regwatch-print-markings")?.remove();
@@ -24,8 +29,10 @@ describe("markings on every printed page (M8.5)", () => {
     expect(printRule(null)).toContain('counter(page) " of " counter(pages)');
     applyPrintMarkings("ONE");
     applyPrintMarkings("TWO");
-    const styles = document.querySelectorAll("#regwatch-print-markings");
-    expect(styles).toHaveLength(1);
-    expect(styles[0]?.textContent).toContain('"TWO"');
+    expect(
+      document.querySelectorAll("#regwatch-print-markings").length,
+    ).toBeLessThanOrEqual(1);
+    expect(currentPrintRule()).toContain("TWO");
+    expect(currentPrintRule()).not.toContain("ONE");
   });
 });
