@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from regwatch.core.schemas import UNSET
 from regwatch.search.schemas import Query
@@ -33,6 +33,13 @@ class TemplateParameter(BaseModel):
     type: Literal["jurisdiction", "period_days", "facet_terms"]
     required: bool = False
     default: int | None = Field(default=None, ge=1, le=3660)
+
+    @model_validator(mode="after")
+    def _default_for_days_only(self) -> TemplateParameter:
+        """Only the days covered has a default (M7.3 review): a number fits no other type."""
+        if self.default is not None and self.type != "period_days":
+            raise ValueError("only a period_days parameter takes a default")
+        return self
 
 
 class ReportParams(BaseModel):

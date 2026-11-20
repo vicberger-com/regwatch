@@ -6,8 +6,7 @@ unknown types and unknown props are refused, text has length limits and no contr
 direction-changing characters, and field keys must be on the whitelist (``fields.py``).
 ``zones`` (Puck's legacy DropZone) is refused: layouts use a flat list (R-02 S8).
 
-Charts and the map snapshot need a JavaScript renderer or a browser; they arrive with their
-own slice (M7.5) and are refused until then.
+Charts and the map snapshot (M7.5) are drawn as SVG in Python (``svg.py``).
 """
 
 from __future__ import annotations
@@ -102,6 +101,27 @@ class StatusMatrix(_Props):
     title: Line | None = Field(default=None, max_length=200)
 
 
+class BarChart(_Props):
+    """Items counted by jurisdiction, severity, status or source, as horizontal bars (SVG)."""
+
+    title: Line | None = Field(default=None, max_length=200)
+    by: Literal["jurisdiction", "severity", "status", "source"] = "jurisdiction"
+    limit: int = Field(default=10, ge=1, le=30)
+
+
+class LineChart(_Props):
+    """Items changed per day or week in the rows, as a line (SVG)."""
+
+    title: Line | None = Field(default=None, max_length=200)
+    interval: Literal["day", "week"] = "week"
+
+
+class MapSnapshot(_Props):
+    """A choropleth of the rows' items per country, on the web map's boundaries (SVG)."""
+
+    title: Line | None = Field(default=None, max_length=200)
+
+
 class SourceHealth(_Props):
     """Every source's health and last success; shown only to viewers with sources.read."""
 
@@ -114,6 +134,7 @@ PALETTE: dict[str, type[_Props]] = {
     "JurisdictionSummary": JurisdictionSummary, "PageBreak": PageBreak,
     "HeaderFooter": HeaderFooter, "LegalMarkings": LegalMarkings,
     "StatusMatrix": StatusMatrix, "SourceHealth": SourceHealth,
+    "BarChart": BarChart, "LineChart": LineChart, "MapSnapshot": MapSnapshot,
 }  # fmt: skip
 
 

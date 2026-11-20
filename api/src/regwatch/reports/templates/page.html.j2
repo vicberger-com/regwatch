@@ -1,5 +1,6 @@
 {#- One report page set (M7.2). Autoescape is on for every value: layout text and captured item
-    fields are hostile. Nothing here is marked safe, and no URL reaches src or CSS. Text inside
+    fields are hostile. Nothing here is marked safe except the charts' SVG, which svg.py
+    builds with every label escaped; no URL reaches src or CSS. Text inside
     <style> (header and footer) goes through css_text, which hex-escapes all but letters,
     digits and spaces, since HTML escaping means nothing there. -#}
 <!doctype html>
@@ -24,6 +25,7 @@ th, td { text-align: left; vertical-align: top; padding: 3pt 5pt; border-bottom:
 th { font-weight: 600; } tr { break-inside: avoid; }
 .muted { color: #52514e; } .page-break { break-after: page; }
 .markings { border-top: 0.5pt solid #c3c2b7; margin-top: 12pt; padding-top: 6pt; font-size: 9pt; color: #52514e; }
+.chart { margin: 8pt 0 14pt; break-inside: avoid; } .chart svg { max-width: 100%; height: auto; }
 .field dt { font-weight: 600; } .field dd { margin: 0 0 6pt; }
 </style>
 </head>
@@ -100,6 +102,8 @@ th { font-weight: 600; } tr { break-inside: avoid; }
 </tbody>
 </table>
 {%- endif %}
+{%- elif block.type in ("BarChart", "LineChart", "MapSnapshot") %}
+<figure class="chart">{{ block.svg }}</figure>
 {%- elif block.type == "PageBreak" %}
 <div class="page-break"></div>
 {%- elif block.type == "LegalMarkings" %}

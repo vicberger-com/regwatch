@@ -13,6 +13,7 @@ report_templates:
       root: { props: { title: Weekly change digest } }
       content:
         - { type: HeaderFooter, props: { id: hf, footer_text: Weekly change digest } }
+        - { type: LineChart, props: { id: trend, title: Items changed per day, interval: day } }
         - { type: ChangeList, props: { id: changes, title: Latest changes, limit: 50 } }
         - type: ItemsTable
           props: { id: items, caption: Changed items, columns: [item.title, jurisdiction.names, item.severity, item.last_changed_at], sort: item.last_changed_at, direction: desc, limit: 200 }
@@ -29,6 +30,7 @@ report_templates:
       root: { props: { title: Jurisdiction profile } }
       content:
         - { type: HeaderFooter, props: { id: hf, footer_text: Jurisdiction profile } }
+        - { type: MapSnapshot, props: { id: map, title: Items by country } }
         - { type: ChangeList, props: { id: changes, title: Latest ten changes, limit: 10 } }
         - { type: StatusMatrix, props: { id: status, title: Status } }
         - type: ItemsTable
@@ -46,6 +48,7 @@ report_templates:
       root: { props: { title: Topic overview } }
       content:
         - { type: HeaderFooter, props: { id: hf, footer_text: Topic overview } }
+        - { type: BarChart, props: { id: bars, title: Items by jurisdiction, by: jurisdiction, limit: 10 } }
         - { type: JurisdictionSummary, props: { id: places, title: By jurisdiction } }
         - type: ItemsTable
           props: { id: items, caption: Items, columns: [item.title, jurisdiction.names, item.severity, item.last_changed_at], sort: item.last_changed_at, direction: desc, limit: 200 }

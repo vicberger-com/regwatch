@@ -24,6 +24,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from jinja2 import Environment, PackageLoader, StrictUndefined, select_autoescape
+from markupsafe import Markup
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,6 +214,37 @@ def _places(rows: list[ItemSummary]) -> list[dict[str, Any]]:
             for n, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]  # fmt: skip
 
 
+def _chart(kind: str, props: dict[str, Any], rows: list[ItemSummary]) -> str:
+    from regwatch.reports import svg
+
+    title = props.get("title") or ""
+    if kind == "MapSnapshot":
+        per: dict[str, int] = defaultdict(int)
+        for row in rows:
+            for j in row.jurisdictions:
+                per[j.code] += 1
+        return svg.map_snapshot(dict(per), title or "Items by country")
+    if kind == "LineChart":
+        buckets: dict[str, int] = defaultdict(int)
+        for row in rows:
+            day = row.last_changed_at.date()
+            if props["interval"] == "week":
+                day = day - timedelta(days=day.weekday())
+            buckets[day.isoformat()] += 1
+        return svg.line_chart(sorted(buckets.items()), title or "Items changed")
+    groups: dict[str, int] = defaultdict(int)
+    for row in rows:
+        if props["by"] == "jurisdiction":
+            for j in row.jurisdictions:
+                groups[j.name] += 1
+        elif props["by"] == "source":
+            groups[row.source_name if "source_name" in row.model_fields_set else ""] += 1
+        else:
+            groups[str(getattr(row, props["by"]) or "none")] += 1
+    top = sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))[: props["limit"]]
+    return svg.bar_chart(top, title or f"Items by {props['by']}")
+
+
 def _matrix(rows: list[ItemSummary]) -> dict[str, Any]:
     statuses = ["new", "updated", "unchanged", "archived"]
     counts: dict[str, dict[str, int]] = defaultdict(lambda: dict.fromkeys(statuses, 0))
@@ -225,14 +257,25 @@ def _matrix(rows: list[ItemSummary]) -> dict[str, Any]:
 
 async def _sources(db: AsyncSession, principal: Principal) -> list[dict[str, Any]] | None:
     """The sources' health, for viewers who may read sources; None means "not allowed"."""
-    from regwatch.capture.models import Source
+    from regwatch.capture.models import CaptureJob, Source, capturing
 
     if "sources.read" not in principal.permissions:
         return None
-    found = await db.execute(select(Source.name, Source.health, Source.enabled,
-                                    Source.consecutive_failures).order_by(Source.name))  # fmt: skip
-    return [{"name": n, "health": h, "state": "enabled" if e else "disabled", "failures": f}
-            for n, h, e, f in found.tuples()]  # fmt: skip
+    # "captured" by the capture rule, so a followed catalogue source is not shown as
+    # disabled (M7.3 review; as the sources page's state).
+    found = await db.execute(
+        select(Source.name, Source.health, Source.enabled, CaptureJob.enabled, capturing(),
+               Source.consecutive_failures)
+        .join(CaptureJob, CaptureJob.source_id == Source.id, isouter=True)
+        .order_by(Source.name))  # fmt: skip
+
+    def state(enabled: bool, job_on: bool | None, captured: bool) -> str:
+        if enabled and job_on:
+            return "enabled"
+        return "captured for followers" if captured and job_on else "disabled"
+
+    return [{"name": n, "health": h, "state": state(e, j, c), "failures": f}
+            for n, h, e, j, c, f in found.tuples()]  # fmt: skip
 
 
 async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principal,
@@ -293,6 +336,10 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
             block["matrix"] = _matrix(rows)
         elif kind == "SourceHealth":
             block["sources"] = await _sources(db, principal)
+        elif kind in ("BarChart", "LineChart", "MapSnapshot"):
+            # Built by svg.py, which escapes every label (numbers and fixed colours otherwise):
+            # the one markup the template is given; test_report_svg checks hostile labels.
+            block["svg"] = Markup(_chart(kind, props, rows))  # noqa: S704
         blocks.append(block)
     html = _environment().get_template("page.html.j2").render(
         title=root.get("title") or row.name, page_size=row.page_size,

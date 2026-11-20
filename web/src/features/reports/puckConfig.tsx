@@ -220,6 +220,51 @@ export function reportConfig(fields: ReportField[]): Config {
           </p>
         ),
       },
+      BarChart: {
+        label: "Bar chart",
+        fields: {
+          title: { type: "text", label: "Title (optional)" },
+          by: {
+            type: "select",
+            label: "Count items by",
+            options: [
+              { label: "Jurisdiction", value: "jurisdiction" },
+              { label: "Severity", value: "severity" },
+              { label: "Status", value: "status" },
+              { label: "Source", value: "source" },
+            ],
+          },
+          limit: { type: "number", label: "Bars (1 to 30)", min: 1, max: 30 },
+        },
+        defaultProps: { title: null, by: "jurisdiction", limit: 10 },
+        render: ({ by }: Props) => (
+          <p className={placeholder}>Bar chart of items by {String(by)}</p>
+        ),
+      },
+      LineChart: {
+        label: "Line chart",
+        fields: {
+          title: { type: "text", label: "Title (optional)" },
+          interval: {
+            type: "radio",
+            label: "Per",
+            options: [
+              { label: "Day", value: "day" },
+              { label: "Week", value: "week" },
+            ],
+          },
+        },
+        defaultProps: { title: null, interval: "week" },
+        render: ({ interval }: Props) => (
+          <p className={placeholder}>Items changed per {String(interval)}</p>
+        ),
+      },
+      MapSnapshot: {
+        label: "Map snapshot",
+        fields: { title: { type: "text", label: "Title (optional)" } },
+        defaultProps: { title: "Items by country" },
+        render: () => <p className={placeholder}>Map of items by country</p>,
+      },
       StatusMatrix: {
         label: "Status matrix",
         fields: { title: { type: "text", label: "Title (optional)" } },

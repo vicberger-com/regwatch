@@ -71,7 +71,7 @@ async def test_a_jurisdiction_profile_for_one_place(
     assert "Latest ten changes" in html and "Status" in html
     assert '<th scope="col">new</th>' in html and "Germany" in html  # the corpus is German
     other = await admin.post(_api(f"/reports/layouts/{lid}/preview"), json={"jurisdiction": "FR"})
-    assert other.status_code == 200 and "Germany" not in other.text  # the filter applies
+    assert other.status_code == 200 and "<title>Germany: 0</title>" in other.text  # filtered
 
 
 async def test_source_health_needs_sources_read(admin: httpx.AsyncClient) -> None:
@@ -94,3 +94,20 @@ async def test_source_health_needs_sources_read(admin: httpx.AsyncClient) -> Non
     )
     await ana.aclose()
     await bea.aclose()
+
+
+async def test_charts_and_the_map_render_as_svg(admin: httpx.AsyncClient, db: AsyncSession) -> None:
+    """M7.5: the jurisdiction profile's map snapshot (acceptance 3), bars and a line, as SVG."""
+    await corpus(admin, db)
+    lid = await _instantiate(admin, "jurisdiction-profile")
+    html = (await admin.post(_api(f"/reports/layouts/{lid}/preview"),
+                             json={"jurisdiction": "DE"})).text  # fmt: skip
+    assert html.count("<svg") == 1 and "<title>Germany: 2</title>" in html
+    content = [{"type": "BarChart", "props": {"id": "b", "by": "severity"}},
+               {"type": "LineChart", "props": {"id": "l", "interval": "day"}}]  # fmt: skip
+    charts = {"name": "Charts", "data_source": {"limit": 50},
+              "layout": {"root": {"props": {}}, "content": content}}  # fmt: skip
+    made = (await admin.post(_api("/reports/layouts"), json=charts)).json()
+    got = await admin.post(_api(f"/reports/layouts/{made['id']}/preview"))
+    assert got.status_code == 200 and got.text.count("<svg") == 2
+    assert "Items by severity" in got.text and '<path d="M' in got.text
