@@ -3,6 +3,7 @@ import { Link, useRouteContext } from "@tanstack/react-router";
 import { useId, type ReactNode } from "react";
 
 import { HelpTip } from "@/features/help/HelpTip";
+import { FeedsEditor } from "./FeedsEditor";
 import { InterestsEditor } from "./InterestsEditor";
 import { meTopic } from "@/features/help/topics";
 import { hasPermission, problemText } from "@/lib/auth/session";
@@ -138,6 +139,11 @@ export function MePage() {
                 key={JSON.stringify(p.interests ?? {})}
                 saved={p.interests}
               />
+            </Section>
+          )}
+          {hasPermission(me, "items.read") && (
+            <Section id="feeds" title="Feeds" help={meTopic("feeds")}>
+              <FeedsEditor />
             </Section>
           )}
           <Section id="appearance" title="Appearance">

@@ -14,6 +14,7 @@ const DEFAULTS: Routes = {
     200,
     { facets: [], jurisdictions: [], regions: [] },
   ],
+  "GET /catalogue": [200, []],
   "GET /map/activity": [
     200,
     {

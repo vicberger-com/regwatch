@@ -39,7 +39,16 @@ const ME: Topic[] = [
     "My interests",
     "The regions, jurisdictions and topics the map, items and search open filtered to; you can always show everything.",
     "Interests are default filters, never a limit: everyone can still see all content. A choice that is later removed from the taxonomy is simply dropped.",
-    "Following feeds from the catalogue, and interests shared by a group, arrive in the next M11 slices.",
+    "Interests shared by a group arrive in a later M11 slice.",
+  ),
+  T(
+    "User tab",
+    "feeds",
+    "Feeds",
+    "The curated catalogue of official sources; tick one to follow it, and it is captured for everyone.",
+    "The catalogue ships with the application. Each feed is checked before it is listed and always respects the site's robots.txt. A feed is captured while at least one person follows it, and one capture serves everyone.",
+    "An administrator can turn a feed off; it then shows as turned off and cannot be followed until it is on again. To add a feed that is not listed, ask an administrator.",
+    "legislation.gov.uk refuses requests that give no contact address, so its feed fails until an administrator sets the contact email in Settings.",
   ),
   T(
     "User tab",

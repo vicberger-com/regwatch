@@ -25,6 +25,24 @@ function when(value: string | null | undefined): string {
 }
 
 /** `/admin/sources` (screens.md): table with health, last and next run; editor; run history. */
+/** Enabled, or captured because users follow it (CP-25): a followed catalogue source is
+ * fetched while it shows enabled: false, so admins see that it is (11.2a review). */
+export function sourceState(s: {
+  enabled: boolean;
+  captured?: boolean;
+  followers?: number;
+  catalogue_key?: string | null;
+  job?: { enabled?: boolean };
+}): string {
+  if (s.enabled) return "enabled";
+  const followers = s.followers ?? 0;
+  if (s.captured)
+    return `captured: followed by ${String(followers)} ${followers === 1 ? "user" : "users"}`;
+  if (s.catalogue_key && s.job?.enabled !== false)
+    return "catalogue, not followed";
+  return "disabled";
+}
+
 export function SourcesPage({
   canManage,
   canOverride,
@@ -97,7 +115,7 @@ export function SourcesPage({
               <td>{s.health}</td>
               <td>{when(s.job?.last_run_at)}</td>
               <td>{when(s.job?.next_run_at)}</td>
-              <td>{s.enabled ? "enabled" : "disabled"}</td>
+              <td>{sourceState(s)}</td>
               <td>
                 <div className="flex gap-2">
                   <button
@@ -228,7 +246,9 @@ function SourceRuns({
           <button
             type="button"
             className={button}
-            disabled={!source.enabled || !jobId || runNow.isPending}
+            disabled={
+              !(source.enabled || source.captured) || !jobId || runNow.isPending
+            }
             onClick={() => {
               act("run");
             }}

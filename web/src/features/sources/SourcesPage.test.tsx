@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADMIN, fakeApi, problem, type Routes } from "@/test/api";
 import { renderAt } from "@/test/render";
 
+import { sourceState } from "./SourcesPage";
+
 const READER = { ...ADMIN, permissions: ["sources.read"] };
 const EDITOR = { ...ADMIN, permissions: ["sources.read", "sources.manage"] };
 const OWNER = {
@@ -407,5 +409,45 @@ describe("sources screen", () => {
     );
     await screen.findByRole("button", { name: "Close" });
     expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
+  });
+});
+
+describe("source state (CP-25)", () => {
+  it("says when a disabled catalogue source is captured for its followers", () => {
+    expect(sourceState({ enabled: true })).toBe("enabled");
+    expect(
+      sourceState({
+        enabled: false,
+        captured: true,
+        followers: 2,
+        catalogue_key: "k",
+      }),
+    ).toBe("captured: followed by 2 users");
+    expect(
+      sourceState({
+        enabled: false,
+        captured: true,
+        followers: 1,
+        catalogue_key: "k",
+      }),
+    ).toBe("captured: followed by 1 user");
+    expect(
+      sourceState({
+        enabled: false,
+        captured: false,
+        followers: 0,
+        catalogue_key: "k",
+      }),
+    ).toBe("catalogue, not followed");
+    expect(
+      sourceState({
+        enabled: false,
+        captured: false,
+        followers: 3,
+        catalogue_key: "k",
+        job: { enabled: false },
+      }),
+    ).toBe("disabled");
+    expect(sourceState({ enabled: false })).toBe("disabled");
   });
 });
