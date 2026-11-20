@@ -3,16 +3,15 @@ preview are stubs until M7.2 and M7.3."""
 
 from __future__ import annotations
 
-from typing import NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
 from regwatch.core.db import DbSession
-from regwatch.core.routing import not_implemented, spec
+from regwatch.core.routing import spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.reports import fields, render, services
+from regwatch.reports import fields, render, services, templates
 from regwatch.reports.schemas import (
     ReportField,
     ReportLayout,
@@ -26,18 +25,22 @@ BUILD = "reports.build"
 
 
 @router.get(
-    "/reports/templates", **spec(list[ReportTemplate], desc="Stock reports", perm="reports.print")
+    "/reports/templates",
+    **spec(list[ReportTemplate], desc="Stock reports", perm="reports.print", stub=False),
 )
-async def list_templates() -> NoReturn:
-    not_implemented()
+async def list_templates(db: DbSession) -> list[ReportTemplate]:
+    return await templates.list_templates(db)
 
 
 @router.post(
     "/reports/templates/{key}/instantiate",
-    **spec(ReportLayout, status=201, desc="New layout copied from the template", perm=BUILD),
-)
-async def instantiate_template(key: str) -> NoReturn:
-    not_implemented()
+    **spec(ReportLayout, status=201, desc="New layout copied from the template", perm=BUILD,
+           stub=False),
+)  # fmt: skip
+async def instantiate_template(
+    key: str, principal: CurrentPrincipal, request: Request, db: DbSession
+) -> ReportLayout:
+    return await templates.instantiate(db, key, principal, client_ip(request))
 
 
 @router.get(
@@ -98,7 +101,9 @@ async def delete_layout(
 async def preview_layout(
     id: UUID, principal: CurrentPrincipal, db: DbSession, body: ReportParams | None = None
 ) -> Response:
-    html = await render.render_layout(db, await services.get_layout(db, id, principal), principal)
+    given = body.model_dump() if body is not None else {}
+    layout = await services.get_layout(db, id, principal)
+    html = await render.render_layout(db, layout, principal, given)
     # The HTML holds hostile captured text: no scripts, no external loads, its own sandbox.
     return Response(html, media_type="text/html; charset=utf-8", headers={
         "Content-Security-Policy": render.CSP, "X-Content-Type-Options": "nosniff",

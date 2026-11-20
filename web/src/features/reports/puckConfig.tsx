@@ -220,6 +220,26 @@ export function reportConfig(fields: ReportField[]): Config {
           </p>
         ),
       },
+      StatusMatrix: {
+        label: "Status matrix",
+        fields: { title: { type: "text", label: "Title (optional)" } },
+        defaultProps: { title: "Items by status" },
+        render: () => (
+          <p className={placeholder}>
+            Items per jurisdiction: new, updated, unchanged, archived
+          </p>
+        ),
+      },
+      SourceHealth: {
+        label: "Source health",
+        fields: { title: { type: "text", label: "Title (optional)" } },
+        defaultProps: { title: "Sources" },
+        render: () => (
+          <p className={placeholder}>
+            Every source&apos;s health (shown to readers of sources)
+          </p>
+        ),
+      },
       LegalMarkings: {
         label: "Legal markings",
         fields: {},

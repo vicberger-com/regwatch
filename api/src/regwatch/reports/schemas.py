@@ -20,6 +20,19 @@ class ReportParameterDef(BaseModel):
     label: str = UNSET
     type: Literal["jurisdiction", "period_days", "date_range", "facet_terms", "saved_view"] = UNSET
     required: bool = UNSET
+    default: int | None = None  # CP-31: a default value (period_days)
+
+
+class TemplateParameter(BaseModel):
+    """A stock report's parameter as stored (M7.3): its definition and an optional default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: Literal["jurisdiction", "period_days", "facet_terms"]
+    label: str = Field(max_length=120)
+    type: Literal["jurisdiction", "period_days", "facet_terms"]
+    required: bool = False
+    default: int | None = Field(default=None, ge=1, le=3660)
 
 
 class ReportParams(BaseModel):

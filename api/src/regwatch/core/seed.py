@@ -64,6 +64,7 @@ class SeedData:
     facets: dict[str, dict[str, Any]] = field(default_factory=dict)
     terms: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     catalogue: dict[str, dict[str, Any]] = field(default_factory=dict)
+    report_templates: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _merge(target: dict[str, Any], items: dict[str, Any], what: str, source: str) -> None:
@@ -99,7 +100,7 @@ def load(seed_dir: Path) -> SeedData:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         unknown = set(doc) - _IGNORED_KEYS - {
             "permissions", "roles", "settings", "feature_flags", "jurisdictions", "facets",
-            "catalogue",
+            "catalogue", "report_templates",
         }  # fmt: skip
         if unknown:
             raise SeedError(f"{path.name}: unknown top-level keys {sorted(unknown)}")
@@ -126,6 +127,9 @@ def load(seed_dir: Path) -> SeedData:
         if len(catalogue) != len(entries):
             raise SeedError(f"{path.name}: duplicate catalogue key")
         _merge(data.catalogue, catalogue, "catalogue entry", path.name)
+        templates = [_report_template(t, path.name) for t in doc.get("report_templates", [])]
+        _merge(data.report_templates, {t["key"]: t for t in templates}, "report template",
+               path.name)  # fmt: skip
     for role, perms in data.roles.items():
         missing = [p for p in perms if p != "*" and p not in data.permissions]
         if missing:
@@ -138,6 +142,38 @@ def load(seed_dir: Path) -> SeedData:
 
 
 _CATALOGUE_KEY = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+
+
+def _report_template(entry: dict[str, Any], source: str) -> dict[str, Any]:
+    """A stock report, checked with the same component schemas as a user's layout (M7.3)."""
+    from pydantic import TypeAdapter, ValidationError
+
+    from regwatch.core.errors import ProblemError
+    from regwatch.reports.components import validate_layout
+    from regwatch.reports.fields import FIXED
+    from regwatch.reports.schemas import ReportDataSource, TemplateParameter
+
+    key = str(entry.get("key", ""))
+    where = f"{source}: report template {key!r}"
+    if not _CATALOGUE_KEY.fullmatch(key) or not entry.get("label"):
+        raise SeedError(f"{where}: a lower-case key and a label are required")
+    try:
+        layout = validate_layout(entry.get("layout", {}), {f.key for f in FIXED},
+                                 {f.key for f in FIXED if f.sortable})  # fmt: skip
+        source_ = ReportDataSource.model_validate(entry.get("data_source", {}))
+        params = TypeAdapter(list[TemplateParameter]).validate_python(entry.get("parameters", []))
+    except ProblemError as exc:
+        raise SeedError(f"{where}: {exc} {exc.errors or ''}".strip()) from None
+    except ValidationError as exc:
+        raise SeedError(f"{where}: {exc.errors(include_url=False)}") from None
+    query = {
+        "data_source": source_.model_dump(mode="json", exclude_unset=True),
+        "parameters": [p.model_dump(mode="json", exclude_none=True) for p in params],
+    }
+    return {"key": key, "label": str(entry["label"]), "description": entry.get("description"),
+            "layout": layout, "query": query}  # fmt: skip
+
+
 _CATALOGUE_KINDS = frozenset({"rss", "api_feed", "web_page"})
 _CATALOGUE_FIELDS = frozenset({
     "key", "name", "summary", "kind", "url", "terms_url", "credibility", "language",
@@ -269,6 +305,10 @@ async def apply(conn: AsyncConnection, data: SeedData) -> dict[str, int]:
     for facet_key, terms in data.terms.items():
         counts["term"] += await _apply_terms(conn, facet_ids[facet_key], terms)
     counts["catalogue_source"] = await _apply_catalogue(conn, data.catalogue)
+    from regwatch.reports.models import ReportTemplate
+
+    counts["report_template"] = await _insert_missing(
+        conn, _table(ReportTemplate), list(data.report_templates.values()), ["key"])  # fmt: skip
     if counts["facet"] or counts["term"]:
         # New facets or terms: workers drop cached attribute validation (M2 review 12c).
         await conn.execute(text(

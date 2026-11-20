@@ -4591,6 +4591,8 @@ export interface components {
             /** @enum {string} */
             type?: "jurisdiction" | "period_days" | "date_range" | "facet_terms" | "saved_view";
             required?: boolean;
+            /** @description CP-31: the value used when none is given (period_days) */
+            default?: number | null;
         };
         /** @description Values for ReportParameterDef keys, for example jurisdiction DE and period_days 30 */
         ReportParams: {

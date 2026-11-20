@@ -915,7 +915,7 @@ components:
       properties: { key: { type: string }, label: { type: string }, description: { type: string }, thumbnail_url: { type: string, nullable: true }, version: { type: integer }, parameters: { type: array, items: { $ref: "#/components/schemas/ReportParameterDef" } } }
     ReportParameterDef:
       type: object
-      properties: { key: { type: string }, label: { type: string }, type: { type: string, enum: [jurisdiction, period_days, date_range, facet_terms, saved_view] }, required: { type: boolean } }
+      properties: { key: { type: string }, label: { type: string }, type: { type: string, enum: [jurisdiction, period_days, date_range, facet_terms, saved_view] }, required: { type: boolean }, default: { type: integer, nullable: true, description: "CP-31: the value used when none is given (period_days)" } }
     ReportParams:
       type: object
       description: "Values for ReportParameterDef keys, for example jurisdiction DE and period_days 30"

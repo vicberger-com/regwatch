@@ -106,11 +106,12 @@ async def _query(db: AsyncSession, source: ReportDataSource, principal: Principa
     return Query(sort="last_changed_desc")
 
 
-async def _rows(db: AsyncSession, source: ReportDataSource,
-                principal: Principal) -> list[ItemSummary]:  # fmt: skip
+async def _rows(db: AsyncSession, source: ReportDataSource, principal: Principal,
+                template_key: str | None, given: dict[str, Any]) -> list[ItemSummary]:  # fmt: skip
+    from regwatch.reports import templates
     from regwatch.search import services as search
 
-    query = await _query(db, source, principal)
+    query = await templates.apply(db, await _query(db, source, principal), template_key, given)
     wanted = min(source.limit, MAX_ROWS)
     rows: list[ItemSummary] = []
     page = 1
@@ -212,8 +213,32 @@ def _places(rows: list[ItemSummary]) -> list[dict[str, Any]]:
             for n, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]  # fmt: skip
 
 
-async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principal) -> str:
-    """The layout's HTML for ``principal`` (the viewer, owner or not)."""
+def _matrix(rows: list[ItemSummary]) -> dict[str, Any]:
+    statuses = ["new", "updated", "unchanged", "archived"]
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: dict.fromkeys(statuses, 0))
+    for row in rows:
+        for j in row.jurisdictions:
+            counts[j.name][row.status] = counts[j.name].get(row.status, 0) + 1
+    table = [{"name": n, "counts": [c[s] for s in statuses]} for n, c in sorted(counts.items())]
+    return {"statuses": statuses, "rows": table}
+
+
+async def _sources(db: AsyncSession, principal: Principal) -> list[dict[str, Any]] | None:
+    """The sources' health, for viewers who may read sources; None means "not allowed"."""
+    from regwatch.capture.models import Source
+
+    if "sources.read" not in principal.permissions:
+        return None
+    found = await db.execute(select(Source.name, Source.health, Source.enabled,
+                                    Source.consecutive_failures).order_by(Source.name))  # fmt: skip
+    return [{"name": n, "health": h, "state": "enabled" if e else "disabled", "failures": f}
+            for n, h, e, f in found.tuples()]  # fmt: skip
+
+
+async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principal,
+                        given: dict[str, Any] | None = None) -> str:  # fmt: skip
+    """The layout's HTML for ``principal`` (the viewer, owner or not), with the parameters its
+    stock report takes (M7.3)."""
     from regwatch.admin.services import values
 
     if "items.read" not in principal.permissions:
@@ -226,7 +251,7 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
         stale = "The layout uses something that no longer exists; edit and save it again."
         raise ProblemError(409, "conflict", stale, errors=exc.errors) from None
     source = ReportDataSource.model_validate(row.query or {})
-    rows = await _rows(db, source, principal)
+    rows = await _rows(db, source, principal, row.based_on_template_key, given or {})
     extras = await _extras(db, [r.id for r in rows])
     labels = {f.key: f.label for f in await report_fields(db)}
     settings = await values(db, ["branding.company_name", "branding.company_address",
@@ -264,6 +289,10 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
             block["changes"] = changes[: props["limit"]]
         elif kind == "JurisdictionSummary":
             block["places"] = _places(rows)
+        elif kind == "StatusMatrix":
+            block["matrix"] = _matrix(rows)
+        elif kind == "SourceHealth":
+            block["sources"] = await _sources(db, principal)
         blocks.append(block)
     html = _environment().get_template("page.html.j2").render(
         title=root.get("title") or row.name, page_size=row.page_size,

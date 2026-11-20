@@ -15,7 +15,7 @@ pytestmark = pytest.mark.integration
 SEED_DIR = Path(__file__).resolve().parents[2] / "seed"
 TABLES = (
     "permission", "role", "role_permission", "setting", "feature_flag", "jurisdiction", "facet",
-    "term", "source", "capture_job",
+    "term", "source", "capture_job", "report_template",
 )  # fmt: skip
 EXPECTED = {
     "permission": 24,
@@ -27,6 +27,7 @@ EXPECTED = {
     "facet": 6,
     "term": 14 + 10 + 9 + 9 + 6 + 22,
     "catalogue_source": 4,
+    "report_template": 5,
 }
 
 
@@ -58,7 +59,7 @@ def test_seed_keeps_administrator_edits(postgres: Postgres, empty_db: str) -> No
     )
     counts = asyncio.run(seed.run(SEED_DIR, url))
     assert counts["permission"] == 1  # the registry owns permission text
-    assert counts["catalogue_source"] == 0
+    assert counts["catalogue_source"] == 0 and counts["report_template"] == 0
     assert (
         postgres.psql(
             empty_db, "SELECT name FROM source WHERE catalogue_key = 'gb-legislation-it';"

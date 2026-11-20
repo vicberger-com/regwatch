@@ -74,6 +74,32 @@ th { font-weight: 600; } tr { break-inside: avoid; }
 {%- endfor %}
 </tbody>
 </table>
+{%- elif block.type == "StatusMatrix" %}
+{%- if p.title %}<h3>{{ p.title }}</h3>{% endif %}
+<table>
+<thead><tr><th scope="col">Jurisdiction</th>{% for s in block.matrix.statuses %}<th scope="col">{{ s }}</th>{% endfor %}</tr></thead>
+<tbody>
+{%- for r in block.matrix.rows %}
+<tr><th scope="row">{{ r.name }}</th>{% for c in r.counts %}<td>{{ c }}</td>{% endfor %}</tr>
+{%- else %}
+<tr><td colspan="{{ block.matrix.statuses | length + 1 }}" class="muted">No items match.</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- elif block.type == "SourceHealth" %}
+{%- if p.title %}<h3>{{ p.title }}</h3>{% endif %}
+{%- if block.sources is none %}
+<p class="muted">Source health is shown to readers of sources only.</p>
+{%- else %}
+<table>
+<thead><tr><th scope="col">Source</th><th scope="col">Health</th><th scope="col">State</th><th scope="col">Failures in a row</th></tr></thead>
+<tbody>
+{%- for x in block.sources %}
+<tr><td>{{ x.name }}</td><td>{{ x.health }}</td><td>{{ x.state }}</td><td>{{ x.failures }}</td></tr>
+{%- endfor %}
+</tbody>
+</table>
+{%- endif %}
 {%- elif block.type == "PageBreak" %}
 <div class="page-break"></div>
 {%- elif block.type == "LegalMarkings" %}

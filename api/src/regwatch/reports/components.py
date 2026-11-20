@@ -96,11 +96,24 @@ class LegalMarkings(_Props):
     """The company's legal markings and branding from M1 (M7 question 3)."""
 
 
+class StatusMatrix(_Props):
+    """Items per jurisdiction and status (new, updated, unchanged, archived) in the rows."""
+
+    title: Line | None = Field(default=None, max_length=200)
+
+
+class SourceHealth(_Props):
+    """Every source's health and last success; shown only to viewers with sources.read."""
+
+    title: Line | None = Field(default=None, max_length=200)
+
+
 PALETTE: dict[str, type[_Props]] = {
     "Heading": Heading, "Paragraph": Paragraph, "FieldValue": FieldValue,
     "ItemsTable": ItemsTable, "ChangeList": ChangeList,
     "JurisdictionSummary": JurisdictionSummary, "PageBreak": PageBreak,
     "HeaderFooter": HeaderFooter, "LegalMarkings": LegalMarkings,
+    "StatusMatrix": StatusMatrix, "SourceHealth": SourceHealth,
 }  # fmt: skip
 
 

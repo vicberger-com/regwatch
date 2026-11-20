@@ -80,9 +80,7 @@ def _mutate(doc: dict[str, Any]) -> dict[str, Any]:
     users[PERMISSION_KEY] = "users.read"
     next(p for p in users["parameters"] if p["name"] == "page")["schema"]["minimum"] = 0
     doc["components"]["schemas"]["User"]["properties"]["email"]["format"] = "uri"
-    doc["paths"]["/reports/templates"]["get"]["responses"]["501"]["content"] = {
-        "application/json": {}
-    }
+    doc["paths"]["/outputs"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
     return doc
 
 
@@ -93,7 +91,7 @@ def test_semantic_diff_reports_drift(app: FastAPI) -> None:
     assert "GET /admin/users.x-permission" in joined
     assert "GET /admin/users.parameters.query:page.schema.minimum" in joined
     assert "properties.email.format" in joined
-    assert "GET /reports/templates: 501 is not problem details" in joined
+    assert "GET /outputs: 501 is not problem details" in joined
 
 
 def test_document_shape(app: FastAPI) -> None:
@@ -119,7 +117,7 @@ async def test_stubs_answer_501_problem(app: FastAPI) -> None:
     app.dependency_overrides[authorize] = lambda: None  # past the gate (#31)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get(f"{API_PREFIX}/reports/templates")
+        resp = await client.get(f"{API_PREFIX}/outputs")  # an M8 stub
         assert resp.status_code == 501
         assert resp.headers["content-type"] == "application/problem+json"
         resp = await client.get(f"{API_PREFIX}/admin/printers")

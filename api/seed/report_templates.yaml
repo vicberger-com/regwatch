@@ -1,0 +1,79 @@
+# The five stock reports (M7 spec, REQ-10; question 1 default). Each is copied into a user's own
+# layout by POST /reports/templates/{key}/instantiate. `parameters` are asked for at print time
+# (E17) and applied to the data source when the report renders; the components are checked
+# against the same schemas as any layout. Matched on `key`: a re-run adds new templates only.
+report_templates:
+  - key: weekly-change-digest
+    label: Weekly change digest
+    description: Everything that changed in the period, newest first, with the latest changes listed.
+    parameters:
+      - { key: period_days, label: Days covered, type: period_days, required: false, default: 7 }
+    data_source: { query: { sort: last_changed_desc }, limit: 500 }
+    layout:
+      root: { props: { title: Weekly change digest } }
+      content:
+        - { type: HeaderFooter, props: { id: hf, footer_text: Weekly change digest } }
+        - { type: ChangeList, props: { id: changes, title: Latest changes, limit: 50 } }
+        - type: ItemsTable
+          props: { id: items, caption: Changed items, columns: [item.title, jurisdiction.names, item.severity, item.last_changed_at], sort: item.last_changed_at, direction: desc, limit: 200 }
+        - { type: LegalMarkings, props: { id: legal } }
+
+  - key: jurisdiction-profile
+    label: Jurisdiction profile
+    description: One jurisdiction's latest changes, their status, and the items behind them.
+    parameters:
+      - { key: jurisdiction, label: Jurisdiction, type: jurisdiction, required: true }
+      - { key: period_days, label: Days covered, type: period_days, required: false, default: 90 }
+    data_source: { query: { sort: last_changed_desc }, limit: 500 }
+    layout:
+      root: { props: { title: Jurisdiction profile } }
+      content:
+        - { type: HeaderFooter, props: { id: hf, footer_text: Jurisdiction profile } }
+        - { type: ChangeList, props: { id: changes, title: Latest ten changes, limit: 10 } }
+        - { type: StatusMatrix, props: { id: status, title: Status } }
+        - type: ItemsTable
+          props: { id: items, caption: Items, columns: [item.title, item.status, item.severity, item.published_at, source.name], sort: item.last_changed_at, direction: desc, limit: 100 }
+        - { type: LegalMarkings, props: { id: legal } }
+
+  - key: topic-overview
+    label: Topic overview
+    description: One topic across every jurisdiction, with a summary by jurisdiction.
+    parameters:
+      - { key: facet_terms, label: Topics, type: facet_terms, required: true }
+      - { key: period_days, label: Days covered, type: period_days, required: false, default: 30 }
+    data_source: { query: { sort: last_changed_desc }, limit: 500 }
+    layout:
+      root: { props: { title: Topic overview } }
+      content:
+        - { type: HeaderFooter, props: { id: hf, footer_text: Topic overview } }
+        - { type: JurisdictionSummary, props: { id: places, title: By jurisdiction } }
+        - type: ItemsTable
+          props: { id: items, caption: Items, columns: [item.title, jurisdiction.names, item.severity, item.last_changed_at], sort: item.last_changed_at, direction: desc, limit: 200 }
+        - { type: LegalMarkings, props: { id: legal } }
+
+  - key: source-health
+    label: Source health
+    description: Every source's health, last success and success rate over seven days.
+    parameters: []
+    data_source: { query: { sort: last_changed_desc }, limit: 1 }
+    layout:
+      root: { props: { title: Source health } }
+      content:
+        - { type: HeaderFooter, props: { id: hf, footer_text: Source health } }
+        - { type: SourceHealth, props: { id: sources, title: Sources } }
+        - { type: LegalMarkings, props: { id: legal } }
+
+  - key: regulation-status-matrix
+    label: Regulation status matrix
+    description: How many items are new, updated, unchanged or archived in each jurisdiction.
+    parameters:
+      - { key: period_days, label: Days covered, type: period_days, required: false, default: 90 }
+    data_source: { query: { sort: last_changed_desc }, limit: 500 }
+    layout:
+      root: { props: { title: Regulation status matrix } }
+      content:
+        - { type: HeaderFooter, props: { id: hf, footer_text: Regulation status matrix } }
+        - { type: StatusMatrix, props: { id: status, title: Items by status } }
+        - type: ItemsTable
+          props: { id: items, caption: Items, columns: [item.title, jurisdiction.names, item.status, item.last_changed_at], sort: item.status, direction: asc, limit: 200 }
+        - { type: LegalMarkings, props: { id: legal } }
