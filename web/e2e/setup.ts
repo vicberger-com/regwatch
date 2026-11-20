@@ -3,16 +3,16 @@
  * (a German one naming the BSI, an EU one), uploaded through the API and processed by the
  * stack's own worker. Idempotent: an existing source is reused.
  */
-import { apiSession } from "./session";
+import { apiSession, MARK } from "./session";
 
 const DOCUMENTS = [
   {
-    title: "E2E: NIS2 incident reporting guidance",
-    text: "Das Bundesamt für Sicherheit in der Informationstechnik (BSI) veröffentlicht Hinweise zur Meldung von Sicherheitsvorfällen nach NIS2 für Betreiber in Deutschland.",
+    title: `E2E: NIS2 incident reporting guidance (${MARK})`,
+    text: "Das Bundesamt für Sicherheit in der Informationstechnik (BSI) veröffentlicht Hinweise zur Meldung von Sicherheitsvorfällen nach NIS2 für Betreiber in Deutschland. regwatch-e2e-fixture",
   },
   {
-    title: "E2E: European Commission data protection notice",
-    text: "The European Commission published a notice on data protection obligations for providers in the European Union under the GDPR.",
+    title: `E2E: European Commission data protection notice (${MARK})`,
+    text: "The European Commission published a notice on data protection obligations for providers in the European Union under the GDPR. regwatch-e2e-fixture",
   },
 ];
 
@@ -25,7 +25,10 @@ export default async function setup(): Promise<void> {
   const sources = (await (await api.get("/api/v1/sources")).json()) as
     { items?: { id: string; name: string }[] } | { id: string; name: string }[];
   const list = Array.isArray(sources) ? sources : (sources.items ?? []);
-  let source = list.find((s) => s.name === "E2E uploads");
+  let source = list.find(
+    (s) =>
+      s.name === "E2E uploads" && (s as { kind?: string }).kind === "manual",
+  );
   if (!source) {
     const made = await api.post("/api/v1/sources", {
       data: { name: "E2E uploads", kind: "manual", config: {} },
@@ -59,7 +62,7 @@ export default async function setup(): Promise<void> {
   }
   for (let attempt = 0; attempt < 60; attempt++) {
     const got = await api.post("/api/v1/search", {
-      data: { q: "E2E", facet_counts: false },
+      data: { q: MARK, facet_counts: false },
     });
     if (
       got.ok() &&

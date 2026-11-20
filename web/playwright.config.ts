@@ -14,7 +14,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:8180",
+    baseURL: process.env.E2E_BASE_URL ?? "", // required; checked in e2e/session.ts
     trace: "off",
     ...devices["Desktop Chrome"],
   },

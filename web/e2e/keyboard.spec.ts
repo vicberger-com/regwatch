@@ -1,70 +1,100 @@
 /**
- * M6 acceptance 3, keyboard only: sign in, choose the region view, open Europe, then Germany in
- * the country view, open its latest item and its Diff tab. Printing a stock report arrives with
- * M7 and M8.
+ * M6 acceptance 3, keyboard only: every control is reached with Tab and operated with arrow
+ * keys, Enter or Space; nothing is clicked, focused or set from code. Sign in, switch the view
+ * to Region and open Europe's panel, back to Country, open Germany, its latest item and the
+ * Diff tab. Printing a stock report arrives with M7 and M8.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-import { signInByKeyboard } from "./session";
+import { MARK, signInByKeyboard, tabTo } from "./session";
 
-test("a keyboard-only user reaches Germany's latest item and its diff", async ({
+/** Move the active option of the focused listbox with ArrowDown until its text matches. */
+async function arrowTo(page: Page, listName: RegExp, text: RegExp) {
+  const list = page.getByRole("listbox", { name: listName });
+  await expect(list).toBeFocused();
+  await page.keyboard.press("Home");
+  for (let i = 0; i < 60; i++) {
+    const active = await list.getAttribute("aria-activedescendant");
+    const label = active
+      ? ((await page.locator(`[id="${active}"]`).textContent()) ?? "")
+      : "";
+    if (text.test(label)) return;
+    await page.keyboard.press("ArrowDown");
+  }
+  throw new Error(`no option ${String(text)} in ${String(listName)}`);
+}
+
+/** Change the focused native select with the arrow keys until it shows ``label``. */
+async function chooseByKeys(page: Page, name: string, label: string) {
+  const select = page.getByLabel(name);
+  await tabTo(page, select);
+  for (let i = 0; i < 10; i++) {
+    const shown = await select.evaluate(
+      (el) =>
+        (el as HTMLSelectElement).selectedOptions.item(0)?.textContent ?? "",
+    );
+    if (shown === label) return;
+    await page.keyboard.press("ArrowDown");
+  }
+  await expect(select).toHaveValue(/./);
+  throw new Error(`could not reach ${label} in ${name} with the arrow keys`);
+}
+
+test("a keyboard-only user reaches Europe, then Germany's latest item and its diff", async ({
   page,
 }) => {
   await signInByKeyboard(page);
-  // Region view: the map options are native selects, operated from the keyboard.
-  await page.getByLabel("View").focus();
-  await page.getByLabel("View").selectOption("region");
-  const regions = page.getByRole("listbox", { name: /Regions with changes/ });
-  await regions.focus();
-  await expect(
-    regions.getByRole("option", { name: /Europe/ }).first(),
-  ).toBeVisible();
-  // Back to countries, then Germany from the list.
-  await page.getByLabel("View").focus();
-  await page.getByLabel("View").selectOption("country");
-  const list = page.getByRole("listbox", {
-    name: /Jurisdictions with changes/,
-  });
-  await list.focus();
+
+  await chooseByKeys(page, "View", "Region");
+  await tabTo(
+    page,
+    page.getByRole("listbox", { name: /Regions with changes/ }),
+  );
+  await arrowTo(page, /Regions with changes/, /Europe/);
+  await page.keyboard.press("Enter");
+  const europe = page.getByRole("complementary", { name: /Europe/ });
+  await expect(europe.getByRole("heading", { name: /Europe/ })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(europe).toHaveCount(0);
+
+  // Back to the View select with Shift+Tab, then the country view.
   for (let i = 0; i < 20; i++) {
-    const active = await list.getAttribute("aria-activedescendant");
-    const text = active
-      ? await page.locator(`[id="${active}"]`).textContent()
-      : "";
-    if (text?.includes("Germany")) break;
-    await page.keyboard.press("ArrowDown");
+    if (
+      await page
+        .getByLabel("View")
+        .evaluate((el) => el === document.activeElement)
+    )
+      break;
+    await page.keyboard.press("Shift+Tab");
   }
+  await page.keyboard.press("ArrowUp");
+  await expect(page.getByLabel("View")).toHaveValue("country");
+
+  await tabTo(
+    page,
+    page.getByRole("listbox", { name: /Jurisdictions with changes/ }),
+  );
+  await arrowTo(page, /Jurisdictions with changes/, /Germany/);
   await page.keyboard.press("Enter");
   const panel = page.getByRole("complementary", { name: "Germany" });
   await expect(panel.getByRole("heading", { name: "Germany" })).toBeFocused();
-  // Into the panel's latest change, by Tab and Enter.
-  const latest = panel.getByRole("link", { name: /E2E: NIS2/ });
+
+  const latest = panel.getByRole("link", { name: new RegExp(`NIS2.*${MARK}`) });
   await latest.waitFor();
-  for (
-    let i = 0;
-    i < 10 && !(await latest.evaluate((el) => el === document.activeElement));
-    i++
-  ) {
-    await page.keyboard.press("Tab");
-  }
+  await tabTo(page, latest, 10);
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("heading", { level: 1, name: /E2E: NIS2/ }),
+    page.getByRole("heading", { level: 1, name: /NIS2/ }),
   ).toBeVisible();
-  // The tabs: Tab into the tab list, arrow to Diff.
-  const summary = page.getByRole("tab", { name: "Summary" });
-  for (
-    let i = 0;
-    i < 20 && !(await summary.evaluate((el) => el === document.activeElement));
-    i++
-  ) {
-    await page.keyboard.press("Tab");
-  }
+
+  await tabTo(page, page.getByRole("tab", { name: "Summary" }));
   await page.keyboard.press("End");
+  await expect(page.getByRole("tab", { name: "Diff" })).toBeFocused();
   await expect(page.getByRole("tab", { name: "Diff" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
+  // One uploaded version has nothing to compare; the two-version diff is in the component tests.
   await expect(page.getByRole("tabpanel")).toContainText(
     /nothing to compare|lines added/,
   );

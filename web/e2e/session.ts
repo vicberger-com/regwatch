@@ -1,7 +1,13 @@
 /** Sign-in helpers for the end-to-end tests: credentials come from E2E_CREDENTIALS only. */
 import { readFileSync } from "node:fs";
 
-import { request, type APIRequestContext, type Page } from "@playwright/test";
+import {
+  expect,
+  request,
+  type APIRequestContext,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 export function credentials(): { email: string; password: string } {
   const path = process.env.E2E_CREDENTIALS;
@@ -13,7 +19,25 @@ export function credentials(): { email: string; password: string } {
   return { email: field("admin email"), password: field("admin password") };
 }
 
-export const BASE = process.env.E2E_BASE_URL ?? "http://127.0.0.1:8180";
+function base(): string {
+  const url = process.env.E2E_BASE_URL;
+  if (!url) throw new Error("set E2E_BASE_URL to the stack under test");
+  const loopback = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(url);
+  if (
+    !loopback &&
+    !(process.env.E2E_ALLOW_REMOTE === "1" && url.startsWith("https://"))
+  ) {
+    throw new Error(
+      "only a loopback stack, or an https one with E2E_ALLOW_REMOTE=1",
+    );
+  }
+  return url;
+}
+
+export const BASE = base();
+
+/** The marker in every fixture title, so tests never pick up a real item. */
+export const MARK = "regwatch-e2e-fixture";
 
 /** An API session signed in as the admin; the Origin header is the one the API expects. */
 export async function apiSession(): Promise<APIRequestContext> {
@@ -30,11 +54,24 @@ export async function apiSession(): Promise<APIRequestContext> {
   return api;
 }
 
+/** Press Tab until ``target`` has focus (at most ``max`` presses); fails otherwise. */
+export async function tabTo(
+  page: Page,
+  target: Locator,
+  max = 40,
+): Promise<void> {
+  for (let i = 0; i < max; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(target).toBeFocused();
+}
+
 /** Sign in through the form with the keyboard only (M6 acceptance 3). */
 export async function signInByKeyboard(page: Page): Promise<void> {
   const { email, password } = credentials();
   await page.goto("/login");
-  await page.getByLabel("Email").focus();
+  await tabTo(page, page.getByLabel("Email"));
   await page.keyboard.type(email);
   await page.keyboard.press("Tab");
   await page.keyboard.type(password);

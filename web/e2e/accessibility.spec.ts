@@ -2,13 +2,19 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { apiSession, signInByKeyboard, THEMES, useTheme } from "./session";
+import {
+  apiSession,
+  MARK,
+  signInByKeyboard,
+  THEMES,
+  useTheme,
+} from "./session";
 
 async function firstItemId(): Promise<string> {
   const api = await apiSession();
   const got = (await (
     await api.post("/api/v1/search", {
-      data: { q: "E2E", facet_counts: false },
+      data: { q: MARK, facet_counts: false },
     })
   ).json()) as {
     items: { id: string }[];
@@ -43,6 +49,7 @@ for (const theme of THEMES) {
     await useTheme(page, theme);
     const id = await firstItemId();
     await signInByKeyboard(page);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme); // the theme applied
     const routes: [string, string][] = [
       ["/", "Map"],
       ["/items", "Items"],
