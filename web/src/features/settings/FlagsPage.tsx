@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { problemText } from "@/lib/auth/session";
 
 import { flagsQuery, useSetFlag } from "./api";
+import { HelpTip } from "@/features/help/HelpTip";
+import { flagTopic } from "@/features/help/topics";
 
 /** `/admin/flags` (screens.md): toggle list with descriptions; preconditions come from the API. */
 export function FlagsPage() {
@@ -45,6 +47,7 @@ export function FlagsPage() {
               <label htmlFor={`flag-${f.key}`} className="font-semibold">
                 <code>{f.key}</code>
               </label>
+              <HelpTip id={flagTopic(f.key)} />
               <p id={`flag-${f.key}-desc`} className="text-text-muted">
                 {f.description}
               </p>

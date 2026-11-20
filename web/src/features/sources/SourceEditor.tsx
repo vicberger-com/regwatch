@@ -17,6 +17,8 @@ import {
   toForm,
   type Values,
 } from "./ConnectorFields";
+import { HelpTip } from "@/features/help/HelpTip";
+import { sourceTopic } from "@/features/help/topics";
 
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -170,52 +172,61 @@ export function SourceEditor({
       <h2 className="text-xl font-semibold">
         {current ? `Edit ${current.name}` : "Create source"}
       </h2>
-      <label className="flex flex-col gap-1">
-        <span>Name</span>
-        <input
-          value={name}
-          required
-          maxLength={200}
-          className={field}
-          onChange={(e) => {
-            setName(e.target.value);
-          }}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span>Kind</span>
-        <select
-          value={kind}
-          disabled={current !== null}
-          className={field}
-          onChange={(e) => {
-            const next = e.target.value;
-            setKind(next);
-            // A search source is secondary (ADR-0010); the API refuses official for it.
-            if (next === "search_query") setCredibility("secondary");
-            const nextSchema = kindSchema(next);
-            setConfig(nextSchema ? toForm(nextSchema, {}) : {});
-          }}
-        >
-          {KINDS.map((k) => (
-            <option key={k}>{k}</option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span>Credibility</span>
-        <select
-          value={credibility}
-          className={field}
-          onChange={(e) => {
-            setCredibility(e.target.value as Credibility);
-          }}
-        >
-          {CREDIBILITY.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
-      </label>
+      <div className="flex items-start gap-1">
+        <label className="flex flex-col gap-1">
+          <span>Name</span>
+          <input
+            value={name}
+            required
+            maxLength={200}
+            className={field}
+            onChange={(e) => {
+              setName(e.target.value);
+            }}
+          />
+        </label>
+        <HelpTip id={sourceTopic("name")} />
+      </div>
+      <div className="flex items-start gap-1">
+        <label className="flex flex-col gap-1">
+          <span>Kind</span>
+          <select
+            value={kind}
+            disabled={current !== null}
+            className={field}
+            onChange={(e) => {
+              const next = e.target.value;
+              setKind(next);
+              // A search source is secondary (ADR-0010); the API refuses official for it.
+              if (next === "search_query") setCredibility("secondary");
+              const nextSchema = kindSchema(next);
+              setConfig(nextSchema ? toForm(nextSchema, {}) : {});
+            }}
+          >
+            {KINDS.map((k) => (
+              <option key={k}>{k}</option>
+            ))}
+          </select>
+        </label>
+        <HelpTip id={sourceTopic("kind")} />
+      </div>
+      <div className="flex items-start gap-1">
+        <label className="flex flex-col gap-1">
+          <span>Credibility</span>
+          <select
+            value={credibility}
+            className={field}
+            onChange={(e) => {
+              setCredibility(e.target.value as Credibility);
+            }}
+          >
+            {CREDIBILITY.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+        <HelpTip id={sourceTopic("credibility")} />
+      </div>
       <fieldset className="flex flex-col gap-2 rounded border border-border p-2">
         <legend>Connector settings</legend>
         {schema && (
@@ -230,7 +241,9 @@ export function SourceEditor({
         )}
       </fieldset>
       <fieldset className="flex flex-col gap-2 rounded border border-border p-2">
-        <legend>Capture job</legend>
+        <legend className="flex items-center gap-1">
+          Capture job <HelpTip id={sourceTopic("schedule")} />
+        </legend>
         <div className="flex gap-4">
           {(["interval", "cron"] as const).map((mode) => (
             <label key={mode} className="flex items-center gap-1">
@@ -247,83 +260,103 @@ export function SourceEditor({
           ))}
         </div>
         {schedule === "interval" ? (
+          <div className="flex items-start gap-1">
+            <label className="flex flex-col gap-1">
+              <span>Minutes between runs (at least 15)</span>
+              <input
+                type="number"
+                min={15}
+                step="any"
+                value={minutes}
+                className={field}
+                onChange={(e) => {
+                  setMinutes(e.target.value);
+                }}
+              />
+            </label>
+            <HelpTip id={sourceTopic("interval")} />
+          </div>
+        ) : (
+          <div className="flex items-start gap-1">
+            <label className="flex flex-col gap-1">
+              <span>Cron (minute hour day month weekday)</span>
+              <input
+                value={cron}
+                className={field}
+                onChange={(e) => {
+                  setCron(e.target.value);
+                }}
+              />
+            </label>
+            <HelpTip id={sourceTopic("cron")} />
+          </div>
+        )}
+        <div className="flex items-start gap-1">
           <label className="flex flex-col gap-1">
-            <span>Minutes between runs (at least 15)</span>
+            <span>Time zone</span>
+            <input
+              value={timezone}
+              className={field}
+              onChange={(e) => {
+                setTimezone(e.target.value);
+              }}
+            />
+          </label>
+          <HelpTip id={sourceTopic("timezone")} />
+        </div>
+        <div className="flex items-start gap-1">
+          <label className="flex flex-col gap-1">
+            <span>Most items per run</span>
             <input
               type="number"
-              min={15}
-              step="any"
-              value={minutes}
+              min={1}
+              max={2000}
+              value={maxItems}
               className={field}
               onChange={(e) => {
-                setMinutes(e.target.value);
+                setMaxItems(e.target.value);
               }}
             />
           </label>
-        ) : (
+          <HelpTip id={sourceTopic("max_items")} />
+        </div>
+        <div className="flex items-start gap-1">
           <label className="flex flex-col gap-1">
-            <span>Cron (minute hour day month weekday)</span>
+            <span>Requests per minute to the site</span>
             <input
-              value={cron}
+              type="number"
+              min={1}
+              max={120}
+              value={rate}
               className={field}
               onChange={(e) => {
-                setCron(e.target.value);
+                setRate(e.target.value);
               }}
             />
           </label>
-        )}
-        <label className="flex flex-col gap-1">
-          <span>Time zone</span>
-          <input
-            value={timezone}
-            className={field}
-            onChange={(e) => {
-              setTimezone(e.target.value);
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span>Most items per run</span>
-          <input
-            type="number"
-            min={1}
-            max={2000}
-            value={maxItems}
-            className={field}
-            onChange={(e) => {
-              setMaxItems(e.target.value);
-            }}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span>Requests per minute to the site</span>
-          <input
-            type="number"
-            min={1}
-            max={120}
-            value={rate}
-            className={field}
-            onChange={(e) => {
-              setRate(e.target.value);
-            }}
-          />
-        </label>
+          <HelpTip id={sourceTopic("rate")} />
+        </div>
       </fieldset>
       {current && (
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => {
-              setEnabled(e.target.checked);
-            }}
-          />
-          Enabled (captures on its schedule)
-        </label>
+        <div className="flex items-start gap-1">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => {
+                setEnabled(e.target.checked);
+              }}
+            />
+            Enabled (captures on its schedule)
+          </label>
+          <HelpTip id={sourceTopic("enabled")} />
+        </div>
       )}
       {canOverride ? (
         <fieldset className="flex flex-col gap-2 rounded border border-border p-2">
-          <legend>robots.txt</legend>
+          <legend className="flex items-center gap-1">
+            robots.txt <HelpTip id={sourceTopic("robots_override")} />
+          </legend>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -353,23 +386,28 @@ export function SourceEditor({
       ) : (
         current?.robots_policy === "override" && (
           <fieldset className="flex flex-col gap-1 rounded border border-border p-2">
-            <legend>robots.txt</legend>
+            <legend className="flex items-center gap-1">
+              robots.txt <HelpTip id={sourceTopic("robots_override")} />
+            </legend>
             <p className="text-sm text-text-muted">
               robots.txt is overridden for this source (
               {current.override_reason}). Its connector settings, and turning it
               back on, need the override permission; you can still rename it,
               change its schedule, or return it to respecting robots.txt.
             </p>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={respectAgain}
-                onChange={(e) => {
-                  setRespectAgain(e.target.checked);
-                }}
-              />
-              Respect robots.txt again
-            </label>
+            <div className="flex items-start gap-1">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={respectAgain}
+                  onChange={(e) => {
+                    setRespectAgain(e.target.checked);
+                  }}
+                />
+                Respect robots.txt again
+              </label>
+              <HelpTip id={sourceTopic("respect_again")} />
+            </div>
           </fieldset>
         )
       )}

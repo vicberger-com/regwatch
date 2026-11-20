@@ -11,6 +11,8 @@ import {
   useSaveSetting,
   type Setting,
 } from "./api";
+import { HelpTip } from "@/features/help/HelpTip";
+import { settingTopic } from "@/features/help/topics";
 
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -164,6 +166,7 @@ function SettingRow({ setting }: { setting: Setting }) {
           {setting.note ? ` · ${setting.note}` : ""}
         </span>
       </label>
+      <HelpTip id={settingTopic(setting.key)} />
       {input}
       <button
         type="submit"

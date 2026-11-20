@@ -143,3 +143,4 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
   1. SafeFetcher should refuse the host's own public IPv4 and IPv6 (a deny list filled at start-up, or an egress proxy), before the stack runs on a host with a public address or with services listening on all interfaces.
   2. Take `api` off `fetch` by doing the save-time DNS check in the worker or through a DNS-only path.
   3. Extend BL-130's CI check so it also requires that `api`, `worker` and `search` publish no ports. | proposal | M3, M10 | lead session | open |
+| BL-132 | CP proposal: add to screens.md's component conventions that every settings choice has a help tip (ⓘ toggletip with a link to its `/help` section), and keep `help/topics.ts` in step with registries.yaml. A test could fail when a setting in the registry has no topic. | proposal | M6 | lead session | open |

@@ -51,7 +51,13 @@ describe("settings screen", () => {
     expect(
       within(form("outputs.allowed_recipient_domains")).getByRole("textbox"),
     ).toHaveValue("example.org");
-    expect(screen.getByText(/empty list blocks all email/)).toBeInTheDocument();
+    // The note in the label, and the same words in the help tip (hidden until opened).
+    expect(
+      screen.getAllByText(/empty list blocks all email/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "About Allowed email domains" }),
+    ).toBeInTheDocument();
   });
 
   it("checks the type before saving, then saves", async () => {

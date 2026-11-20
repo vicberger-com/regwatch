@@ -29,6 +29,7 @@ import { TaxonomyPage } from "@/features/taxonomy/TaxonomyPage";
 import { currentUser, hasPermission } from "@/lib/auth/session";
 
 import { AdminHome } from "@/features/admin/AdminHome";
+import { HelpPage } from "@/features/help/HelpPage";
 import { ItemPage } from "@/features/items/ItemPage";
 import { ItemsPage, parseItemsSearch } from "@/features/items/ItemsPage";
 import { MapPage } from "@/features/map/MapPage";
@@ -143,6 +144,13 @@ const itemRoute = createRoute({
     if (!hasPermission(me, "items.read")) return <NotPermitted />;
     return <ItemPage id={id} />;
   },
+});
+
+const helpRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/help",
+  staticData: { title: "Help" },
+  component: HelpPage,
 });
 
 const meRoute = createRoute({
@@ -292,6 +300,7 @@ export const routeTree = rootRoute.addChildren([
     itemsRoute,
     itemRoute,
     meRoute,
+    helpRoute,
     adminHomeRoute,
     usersRoute,
     taxonomyRoute,

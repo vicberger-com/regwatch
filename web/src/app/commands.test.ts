@@ -29,14 +29,15 @@ describe("command registry", () => {
     });
     expect(railCommands(withPermissions([])).map((c) => c.id)).toEqual([
       "nav.me",
+      "nav.help",
     ]);
     expect(
       railCommands(withPermissions(["audit.read"])).map((c) => c.id),
-    ).toEqual(["nav.me", "nav.settings"]);
+    ).toEqual(["nav.me", "nav.settings", "nav.help"]);
     expect(
       commandsFor(withPermissions(["items.read"])).map((c) => c.id),
-    ).toEqual(["nav.map", "nav.items", "nav.me", "x.print"]);
-    expect(commandsFor(null).map((c) => c.id)).toEqual(["nav.me"]);
+    ).toEqual(["nav.map", "nav.items", "nav.me", "nav.help", "x.print"]);
+    expect(commandsFor(null).map((c) => c.id)).toEqual(["nav.me", "nav.help"]);
   });
 
   it("needs exactly one of a route and a handler", () => {
@@ -72,6 +73,6 @@ describe("command registry", () => {
     registerShellCommands();
     expect(
       commandsFor(withPermissions(["users.manage", "items.read"])),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
   });
 });

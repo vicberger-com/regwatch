@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouteContext } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
+import { HelpTip } from "@/features/help/HelpTip";
+import { meTopic } from "@/features/help/topics";
 import { problemText } from "@/lib/auth/session";
 
 import {
@@ -24,12 +26,20 @@ const TIMEZONES: readonly string[] = (() => {
   }
 })();
 
-function Section(props: { id: string; title: string; children: ReactNode }) {
+function Section(props: {
+  id: string;
+  title: string;
+  help?: string;
+  children: ReactNode;
+}) {
   return (
     <section aria-labelledby={props.id} className="mt-6 max-w-2xl">
-      <h2 id={props.id} className="text-lg font-semibold">
-        {props.title}
-      </h2>
+      <div className="flex items-center gap-1">
+        <h2 id={props.id} className="text-lg font-semibold">
+          {props.title}
+        </h2>
+        {props.help && <HelpTip id={props.help} />}
+      </div>
       <div className="mt-2 grid gap-3">{props.children}</div>
     </section>
   );
@@ -43,10 +53,15 @@ function Choice<K extends keyof Preferences>(props: {
   onSave: (changes: Partial<Preferences>) => void;
   parse?: (raw: string) => Preferences[K];
 }) {
+  const id = useId();
   return (
-    <label className="flex flex-col text-sm">
-      {props.label}
+    <div className="flex flex-col text-sm">
+      <span className="flex items-center gap-1">
+        <label htmlFor={id}>{props.label}</label>
+        <HelpTip id={meTopic(props.field)} />
+      </span>
       <select
+        id={id}
         className="mt-1 w-64 rounded border border-border bg-surface px-2 py-1"
         value={String(props.value ?? "")}
         onChange={(e) => {
@@ -62,7 +77,7 @@ function Choice<K extends keyof Preferences>(props: {
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -127,6 +142,7 @@ export function MePage() {
               Accessibility mode: high contrast, larger text and targets, labels
               always shown, less motion
             </label>
+            <HelpTip id={meTopic("accessibility_preset")} />
             <Choice
               label="Theme"
               field="theme"
@@ -226,11 +242,16 @@ export function MePage() {
               />
               Keep me signed in by default
             </label>
+            <HelpTip id={meTopic("remember_me_default")} />
           </Section>
           <Section id="defaults" title="Defaults">
-            <label className="flex flex-col text-sm">
-              Landing view
+            <div className="flex items-center gap-1 text-sm">
+              <label htmlFor="landing-view">Landing view</label>
+              <HelpTip id={meTopic("landing_view_id")} />
+            </div>
+            <div className="flex flex-col text-sm">
               <select
+                id="landing-view"
                 className="mt-1 w-64 rounded border border-border bg-surface px-2 py-1"
                 value={p.landing_view_id ?? ""}
                 onChange={(e) => {
@@ -244,11 +265,11 @@ export function MePage() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           </Section>
         </>
       )}
-      <Section id="sessions" title="Active sessions">
+      <Section id="sessions" title="Active sessions" help={meTopic("sessions")}>
         {revoke.isError && (
           <p role="alert" className="text-critical">
             {problemText(revoke.error, "That session could not be signed out.")}

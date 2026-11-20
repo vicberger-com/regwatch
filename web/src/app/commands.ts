@@ -5,7 +5,7 @@
  * the control.
  */
 import type { LucideIcon } from "lucide-react";
-import { List, Map, Settings, User } from "lucide-react";
+import { CircleHelp, List, Map, Settings, User } from "lucide-react";
 
 import { hasPermission } from "@/lib/auth/session";
 import type { Me } from "@/lib/auth/session";
@@ -172,6 +172,13 @@ export function registerShellCommands(): void {
     icon: User,
     to: "/me",
     order: 50,
+  });
+  registerCommand({
+    id: "nav.help",
+    label: "Help",
+    icon: CircleHelp,
+    to: "/help",
+    order: 70,
   });
   registerCommand({
     id: "nav.settings",
