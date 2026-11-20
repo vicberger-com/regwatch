@@ -155,3 +155,4 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
   - the `remember_me_default` preference: the sign-in page has no 'keep me signed in' box.
 
   Each needs wiring, or removing from registries.yaml through a CP. | defect | M1, M3, M4, M5, M6, M9 | lead session | open |
+| BL-135 | Branding fields with no visible effect yet (owner, 2026-11-20): company name, short name and address are saved but only reports (M7 HeaderFooter, LegalMarkings) will use them; the Branding page now says so under each. Proposed: also show the company name and address on the public legal page and the short name in the footer before M7. | proposal | M1, M7 | lead session | open |

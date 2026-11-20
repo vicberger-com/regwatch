@@ -103,10 +103,19 @@ function LogoForm({ branding }: { branding: Branding }) {
   );
 }
 
+/** Saved now, shown once reports exist (M7 HeaderFooter and LegalMarkings components). */
+const REPORTS_ONLY =
+  "Used in report headers and footers, which arrive with the report builder; nothing on screen changes yet.";
+
 const TEXT_FIELDS = [
-  ["site_title", "Site title", 80],
-  ["company_name", "Company name", 200],
-  ["company_short_name", "Short company name", 40],
+  [
+    "site_title",
+    "Site title",
+    80,
+    "Shown in the header, the browser tab and the sign-in page.",
+  ],
+  ["company_name", "Company name", 200, REPORTS_ONLY],
+  ["company_short_name", "Short company name", 40, REPORTS_ONLY],
 ] as const;
 
 function BrandingForm({ branding }: { branding: Branding }) {
@@ -144,10 +153,15 @@ function BrandingForm({ branding }: { branding: Branding }) {
   return (
     <form onSubmit={submit} noValidate aria-label="Branding" className={panel}>
       <h2 className="font-semibold">Title and company</h2>
-      {TEXT_FIELDS.map(([key, label, max]) => (
-        <label key={key} className="flex flex-col gap-1">
-          <span>{label}</span>
+      {TEXT_FIELDS.map(([key, label, max, hint]) => (
+        <div key={key} className="flex flex-col gap-1">
+          <label htmlFor={`branding-${key}`}>{label}</label>
+          <span id={`hint-${key}`} className="text-sm text-text-muted">
+            {hint}
+          </span>
           <input
+            id={`branding-${key}`}
+            aria-describedby={`hint-${key}`}
             value={values[key]}
             maxLength={max}
             onChange={(e) => {
@@ -155,11 +169,16 @@ function BrandingForm({ branding }: { branding: Branding }) {
             }}
             className={field}
           />
-        </label>
+        </div>
       ))}
-      <label className="flex flex-col gap-1">
-        <span>Company address</span>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="branding-company_address">Company address</label>
+        <span id="hint-company_address" className="text-sm text-text-muted">
+          {REPORTS_ONLY}
+        </span>
         <textarea
+          id="branding-company_address"
+          aria-describedby="hint-company_address"
           rows={3}
           maxLength={500}
           value={values.company_address}
@@ -168,10 +187,18 @@ function BrandingForm({ branding }: { branding: Branding }) {
           }}
           className={field}
         />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span>Primary colour (hex, empty for the default)</span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="branding-primary_color">
+          Primary colour (hex, empty for the default)
+        </label>
+        <span id="hint-primary_color" className="text-sm text-text-muted">
+          Buttons and links in the light theme; the dark and high-contrast
+          themes keep their own tested colours.
+        </span>
         <input
+          id="branding-primary_color"
+          aria-describedby="hint-primary_color"
           value={values.primary_color}
           placeholder="#1F5AA6"
           onChange={(e) => {
@@ -179,7 +206,7 @@ function BrandingForm({ branding }: { branding: Branding }) {
           }}
           className={`${field} w-32 font-mono`}
         />
-      </label>
+      </div>
       <p role="status">{save.isSuccess ? "Branding saved." : ""}</p>
       {message && (
         <p role="alert" className="text-critical">
