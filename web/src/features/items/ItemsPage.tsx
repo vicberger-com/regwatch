@@ -2,7 +2,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
+import { interestFilters, type Filters } from "@/features/map/api";
 import { jurisdictionName } from "@/features/map/names";
+import { preferencesQuery } from "@/features/me/api";
 import { problemText } from "@/lib/auth/session";
 
 import { searchQuery, type ItemSummary, type Query } from "./api";
@@ -23,6 +25,8 @@ export interface ItemsSearch {
   t?: string;
   sort?: Sort;
   page?: number;
+  /** Show everything instead of the user's interests (M11.1). */
+  all?: boolean;
 }
 
 const SORTS: { value: Sort; label: string; column: string }[] = [
@@ -56,6 +60,7 @@ export function parseItemsSearch(raw: Record<string, unknown>): ItemsSearch {
   if (SORTS.some((s) => s.value === raw.sort)) out.sort = raw.sort as Sort;
   const page = Number(raw.page);
   if (Number.isInteger(page) && page >= 1 && page <= 400) out.page = page;
+  if (raw.all === true || raw.all === "1" || raw.all === 1) out.all = true;
   return out;
 }
 
@@ -71,8 +76,27 @@ function without(
   );
 }
 
-export function toQuery(search: ItemsSearch, now = new Date()): Query {
-  const filters: NonNullable<Query["filters"]> = {};
+/** Interests apply when the address names no place or topic of its own and not "all". */
+export function usesInterests(
+  search: ItemsSearch,
+  interests: Filters,
+): boolean {
+  return (
+    !search.all && !search.j && !search.t && Object.keys(interests).length > 0
+  );
+}
+
+export function toQuery(
+  search: ItemsSearch,
+  now = new Date(),
+  interests: Filters = {},
+): Query {
+  const filters: NonNullable<Query["filters"]> = usesInterests(
+    search,
+    interests,
+  )
+    ? { ...interests }
+    : {};
   if (search.j) filters.jurisdictions = search.j.split(",").filter(Boolean);
   if (search.t) {
     const [facet = "", term = ""] = search.t.split(":");
@@ -144,9 +168,13 @@ export function ItemsPage(props: {
   const { search, onSearch } = props;
   const [text, setText] = useState(search.q ?? "");
   const [now] = useState(() => new Date()); // one "now" per visit keeps the query key stable
+  const prefs = useQuery(preferencesQuery);
+  const interests = interestFilters(prefs.data?.interests);
+  const mine = usesInterests(search, interests);
   const result = useQuery({
-    ...searchQuery(toQuery(search, now)),
+    ...searchQuery(toQuery(search, now, interests)),
     placeholderData: keepPreviousData,
+    enabled: !prefs.isPending, // the first search already knows the interests
   });
   const sort = toQuery(search, now).sort;
   const page = search.page ?? 1;
@@ -217,6 +245,26 @@ export function ItemsPage(props: {
           </select>
         </label>
       </form>
+      {(mine || search.all) && Object.keys(interests).length > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded border border-accent px-2 py-0.5">
+            {mine ? "Filtered to my interests" : "Showing everything"}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onSearch(
+                mine
+                  ? { ...without(search, "page"), all: true }
+                  : without(search, "all", "page"),
+              );
+            }}
+            className="text-accent underline"
+          >
+            {mine ? "Show everything" : "Show my interests"}
+          </button>
+        </p>
+      )}
       {(search.j ?? search.t ?? search.days) && (
         <ul
           aria-label="Active filters"

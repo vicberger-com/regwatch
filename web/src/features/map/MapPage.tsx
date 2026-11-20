@@ -7,7 +7,7 @@ import { preferencesQuery, viewsQuery } from "@/features/me/api";
 import { facetsQuery } from "@/features/taxonomy/api";
 import { hasPermission, problemText } from "@/lib/auth/session";
 
-import { activityQuery, PERIODS, type MapView } from "./api";
+import { activityQuery, interestFilters, PERIODS, type MapView } from "./api";
 import { jurisdictionName } from "./names";
 import { ActivityTable } from "./ActivityTable";
 import { JurisdictionList } from "./JurisdictionList";
@@ -134,7 +134,13 @@ export function MapPage() {
   };
   // Until a facet's value is chosen, the view shows every change (acceptance 2).
   const asked: MapView = view.facet && !view.term ? { by: view.by } : view;
-  const activity = useQuery(activityQuery(period, asked));
+  // The user's interests filter the map by default; "Show everything" widens it (M11.1).
+  const prefs = useQuery(preferencesQuery);
+  const [everything, setEverything] = useState(false);
+  const interests = interestFilters(prefs.data?.interests);
+  const hasInterests = Object.keys(interests).length > 0;
+  const extra = everything ? {} : interests;
+  const activity = useQuery(activityQuery(period, asked, extra));
   // A region's member countries, and each country's region, for the region view.
   // Only well-formed regions: a broken answer must not take the map down.
   const regionList = useMemo(() => validRegions(regions.data), [regions.data]);
@@ -216,6 +222,24 @@ export function MapPage() {
   return (
     <>
       <h1 className="text-2xl font-semibold">Map</h1>
+      {hasInterests && (
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded border border-accent px-2 py-0.5">
+            {everything ? "Showing everything" : "Filtered to my interests"}
+          </span>
+          <button
+            type="button"
+            aria-pressed={everything}
+            onClick={() => {
+              setEverything(!everything);
+              setSelected(null);
+            }}
+            className="text-accent underline"
+          >
+            {everything ? "Show my interests" : "Show everything"}
+          </button>
+        </p>
+      )}
       <div
         className="mt-4 flex flex-wrap items-end gap-4"
         role="group"
@@ -359,8 +383,15 @@ export function MapPage() {
                 ...(view.by === "region" && members.has(selected)
                   ? { regions: [selected] }
                   : { jurisdictions: [selected] }),
-                ...(asked.facet && asked.term
-                  ? { terms: { [asked.facet]: [asked.term] } }
+                ...(extra.terms || (asked.facet && asked.term)
+                  ? {
+                      terms: {
+                        ...(extra.terms ?? {}),
+                        ...(asked.facet && asked.term
+                          ? { [asked.facet]: [asked.term] }
+                          : {}),
+                      },
+                    }
                   : {}),
               }}
               link={

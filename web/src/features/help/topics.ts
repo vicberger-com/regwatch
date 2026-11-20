@@ -35,6 +35,14 @@ const T = (
 const ME: Topic[] = [
   T(
     "User tab",
+    "interests",
+    "My interests",
+    "The regions, jurisdictions and topics the map, items and search open filtered to; you can always show everything.",
+    "Interests are default filters, never a limit: everyone can still see all content. A choice that is later removed from the taxonomy is simply dropped.",
+    "Following feeds from the catalogue, and interests shared by a group, arrive in the next M11 slices.",
+  ),
+  T(
+    "User tab",
     "accessibility_preset",
     "Accessibility mode",
     "Switches on high contrast, larger text and targets, always-visible labels and reduced motion at once.",

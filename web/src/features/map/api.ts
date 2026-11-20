@@ -14,9 +14,24 @@ export interface MapView {
   term?: string;
 }
 
+export type Filters = NonNullable<Schemas["Query"]["filters"]>;
+
+/** The user's interests as query filters; empty parts are left out (M11.1). */
+export function interestFilters(i: Schemas["Interests"] | undefined): Filters {
+  const out: Filters = {};
+  if (i?.jurisdictions?.length) out.jurisdictions = i.jurisdictions;
+  if (i?.regions?.length) out.regions = i.regions;
+  const terms = Object.fromEntries(
+    Object.entries(i?.terms ?? {}).filter(([, keys]) => keys.length > 0),
+  );
+  if (Object.keys(terms).length > 0) out.terms = terms;
+  return out;
+}
+
 export const activityQuery = (
   periodDays: number,
   view: MapView = { by: "country" },
+  extra: Filters = {},
 ) =>
   queryOptions({
     queryKey: [
@@ -26,12 +41,18 @@ export const activityQuery = (
       view.by,
       view.facet ?? "",
       view.term ?? "",
+      extra,
     ],
     queryFn: async (): Promise<MapActivity> => {
+      // The view's facet term narrows that facet; the interests filter the rest (M11.1).
+      const merged: Filters = {
+        ...extra,
+        ...(view.facet && view.term
+          ? { terms: { ...(extra.terms ?? {}), [view.facet]: [view.term] } }
+          : {}),
+      };
       const filters =
-        view.facet && view.term
-          ? JSON.stringify({ terms: { [view.facet]: [view.term] } })
-          : undefined;
+        Object.keys(merged).length > 0 ? JSON.stringify(merged) : undefined;
       const result = await api.GET("/map/activity", {
         // Passive: the map's own polling never keeps an idle session alive on the server.
         headers: { "X-Regwatch-Passive": "1" },

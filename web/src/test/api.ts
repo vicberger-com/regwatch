@@ -10,6 +10,10 @@ export type Routes = Record<
  * preferences the shell's idle watch reads (M9). */
 const DEFAULTS: Routes = {
   "GET /me/preferences": [200, { session_idle_timeout_minutes: 480 }],
+  "GET /me/interest-options": [
+    200,
+    { facets: [], jurisdictions: [], regions: [] },
+  ],
   "GET /map/activity": [
     200,
     {
