@@ -41,6 +41,8 @@
    git push origin feat/M5-map
    git push origin feat/M6-shell
    git push -u origin feat/M9-preferences
+   git push -u origin feat/M6-help
+   git push -u origin feat/M11-interests
    ```
    Then open the PRs so CI runs.
 2. **Run the screen-reader journey** (NVDA or VoiceOver):
@@ -51,8 +53,9 @@
    - the user tab;
    - the idle warning's announcement.
 3. **Run the adversarial session,** or record a decision to defer it to G5, as at G1.
-4. **Decide on:**
+4. **Review M11 (added at the owner's request on 2026-11-20):** `M11-module-summary.md`. Its contract changes CP-24 to CP-27 (migrations 0008 to 0010) were accepted on recommendation; confirm or override them.
+5. **Decide on:**
    - the CP proposals BL-125 and BL-126;
    - BL-127 (search in the item text);
    - whether the BL-128 gaps (items filter panel, item actions) block G3 or move to the next phase.
-5. **Comment `approved` on the `Gate G3` issue,** or list what must change.
+6. **Comment `approved` on the `Gate G3` issue,** or list what must change.
