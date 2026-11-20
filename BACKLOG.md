@@ -125,3 +125,16 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
 | BL-124 | Ship the web notices with the bundle (M6 shell review, finding 1): Vite emits the font files as hashed assets and drops `OFL-1.1.txt`; the production build (M10) must copy `web/THIRD_PARTY_NOTICES.md` and the OFL text into `dist/`, and the license scan should check the built output. | proposal | M10 | M6 session | open |
 | BL-125 | CP proposal (M6 view selector): `GET /taxonomy/facets`, `/taxonomy/view-dimensions` and `/jurisdictions/regions` need `taxonomy.read`, so a viewer with only `items.read` gets the country view alone, without the facet and region views (screens.md lists them for every map user). Proposed: a read-only `items.read` path to the facets flagged `show_in_view_selector` and `show_in_filters` with their active terms, and to the regions. A contract change, so a CP. | proposal | M6 | M6 session | open |
 | BL-126 | CP proposal: document the `X-Regwatch-Passive` request header in `openapi/regwatch.v1.yaml` (a polling request that does not renew the session; `identity/permissions.py`). | proposal | M6 | M6 session | open |
+| BL-127 | Use testing U-M6-3: search finds words in titles, summaries and translations only, not in an item's text, and no partial words ("nis"). German searches for the NIS2 guidance by its body words fail. Proposed: add the content text (or its first part) to the index document and the PostgreSQL vector, with prefix matching for a final word (M5 change, a CP for the index mapping). | proposal | M6, M9 | use testing round 1 | open |
+| BL-128 | Use testing U-M6-4 and U-M6-5, `/items` against screens.md: a filter panel (facets with counts, source, severity, status), a column chooser, search suggestions, a Topics column, row-click detail; the item page's actions (reprocess, edit tags, add to report) and a visible source link label. | proposal | M6, M9 | use testing round 1 | open |
+| BL-129 | Use testing minors (M6, M9):
+  - the accessibility preset keeps a theme the user chose, and the form does not show the values in force;
+  - `/me` form controls do not get the 44 px targets;
+  - one blank frame before the dark theme on a browser with no stored copy;
+  - the sign-in page keeps the previous user's theme;
+  - the session list shows every row raw (62 in the QA stack), with no confirmation and no success message, and focus is lost after a revoke or after removing a filter chip;
+  - `/jurisdictions/:code` (screens.md) is not built;
+  - unknown routes show a bare Not Found outside the shell;
+  - no health summary on the admin home;
+  - the region view shows EU by its code;
+  - a stray test facet in the QA data. | proposal | M6, M9 | use testing round 1 | open |

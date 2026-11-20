@@ -7,6 +7,7 @@ import { problemText } from "@/lib/auth/session";
 
 import { searchQuery, type ItemSummary, type Query } from "./api";
 import { Marked } from "./Marked";
+import { formatDate } from "@/lib/time/format";
 
 export const PAGE_SIZE = 25;
 export type Sort =
@@ -94,7 +95,7 @@ export function toQuery(search: ItemsSearch, now = new Date()): Query {
 }
 
 const date = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleDateString() : "—";
+  value ? formatDate(value) : "—";
 
 function Title({ item }: { item: ItemSummary }) {
   const lit = item.highlights?.title?.[0];

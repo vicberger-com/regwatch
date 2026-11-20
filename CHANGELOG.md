@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Fixed
+- Use testing round 1. The map is drawn: its box was 0 px high, because MapLibre's stylesheet makes the map element `position: relative` (U-M6-1). Map colours that arrive before the lazy-loaded engine are applied when it starts (U-M6-2). Dates and times follow the user's time zone, and UTC is offered (U-M9-1). The theme button follows the theme on screen (Refs: REQ-06, REQ-14).
+
 ### Added
 - M6 live changes (G3): the map asks for its activity again every minute while the page is visible and says when it was updated; a landing view's facet term applies only when the View select lists it (Refs: REQ-06).
 - M9 landing view: `/` opens with the saved view chosen in the user tab (period, colour, country or region view, its first facet term); real input renews the session at most once a minute, and a failed "Stay signed in" keeps the warning open with an alert (Refs: REQ-14).

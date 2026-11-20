@@ -13,6 +13,7 @@ import {
   type User,
 } from "./api";
 import { UserEditor } from "./UserEditor";
+import { formatDateTime } from "@/lib/time/format";
 
 const field = "rounded border border-border bg-bg px-2 py-1";
 const button = "rounded border border-border px-2 py-1 disabled:opacity-50";
@@ -174,9 +175,7 @@ function Row(props: {
       <td>{user.roles.join(", ") || "none"}</td>
       <td>{user.status}</td>
       <td>
-        {user.last_login_at
-          ? new Date(user.last_login_at).toLocaleString()
-          : "never"}
+        {user.last_login_at ? formatDateTime(user.last_login_at) : "never"}
       </td>
       <td className="flex gap-2 py-1">
         <button

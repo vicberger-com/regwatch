@@ -12,10 +12,13 @@ import {
   viewsQuery,
   type Preferences,
 } from "./api";
+import { formatDateTime } from "@/lib/time/format";
 
 const TIMEZONES: readonly string[] = (() => {
   try {
-    return Intl.supportedValuesOf("timeZone");
+    // "UTC" is the stored default but not in every browser's list (use testing U-M9-1).
+    const zones = Intl.supportedValuesOf("timeZone");
+    return zones.includes("UTC") ? zones : ["UTC", ...zones];
   } catch {
     return ["UTC"];
   }
@@ -280,14 +283,10 @@ export function MePage() {
               {(sessions.data ?? []).map((s) => (
                 <tr key={s.id} className="border-b border-border">
                   <td className="py-1 pr-3">
-                    {s.created_at
-                      ? new Date(s.created_at).toLocaleString()
-                      : "—"}
+                    {s.created_at ? formatDateTime(s.created_at) : "—"}
                   </td>
                   <td className="py-1 pr-3">
-                    {s.last_seen_at
-                      ? new Date(s.last_seen_at).toLocaleString()
-                      : "—"}
+                    {s.last_seen_at ? formatDateTime(s.last_seen_at) : "—"}
                   </td>
                   <td className="max-w-64 truncate py-1 pr-3">
                     {s.user_agent ?? "—"}
@@ -309,9 +308,8 @@ export function MePage() {
                           {" "}
                           (signed in{" "}
                           {s.created_at
-                            ? new Date(s.created_at).toLocaleString()
-                            : ""}
-                          , {s.user_agent ?? "unknown browser"})
+                            ? formatDateTime(s.created_at)
+                            : ""}, {s.user_agent ?? "unknown browser"})
                         </span>
                       </button>
                     )}

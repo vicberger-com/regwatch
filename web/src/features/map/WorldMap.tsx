@@ -51,6 +51,10 @@ export function WorldMap(props: {
   const [hover, setHover] = useState<Hover | null>(null);
   const [failed, setFailed] = useState(false);
   const { steps, selected } = props;
+  const latest = useRef({ steps, selected });
+  useEffect(() => {
+    latest.current = { steps, selected };
+  }, [steps, selected]);
 
   useEffect(() => {
     let alive = true;
@@ -65,6 +69,9 @@ export function WorldMap(props: {
           },
           onHover: setHover,
         });
+        // Data that arrived before the engine (lazy-loaded) is applied now (use testing U-M6-2).
+        engine.current.setSteps(latest.current.steps);
+        engine.current.setSelected(latest.current.selected);
       })
       .catch(() => {
         if (alive) setFailed(true); // no WebGL: the list still has everything
@@ -98,7 +105,9 @@ export function WorldMap(props: {
       aria-label={props.label}
       className="relative h-[60vh] min-h-80 rounded border border-border bg-surface"
     >
-      <div ref={box} className="absolute inset-0" />
+      {/* Full size, not absolute: maplibre-gl.css makes the map element position: relative,
+          which would leave an absolutely placed box 0 px high (use testing U-M6-1). */}
+      <div ref={box} className="h-full w-full" />
       {failed && (
         <p className="absolute inset-0 flex items-center justify-center p-4 text-text-muted">
           The map cannot be drawn in this browser; the list beside it has the

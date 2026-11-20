@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as renderRaw, screen } from "@testing-library/react";
+import { act, render as renderRaw, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import userEvent from "@testing-library/user-event";
 
@@ -54,5 +54,15 @@ describe("ThemeSwitch", () => {
     expect(screen.getByRole("button")).toHaveFocus();
     await user.keyboard("{Enter}");
     expect(html().dataset.theme).toBe("dark");
+  });
+
+  it("follows a theme set elsewhere, such as the user tab", async () => {
+    render(<ThemeSwitch />);
+    act(() => {
+      document.documentElement.dataset.theme = "dark";
+    });
+    expect(
+      await screen.findByRole("button", { name: /^Theme: Dark/ }),
+    ).toBeInTheDocument();
   });
 });

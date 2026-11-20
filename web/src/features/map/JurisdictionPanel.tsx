@@ -12,6 +12,7 @@ import type { ItemsSearch } from "@/features/items/ItemsPage";
 import { problemText } from "@/lib/auth/session";
 
 import type { ActivityRow } from "./scale";
+import { formatDate } from "@/lib/time/format";
 
 const LEVELS = ["major", "notable", "info"] as const;
 
@@ -132,9 +133,7 @@ export function JurisdictionPanel(props: {
                 <bdi>{item.title}</bdi>
               </Link>
               <span className="block text-text-muted">
-                {item.last_changed_at
-                  ? new Date(item.last_changed_at).toLocaleDateString()
-                  : "—"}
+                {item.last_changed_at ? formatDate(item.last_changed_at) : "—"}
                 {item.severity ? ` · ${item.severity}` : ""}
               </span>
             </li>

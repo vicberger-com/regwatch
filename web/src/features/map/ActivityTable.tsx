@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { ActivityRow } from "./scale";
+import { formatDate } from "@/lib/time/format";
 
 type Column = "name" | "count" | "last" | "severity";
 const SORT_TEXT: Record<Column, string> = {
@@ -104,9 +105,7 @@ export function ActivityTable(props: {
             </th>
             <td className="py-2 pr-4">{String(r.count)}</td>
             <td className="py-2 pr-4">
-              {r.last_changed_at
-                ? new Date(r.last_changed_at).toLocaleDateString()
-                : "—"}
+              {r.last_changed_at ? formatDate(r.last_changed_at) : "—"}
             </td>
             <td className="py-2">{r.max_severity}</td>
           </tr>

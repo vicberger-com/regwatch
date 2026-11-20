@@ -22,6 +22,7 @@ import {
 } from "./scale";
 import { flatTerms, ViewSelector } from "./ViewSelector";
 import { WorldMap } from "./WorldMap";
+import { formatDate, formatTime } from "@/lib/time/format";
 
 const ENCODINGS: { value: Encoding; label: string }[] = [
   { value: "recency", label: "Recency" },
@@ -189,7 +190,7 @@ export function MapPage() {
   function describeRow(row: ActivityRow | undefined) {
     if (!row || row.count === 0) return "No changes in this period";
     const last = row.last_changed_at
-      ? `, last ${new Date(row.last_changed_at).toLocaleDateString()}`
+      ? `, last ${formatDate(row.last_changed_at)}`
       : "";
     return `${plural(row.count, "item", "items")} changed${last}; highest severity ${row.max_severity}`;
   }
@@ -291,8 +292,7 @@ export function MapPage() {
       {activity.isSuccess && (
         // Not a live region: it changes every minute and would interrupt screen readers.
         <p className="text-xs text-text-muted">
-          Updated {new Date(activity.dataUpdatedAt).toLocaleTimeString()};
-          refreshed every minute
+          Updated {formatTime(activity.dataUpdatedAt)}; refreshed every minute
           {activity.data.stale ? " (from a summary up to 5 minutes old)" : ""}
         </p>
       )}

@@ -5,6 +5,8 @@ import { useEffect } from "react";
 
 import { meQuery, useLogout } from "@/lib/auth/session";
 
+import { setTimeZone } from "@/lib/time/format";
+
 import { applyAppearance, resolve, systemIsDark } from "./appearance";
 
 import { BrandMark, Footer } from "./BrandingShell";
@@ -26,6 +28,7 @@ export function AppShell() {
   const prefs = live.preferences;
   useEffect(() => {
     applyAppearance(resolve(prefs, systemIsDark()));
+    setTimeZone(prefs?.timezone); // dates in the user's zone (use testing U-M9-1)
   }, [prefs]);
 
   return (

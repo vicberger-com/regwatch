@@ -8,9 +8,10 @@ import { problemText } from "@/lib/auth/session";
 import { diffQuery, itemQuery, versionsQuery, type ItemDetail } from "./api";
 import { DiffView } from "./DiffView";
 import { Tabs } from "./Tabs";
+import { formatDateTime } from "@/lib/time/format";
 
 const date = (value: string | null | undefined) =>
-  value ? new Date(value).toLocaleString() : "—";
+  value ? formatDateTime(value) : "—";
 
 /** A link to the item's own page, only when it is an http(s) URL (captured data is hostile). */
 export function safeUrl(url: string | undefined): string | null {

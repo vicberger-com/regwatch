@@ -44,6 +44,12 @@ test("a keyboard-only user reaches Europe, then Germany's latest item and its di
   page,
 }) => {
   await signInByKeyboard(page);
+  // The map is really drawn (use testing U-M6-1).
+  // The map element itself: its canvas keeps a default size even when the map box is 0 px
+  // high and clips it, so the canvas alone proves nothing.
+  const map = page.locator(".maplibregl-map");
+  await expect(map).toBeVisible();
+  expect((await map.boundingBox())?.height ?? 0).toBeGreaterThan(200);
 
   await chooseByKeys(page, "View", "Region");
   await tabTo(
