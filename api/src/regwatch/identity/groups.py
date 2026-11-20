@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ from regwatch.identity.services import (
     _perms_of_roles,
     _require_held,
     _serialise_admin_changes,
+    interest_options,
     live_interests,
     validation,
 )
@@ -59,7 +61,11 @@ async def _members_of(
 
 
 def _interests(group: UserGroup) -> Interests:
-    return Interests.model_validate(group.interests or {})
+    """The stored interests; a value that no longer validates reads as none (11.4b review)."""
+    try:
+        return Interests.model_validate(group.interests or {})
+    except ValidationError:
+        return Interests()
 
 
 async def _out(db: AsyncSession, group: UserGroup) -> GroupOut:
@@ -75,7 +81,8 @@ async def _set_interests(db: AsyncSession, group: UserGroup, changes: dict[str, 
         return
     interests = Interests.model_validate(changes["interests"] or {})
     if errors := await _interest_errors(db, interests):
-        raise ProblemError(422, "validation", "Some interests are not valid.", errors=errors)
+        # 400, as for a user's own interests (PATCH /me/preferences).
+        raise ProblemError(400, "validation", "Some interests are not valid.", errors=errors)
     group.interests = _normalised(interests)
 
 
@@ -85,8 +92,10 @@ async def my_groups(db: AsyncSession, user_id: uuid.UUID) -> list[MyGroup]:
                              .join(GroupMember, GroupMember.group_id == UserGroup.id)
                              .where(GroupMember.user_id == user_id)
                              .order_by(UserGroup.name, UserGroup.id))).all()  # fmt: skip
+    offered = await interest_options(db) if rows else None  # built once for every group
     return [MyGroup(id=g.id, key=g.key, name=g.name,
-                    interests=await live_interests(db, _interests(g))) for g in rows]  # fmt: skip
+                    interests=await live_interests(db, _interests(g), offered))
+            for g in rows]  # fmt: skip
 
 
 async def list_groups(db: AsyncSession) -> list[GroupOut]:

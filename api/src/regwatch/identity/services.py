@@ -1064,9 +1064,10 @@ async def _current(db: AsyncSession, prefs: Preferences) -> Preferences:
     return prefs.model_copy(update={"interests": await live_interests(db, prefs.interests)})
 
 
-async def live_interests(db: AsyncSession, interests: Interests) -> Interests:
+async def live_interests(db: AsyncSession, interests: Interests,
+                         offered: InterestOptions | None = None) -> Interests:  # fmt: skip
     """``interests`` without what has been removed or deactivated since it was saved."""
-    offered = await interest_options(db)
+    offered = offered or await interest_options(db)
     codes = {j.code for j in offered.jurisdictions}
     regions_ = {r.key for r in offered.regions}
     facets = {f.key: {t.key for t in f.terms} for f in offered.facets}

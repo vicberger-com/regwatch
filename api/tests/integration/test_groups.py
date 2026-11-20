@@ -110,7 +110,7 @@ async def test_a_groups_interests_reach_its_members(admin: httpx.AsyncClient) ->
     viewer = await _as_new_user(admin, "ivy@example.org", ["viewer"])
     vid = (await viewer.get(_api("/auth/me"))).json()["id"]
     bad = {**TEAM, "interests": {"jurisdictions": ["ZZ"], "regions": [], "terms": {}}}
-    assert (await admin.post(_api("/admin/groups"), json=bad)).status_code == 422
+    assert (await admin.post(_api("/admin/groups"), json=bad)).status_code == 400
     wanted = {"jurisdictions": ["de", "FR"], "regions": ["150"], "terms": {}}
     made = await admin.post(_api("/admin/groups"), json={**TEAM, "interests": wanted})
     assert made.status_code == 201, made.text
