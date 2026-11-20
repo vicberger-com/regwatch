@@ -79,3 +79,7 @@ Approved on recommendation under the owner's standing instruction.
   - nothing is published;
   - `fetch` is separate from `egress`, so the `search` sidecar cannot reach the API;
   - SafeFetcher still refuses every non-public address, including the cloud metadata address, `localhost` and the stack's own subnet. This was checked on the dev stack.
+- **Who can now reach what** (CP-23 review):
+  - Capture traffic leaves from the devbox's own network position, so holding `sources.manage` is effectively the right to make such a fetch. SafeFetcher refuses private, loopback and metadata addresses, but not the host's own public address (BL-131).
+  - The host can reach the API directly on its `fetch` address, behind the API's own Origin, session and permission checks but without the proxy's headers.
+  - The worker can send data out; that comes with capturing sources.

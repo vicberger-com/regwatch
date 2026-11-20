@@ -139,3 +139,7 @@ Rows are added by agents with decision `open`; the owner decides at the next pha
   - the region view shows EU by its code;
   - a stray test facet in the QA data. | proposal | M6, M9 | use testing round 1 | open |
 | BL-130 | CP-23 (ADR-0001 amendment): the `fetch` network gives `api` and `worker` outbound internet for capture; recorded after the fact for the owner's review at G3. Follow-up: a Compose check in CI that only `api`, `worker` (on `fetch`) and `search`, `translate` (on `egress`) have outbound networks. | change | M3 | lead session | done (CP-23 applied 2026-11-20); follow-up open |
+| BL-131 | CP-23 review follow-ups:
+  1. SafeFetcher should refuse the host's own public IPv4 and IPv6 (a deny list filled at start-up, or an egress proxy), before the stack runs on a host with a public address or with services listening on all interfaces.
+  2. Take `api` off `fetch` by doing the save-time DNS check in the worker or through a DNS-only path.
+  3. Extend BL-130's CI check so it also requires that `api`, `worker` and `search` publish no ports. | proposal | M3, M10 | lead session | open |
