@@ -11,10 +11,11 @@ from regwatch.reports.render import css_text, web_link
     ("raw", "escaped"),
     [
         ("Page 1", "Page 1"),
-        ('x"; } *', "x\\000022\\00003b\\000020\\00007d\\000020\\00002a".replace("\\000020", " ")),
-        ("\\", "\\00005c"),
-        ("</style>", "\\00003c\\00002fstyle\\00003e"),
-        ("é", "\\0000e9"),
+        ('x"; } *', "x\\000022 \\00003b  \\00007d  \\00002a "),
+        ("\\", "\\00005c "),
+        ("</style>", "\\00003c \\00002f style\\00003e "),
+        ("é", "\\0000e9 "),
+        ("a, b", "a\\00002c  b"),  # the space after the comma survives
     ],
 )
 def test_css_text_leaves_only_letters_digits_and_spaces(raw: str, escaped: str) -> None:

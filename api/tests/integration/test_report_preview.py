@@ -78,10 +78,11 @@ async def test_the_preview_shows_the_rows_escaped(
     assert f"{TAG} A &lt; B &amp; &#34;C&#34; &gt; D guidance" in html
     assert "<img" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html
     assert "Weekly &lt;b&gt;digest&lt;/b&gt;" in html
-    assert f'<a href="https://example.org/{TAG}/a">' in html  # an http(s) link only
+    assert f'<a href="https://example.org/{TAG}/a" rel="noopener noreferrer nofollow">' in html
+    assert '<meta http-equiv="Content-Security-Policy"' in html  # for the PDF and email
     assert html.index(f"{TAG} A &lt;") < html.index(f"{TAG} NIS2 scope")  # sorted
     assert "official" in html  # the source's credibility
-    assert 'content: "x\\000022' in html and "color: red" not in html  # CSS-escaped footer
+    assert 'content: "x\\000022 ' in html and "color: red" not in html  # CSS-escaped footer
 
 
 async def test_a_shared_layout_renders_with_the_viewers_rights(

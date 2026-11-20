@@ -49,7 +49,8 @@ CSP = ("default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri '
 def css_text(value: object) -> str:
     """``value`` as the inside of a CSS string: everything but letters, digits and spaces as a
     hex escape, so nothing can end the string or the rule."""
-    return "".join(c if c.isascii() and (c.isalnum() or c == " ") else f"\\{ord(c):06x}"
+    # Each escape ends with a space, which CSS consumes, so a space after it survives.
+    return "".join(c if c.isascii() and (c.isalnum() or c == " ") else f"\\{ord(c):06x} "
                    for c in str(value))  # fmt: skip
 
 
@@ -234,6 +235,7 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
     header = footer = None
     page_numbers = date = False
     blocks: list[dict[str, Any]] = []
+    changes: list[dict[str, str]] | None = None
     for component in layout["content"]:
         kind, props = component["type"], component["props"]
         block: dict[str, Any] = {"type": kind, "props": props}
@@ -254,8 +256,12 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
             block["label"] = labels.get(props["field"], props["field"])
             block["value"] = (_value(props["field"], rows[0], extras.get(rows[0].id, {}))[0]
                               if rows else "")  # fmt: skip
-        elif kind == "ChangeList":
-            block["changes"] = await _changes(db, [r.id for r in rows], props["limit"])
+        elif kind == "ChangeList":  # the changes are read once, for the largest list
+            if changes is None:
+                most = max(c["props"]["limit"] for c in layout["content"]
+                           if c["type"] == "ChangeList")  # fmt: skip
+                changes = await _changes(db, [r.id for r in rows], most)
+            block["changes"] = changes[: props["limit"]]
         elif kind == "JurisdictionSummary":
             block["places"] = _places(rows)
         blocks.append(block)

@@ -6,6 +6,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+{#- For PDF and email, where no response header applies (M7.2 review, the M8 list). -#}
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <title>{{ title }}</title>
 <style>
 @page { size: {{ page_size }} {{ orientation }}; margin: 18mm 16mm 20mm;
@@ -42,7 +44,7 @@ th { font-weight: 600; } tr { break-inside: avoid; }
 <thead><tr>{% for c in block.columns %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
 <tbody>
 {%- for row in block.rows %}
-<tr>{% for cell in row %}<td>{% if cell.href %}<a href="{{ cell.href }}">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}</td>{% endfor %}</tr>
+<tr>{% for cell in row %}<td>{% if cell.href %}<a href="{{ cell.href }}" rel="noopener noreferrer nofollow">{{ cell.text }}</a>{% else %}{{ cell.text }}{% endif %}</td>{% endfor %}</tr>
 {%- else %}
 <tr><td colspan="{{ block.columns | length }}" class="muted">No items match.</td></tr>
 {%- endfor %}
