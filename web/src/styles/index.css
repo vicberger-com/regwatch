@@ -18,3 +18,49 @@
     outline-offset: 2px;
   }
 }
+
+/*
+ * Browser printing (M8.5; screens.md "Print"; R-04: browser print at launch, the server print
+ * bridge behind its flag). Paper gets the page and the footer with its required markings, in
+ * dark ink on white whatever the theme, without the header, the rail or the page's buttons and
+ * forms, and with table headers repeated on each page.
+ */
+@media print {
+  :root,
+  :root[data-theme] {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --border: #8a929c;
+    --text: #000000;
+    --text-muted: #333333;
+  }
+
+  html {
+    font-size: 11pt;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  main button,
+  main [role="tablist"],
+  main form {
+    display: none !important;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  img,
+  svg {
+    break-inside: avoid;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: underline;
+  }
+}

@@ -24,6 +24,7 @@ const REPEATS = [
   { cron: "0 7 1 * *", label: "On the 1st of each month at 07:00" },
 ];
 const field = "rounded border border-border bg-surface px-2 py-1";
+const MAX_RECIPIENTS = 20; // as the server (outputs/mail.py)
 /** Every item, newest change first, as the search export writes it (the page is not used). */
 const ALL_ITEMS = {
   sort: "last_changed_desc",
@@ -57,8 +58,20 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
   const create = useCreateOutput();
   if (kinds.length === 0) return null;
 
+  // One address a line; blank lines and repeats dropped. The server checks each again.
+  const addresses = [
+    ...new Set(
+      emails
+        .split(/\n/)
+        .map((a) => a.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const tooMany = kind === "email" && addresses.length > MAX_RECIPIENTS;
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (tooMany) return;
     const [type, value = ""] = source.split(":", 2);
     const body: OutputRequest = {
       kind,
@@ -73,10 +86,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
     };
     if (kind === "email")
       body.destination = {
-        emails: emails
-          .split(/\n/)
-          .map((a) => a.trim())
-          .filter(Boolean),
+        emails: addresses,
         ...(subject.trim() ? { subject: subject.trim() } : {}),
         copies: 1,
       };
@@ -166,12 +176,24 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
               className={field}
               required
               rows={3}
+              aria-invalid={tooMany}
+              aria-describedby={`${id}-recipients`}
               value={emails}
               onChange={(e) => {
                 setEmails(e.target.value);
               }}
             />
           </label>
+          <p
+            id={`${id}-recipients`}
+            className={
+              tooMany ? "text-sm text-critical" : "text-sm text-text-muted"
+            }
+          >
+            {tooMany
+              ? `At most ${String(MAX_RECIPIENTS)} recipients; this has ${String(addresses.length)}.`
+              : `Up to ${String(MAX_RECIPIENTS)} addresses in the allowed domains, one per line.`}
+          </p>
           <label className="flex flex-col gap-1">
             Subject (optional)
             <input
@@ -222,7 +244,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
         <button
           type="submit"
           className="rounded border border-border px-3 py-1 disabled:opacity-50"
-          disabled={create.isPending}
+          disabled={create.isPending || tooMany}
         >
           {repeat ? "Schedule" : "Request"}
         </button>

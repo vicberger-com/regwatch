@@ -223,6 +223,24 @@ describe("new output (M8.6b)", () => {
       }),
       "kim@evil.example",
     );
+    // More than the server's 20 recipients is caught before sending (M8.6b review).
+    const box = within(form).getByRole("textbox", {
+      name: "Recipients, one address a line",
+    });
+    await userEvent.type(
+      box,
+      Array.from({ length: 21 }, (_, n) => `\na${String(n)}@example.org`).join(
+        "",
+      ),
+    );
+    expect(
+      within(form).getByText(/At most 20 recipients; this has 22\./),
+    ).toBeVisible();
+    expect(
+      within(form).getByRole("button", { name: "Request" }),
+    ).toBeDisabled();
+    await userEvent.clear(box);
+    await userEvent.type(box, "kim@evil.example");
     await userEvent.click(
       within(form).getByRole("checkbox", { name: /Repeat on a schedule/ }),
     );

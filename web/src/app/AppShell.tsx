@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useRouteContext } from "@tanstack/react-router";
 
 import { useQuery } from "@tanstack/react-query";
+import { Printer } from "lucide-react";
 import { useEffect } from "react";
 
 import { meQuery, useLogout } from "@/lib/auth/session";
@@ -41,9 +42,19 @@ export function AppShell() {
       >
         Skip to main content
       </a>
-      <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-4">
+      <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-4 print:hidden">
         <BrandMark />
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1"
+            onClick={() => {
+              window.print();
+            }}
+          >
+            <Printer aria-hidden="true" size={16} />
+            Print
+          </button>
           <ThemeSwitch />
           <span className="max-w-48 truncate text-text-muted">
             {me.display_name}
@@ -74,11 +85,14 @@ export function AppShell() {
         </p>
       )}
       <div className="flex flex-1">
-        <LeftRail />
+        <div className="print:hidden">
+          <LeftRail />
+        </div>
         <main id="main" className="min-w-0 flex-1 p-6">
           <Outlet />
         </main>
       </div>
+      {/* Printed too: it carries the required markings (CP-08). */}
       <Footer />
       <IdleWatch />
     </div>
