@@ -4,6 +4,9 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Added
+- M10.1a `GET /api/v1/ready` (CP-34; REQ-01): 200 when the database answers a query, the queue a PING and the object store is writable, 503 with the failing dependency otherwise, for the orchestrator and the proxy's health check; public like `/health` and saying only ok or unavailable (Refs: REQ-01, BL-146).
+
 ## [G4] - 2026-11-21
 
 ### Added

@@ -25,3 +25,13 @@ class Version(BaseModel):
 
     version: str
     commit: str
+
+
+class Ready(BaseModel):
+    """``components.schemas.Ready`` (CP-34, M10.1): whether this process can serve now."""
+
+    ready: bool
+    db: DependencyState
+    queue: DependencyState
+    object_store: DependencyState
+    checked_at: datetime

@@ -39,6 +39,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-34 (M10): 200 when the database answers a query, the queue a PING and the object store is writable; 503 otherwise */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ready */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ready"];
+                    };
+                };
+                /** @description Not ready */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ready"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/version": {
         parameters: {
             query?: never;
@@ -4026,6 +4071,17 @@ export interface components {
             queue?: string;
             /** Format: date-time */
             checked_at?: string;
+        };
+        Ready: {
+            ready: boolean;
+            /** @enum {string} */
+            db: "ok" | "unavailable";
+            /** @enum {string} */
+            queue: "ok" | "unavailable";
+            /** @enum {string} */
+            object_store: "ok" | "unavailable";
+            /** Format: date-time */
+            checked_at: string;
         };
         /** @enum {string} */
         UserStatus: "active" | "disabled" | "locked";

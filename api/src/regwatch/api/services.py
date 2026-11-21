@@ -10,7 +10,10 @@ from __future__ import annotations
 import asyncio
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
+from typing import Any
 from urllib.parse import urlsplit
+
+import anyio
 
 from regwatch.api.schemas import DependencyState
 
@@ -66,3 +69,29 @@ async def probe_queue(queue_url: str) -> DependencyState:
         return "unavailable"
     ok = await _exchange(host, port, b"*1\r\n$4\r\nPING\r\n", b"+PONG")
     return "ok" if ok else "unavailable"
+
+
+READY_TIMEOUT_S = 2.0
+
+
+async def probe_db_query(factory: Any) -> DependencyState:
+    """A query, not just a connection: the database answers and this process may use it."""
+    from sqlalchemy import text
+
+    try:
+        with anyio.fail_after(READY_TIMEOUT_S):
+            async with factory() as db:
+                await db.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001 - any failure means not ready
+        return "unavailable"
+    return "ok"
+
+
+async def probe_object_store(path: str) -> DependencyState:
+    """The object store's directory exists and this process can write to it."""
+    import os
+
+    def check() -> bool:
+        return os.path.isdir(path) and os.access(path, os.W_OK | os.X_OK)  # noqa: PTH112
+
+    return "ok" if await anyio.to_thread.run_sync(check) else "unavailable"

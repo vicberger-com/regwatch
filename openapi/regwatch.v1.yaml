@@ -30,6 +30,14 @@ paths:
       security: []
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Health" } } } }
+  /ready:
+    get:
+      tags: [system]
+      security: []
+      description: "CP-34 (M10): 200 when the database answers a query, the queue a PING and the object store is writable; 503 otherwise"
+      responses:
+        "200": { description: Ready, content: { application/json: { schema: { $ref: "#/components/schemas/Ready" } } } }
+        "503": { description: Not ready, content: { application/json: { schema: { $ref: "#/components/schemas/Ready" } } } }
   /version:
     get:
       tags: [system]
@@ -552,6 +560,10 @@ components:
     Health:
       type: object
       properties: { status: { type: string, enum: [ok, degraded, down] }, version: { type: string }, db: { type: string }, queue: { type: string }, checked_at: { type: string, format: date-time } }
+    Ready:
+      type: object
+      required: [ready, db, queue, object_store, checked_at]
+      properties: { ready: { type: boolean }, db: { type: string, enum: [ok, unavailable] }, queue: { type: string, enum: [ok, unavailable] }, object_store: { type: string, enum: [ok, unavailable] }, checked_at: { type: string, format: date-time } }
     UserStatus: { type: string, enum: [active, disabled, locked] }
     User:
       type: object
