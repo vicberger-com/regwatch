@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     oidc_issuer: AnyHttpUrl | None = None
     oidc_client_id: str | None = None
     oidc_client_secret: SecretStr | None = None
+    # The `oidc-test` profile's Keycloak over plain http (dev and QA only; refused in production).
+    oidc_test_provider: bool = False
 
     # --- observability ---
     metrics_enabled: bool = True
@@ -103,6 +105,8 @@ class Settings(BaseSettings):
         production (review of the test printer; M10.3)."""
         if self.env == "production" and self.print_test_printer:
             raise ValueError("REGWATCH_PRINT_TEST_PRINTER is for development and QA only")
+        if self.env == "production" and self.oidc_test_provider:
+            raise ValueError("REGWATCH_OIDC_TEST_PROVIDER is for development and QA only")
         return self
 
     @field_validator("secret_key", "secret_key_previous")
