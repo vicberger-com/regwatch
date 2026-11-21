@@ -7,5 +7,6 @@ set -e
 rm -f /run/dbus/pid /run/avahi-daemon/pid  # left by an earlier run of this container
 dbus-daemon --system --fork
 avahi-daemon --daemonize --no-chroot
+install -d -o printer -g printer /home/printer/spool
 exec setpriv --reuid=printer --regid=printer --init-groups \
     ippeveprinter -p 631 -k -d /home/printer/spool -f application/pdf regwatch-test
