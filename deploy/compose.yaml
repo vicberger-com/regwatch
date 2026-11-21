@@ -268,6 +268,11 @@ services:
     image: regwatch-print-test:dev
     hostname: ippeveprinter  # the printer checks the Host header against its own name
     profiles: [print-test]
+    # Root only to start D-Bus and avahi, which drop to their own users; the printer runs as
+    # `printer` (start.sh). Only the privileges those changes of user and owner need.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER]
     networks: [regwatch]
     healthcheck:
       test: ["CMD", "ipptool", "-q", "ipp://localhost:631/ipp/print", "get-printer-attributes.test"]
