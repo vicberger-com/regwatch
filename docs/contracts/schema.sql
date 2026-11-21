@@ -164,6 +164,15 @@ CREATE TABLE group_role ( -- CP-27: never a role with users.manage or roles.mana
   PRIMARY KEY (group_id, role_id)
 );
 
+CREATE TABLE user_mfa ( -- CP-38 (migration 0012; BL-148): a user's TOTP authenticator
+  user_id uuid PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  secret_enc text NOT NULL,                        -- the secret, encrypted with a key derived from the secret key
+  confirmed_at timestamptz,                        -- NULL until a first code is entered
+  last_step bigint NOT NULL DEFAULT 0,             -- the last TOTP time step accepted (no replay)
+  recovery_hashes text[] NOT NULL DEFAULT '{}' CHECK (cardinality(recovery_hashes) <= 10)  -- SHA-256 of unused recovery codes
+);
+
 CREATE TABLE capture_job ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   source_id uuid NOT NULL REFERENCES source(id) ON DELETE CASCADE,

@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, text
-from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB
+from sqlalchemy import BigInteger, ForeignKey, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from regwatch.core.db import Base
@@ -120,3 +120,18 @@ class GroupRole(Base):
     role_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("role.id", ondelete="CASCADE"), primary_key=True
     )
+
+
+class UserMfa(Base):
+    """A user's TOTP authenticator (BL-148; migration 0012)."""
+
+    __tablename__ = "user_mfa"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    secret_enc: Mapped[str]
+    confirmed_at: Mapped[datetime | None]
+    last_step: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    recovery_hashes: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
