@@ -4,8 +4,8 @@
 - **Acceptance:** criteria 1, 2, 4 and 5 are met. Criterion 3 (server printing to an IPP printer) is deferred: browser printing ships, the print bridge stays behind its flag, and BL-15 is for the owner at G4.
 - **Security:** each slice (8.1 to 8.7) is signed off by the independent reviewer, with every fix re-verified (the last, `eff7e6f`, included).
 - **Tests:**
-  - `make test-api`: the full run at `9dfb93f` passed 1,529 unit tests (95.41% coverage) and 459 database tests. The later slices were run on their own suites (outputs: 24 integration, 5 CSV, 3 schedule unit; objectstore 17) and on the full unit suite (1,532). A full run at the branch head was in progress at the time of writing; its result goes in the pull request.
-  - `make test-web`: 215 pass; `make lint` is clean.
+  - `make test-api`: 1,533 unit tests (95.48% coverage) and 469 database tests pass at `7bd88b1`; no API code changed after it (the later commits are web and docs).
+  - `make test-web`: 217 pass at `9cfcac0`; `make lint` is clean.
   - `make e2e` on the QA stack (real Gotenberg, Mailpit and worker): a PDF of a stock report, the preview and the PDF with the same page count, an email arriving in Mailpit with its PDF, a CSV requested from the Outputs page and downloaded, the print layout, and the reports and keyboard journeys with zero axe violations.
 
 ## Acceptance criteria (`docs/modules/M8-output-delivery.md`)
