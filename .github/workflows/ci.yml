@@ -110,24 +110,28 @@ jobs:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.day.outputs.date }}
           restore-keys: trivy-db-
-      - name: Trivy, fail on critical vulnerabilities in the release images and the lockfiles
+      - name: Trivy, fail on fixable high and on critical findings (release images, lockfiles)
         run: |
           source scripts/ci-tools.env
           mkdir -p ~/.cache/trivy
           trivy() {
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
               -v ~/.cache/trivy:/root/.cache/trivy -v "$PWD:/src:ro" \
-              "$TRIVY_IMAGE" "$@" --quiet --severity CRITICAL --exit-code 1
+              "$TRIVY_IMAGE" "$@" --quiet --exit-code 1
           }
+          # Release images and lockfiles: HIGH and CRITICAL with a fix fail (M10.4 review); an
+          # accepted finding is listed with an expiry in .github/trivy/proxy.trivyignore.yaml.
+          release=(--severity HIGH,CRITICAL --ignore-unfixed)
           status=0
-          for image in regwatch-api:ci regwatch-proxy:ci; do
-            echo "::group::$image" && { trivy image "$image" || status=1; } && echo "::endgroup::"
-          done
-          echo "::group::regwatch-web:ci (development only; accepted findings: .github/trivy/web.trivyignore.yaml, BL-60)"
-          trivy image --ignorefile /src/.github/trivy/web.trivyignore.yaml regwatch-web:ci || status=1
+          echo "::group::regwatch-api:ci" && { trivy image "${release[@]}" regwatch-api:ci || status=1; } && echo "::endgroup::"
+          echo "::group::regwatch-proxy:ci (accepted findings: .github/trivy/proxy.trivyignore.yaml)"
+          trivy image "${release[@]}" --ignorefile /src/.github/trivy/proxy.trivyignore.yaml regwatch-proxy:ci || status=1
+          echo "::endgroup::"
+          echo "::group::regwatch-web:ci (development only, critical; accepted findings: .github/trivy/web.trivyignore.yaml, BL-60)"
+          trivy image --severity CRITICAL --ignorefile /src/.github/trivy/web.trivyignore.yaml regwatch-web:ci || status=1
           echo "::endgroup::"
           echo "::group::lockfiles (api/uv.lock, web/pnpm-lock.yaml)"
-          trivy fs --scanners vuln --skip-dirs /src/web/node_modules /src || status=1
+          trivy fs "${release[@]}" --scanners vuln --skip-dirs /src/web/node_modules /src || status=1
           echo "::endgroup::"
           exit $status
 

@@ -1,0 +1,10 @@
+# Accepted high findings in the production proxy image (Caddy with the built web app), used by
+# the `images` job and release.yml. CI fails on HIGH and CRITICAL findings that have a fix
+# (M10.4 review); these have a fix upstream but none in a Caddy release yet. Each entry expires
+# within 30 days, so CI fails again until Caddy ships the fix or the owner re-accepts it (BL-146).
+vulnerabilities:
+  - id: CVE-2026-78661
+    paths:
+      - usr/bin/caddy
+    statement: golang.org/x/net v0.60.0 inside the Caddy 2.11.9 binary (fixed in 0.62.0; no Caddy release carries it yet)
+    expired_at: 2026-12-21

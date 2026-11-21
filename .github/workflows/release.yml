@@ -19,22 +19,28 @@ jobs:
       contents: write  # gh release create/upload for this tag
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: The tagged commit is on main (M10.4 review; protect v* tags with a ruleset too)
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || { echo "::error::${GITHUB_REF_NAME} is not a commit on main"; exit 1; }
       - name: Build the release images
         run: |
           docker build --target runtime -t "regwatch-api:${GITHUB_REF_NAME}" api
           docker build -f deploy/proxy/Dockerfile -t "regwatch-proxy:${GITHUB_REF_NAME}" web
       - name: Every module imports in the release image
         run: scripts/release-imports.sh "regwatch-api:${GITHUB_REF_NAME}"
-      - name: No critical vulnerability (the same gate as CI)
+      - name: No fixable high and no critical finding (the same gate as CI)
         run: |
           source scripts/ci-tools.env
           mkdir -p ~/.cache/trivy
-          for image in "regwatch-api:${GITHUB_REF_NAME}" "regwatch-proxy:${GITHUB_REF_NAME}"; do
+          scan() {
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              -v ~/.cache/trivy:/root/.cache/trivy "$TRIVY_IMAGE" image --quiet \
-              --severity CRITICAL --exit-code 1 "$image"
-          done
+              -v ~/.cache/trivy:/root/.cache/trivy -v "$PWD:/src:ro" "$TRIVY_IMAGE" image \
+              --quiet --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$@"
+          }
+          scan "regwatch-api:${GITHUB_REF_NAME}"
+          scan --ignorefile /src/.github/trivy/proxy.trivyignore.yaml "regwatch-proxy:${GITHUB_REF_NAME}"
       - name: CycloneDX SBOMs
         run: scripts/sbom.sh "regwatch-api:${GITHUB_REF_NAME}" "regwatch-proxy:${GITHUB_REF_NAME}" "${GITHUB_REF_NAME}"
       - name: Publish them with the release
