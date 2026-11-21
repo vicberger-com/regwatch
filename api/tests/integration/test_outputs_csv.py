@@ -145,3 +145,17 @@ async def test_a_scheduled_csv_runs_from_the_tick(
     assert run["kind"] == "csv"
     assert await tasks.run_csv(db, uuid.UUID(run["id"])) == "sent"
     assert len(rows((await _file(admin, run["id"])).content)) == 4
+
+
+async def test_a_saved_views_search_words_narrow_its_export(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg
+) -> None:
+    """A view keeps its words in its filters; a CSV (or report) of it uses them too."""
+    tag = await _items(admin, db)
+    await _items(admin, db)  # others, without the tag
+    view = await admin.post(_api("/views"), json={"name": "Tagged", "q": tag, "filters": {}})
+    assert view.status_code == 201, view.text
+    made = (await _csv(admin, {"saved_view_id": view.json()["id"]})).json()["id"]
+    assert await tasks.run_csv(db, uuid.UUID(made)) == "sent"
+    table = rows((await _file(admin, made)).content)
+    assert len(table) == 4 and all(tag in line[0] for line in table[1:])

@@ -98,11 +98,16 @@ async def data_source_query(db: AsyncSession, source: ReportDataSource,
         if view is None:
             raise ProblemError(409, "conflict", "The saved view this report uses is not "
                                "available to you; choose another data source.")  # fmt: skip
+        from regwatch.search.views import Q_KEY
+
         filters = dict(view.filters or {})
+        words = filters.pop(Q_KEY, None)  # a view's search words are kept in its filters
         if "changed" not in filters:
             since = datetime.now(UTC) - timedelta(days=view.period_days)
             filters["changed"] = {"from": since.isoformat()}
-        return Query.model_validate({"filters": filters, "sort": "last_changed_desc"})
+        return Query.model_validate({"filters": filters, "sort": "last_changed_desc",
+                                     **({"q": words} if isinstance(words, str) and words
+                                        else {})})  # fmt: skip
     if "query" in source.model_fields_set:
         return source.query
     return Query(sort="last_changed_desc")
