@@ -1,3 +1,53 @@
 # Security policy
 
-Report vulnerabilities privately to the repository owner (contact to be set by the owner; see decisions in `docs/10-open-questions-risks-glossary.md`). Acknowledgement within 3 business days; critical issues patched within 7 days. Do not open public issues for vulnerabilities. See `docs/08-security-compliance.md` for the security design.
+## Reporting a vulnerability
+
+Report vulnerabilities privately. **Never open a public issue for one.**
+
+- **Preferred:** GitHub's private vulnerability reporting, under the repository's **Security** tab ("Report a vulnerability"). The owner has to enable it in the repository settings.
+- **Otherwise:** the owner's security contact: _to be filled in by the owner_ (M10 question 4).
+
+Please include:
+- the version, or the commit;
+- what is affected;
+- the steps to reproduce;
+- what an attacker gains.
+
+Do not include real users' data.
+
+## What to expect
+
+- Acknowledgement within 3 business days.
+- A first assessment, with a severity, within 7 days.
+- Critical issues patched within 7 days, high ones within 30.
+- You are credited in the release notes if you wish.
+
+The fix ships in a release whose notes name the issue once users can upgrade.
+
+## Supported versions
+
+The latest release receives security fixes. Earlier releases do not; upgrade by following `docs/operations/release.md`.
+
+## Scope
+
+In scope:
+- the application in this repository (API, worker, web app);
+- its production configuration (`deploy/compose.prod.yaml`, `deploy/Caddyfile.prod`).
+
+Out of scope:
+- third-party services an operator connects, such as mail relays, printers and sources;
+- the development and QA stacks;
+- findings that need an administrator's own account to be misused, unless they cross a boundary the design draws.
+
+Two examples of such boundaries: printers may only reach the configured printer networks, and report previews run sandboxed.
+
+## Good faith
+
+Testing in good faith against your own installation is welcome:
+- do not access other people's data;
+- do not degrade a service others use;
+- give us reasonable time to fix before disclosure.
+
+We will not pursue such research.
+
+The security design is in `docs/08-security-compliance.md`, and the operations runbooks are in `docs/operations/`.
