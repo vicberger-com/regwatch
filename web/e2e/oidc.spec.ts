@@ -2,8 +2,8 @@
  * M1b on the QA stack (BL-147; CP-37): with `auth.oidc` on and the `oidc-test` profile's
  * Keycloak, a person with an account signs in with the organisation's account, and someone the
  * provider does not vouch for with a verified email is turned back. The flag is restored at
- * the end. Runs only where E2E_OIDC_ENV names the profile's keycloak.env (for the test users'
- * password; scripts/oidc-test-env.sh).
+ * the end. Runs only where E2E_OIDC_ENV names the profile's oidc-test-e2e.env (the test users'
+ * password only; scripts/oidc-test-env.sh).
  */
 import { readFileSync } from "node:fs";
 

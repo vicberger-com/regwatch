@@ -1,5 +1,6 @@
 {
   "realm": "regwatch",
+  "displayName": "regwatch TEST ONLY: the oidc-test profile; never import into a real Keycloak",
   "enabled": true,
   "sslRequired": "none",
   "registrationAllowed": false,

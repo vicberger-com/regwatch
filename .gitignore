@@ -28,3 +28,4 @@ deploy/opensearch/generated/
 /sbom/
 deploy/oidc-test.env
 deploy/keycloak.env
+deploy/oidc-test-e2e.env

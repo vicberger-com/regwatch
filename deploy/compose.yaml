@@ -59,7 +59,8 @@ services:
       REGWATCH_METRICS_BIND: "0.0.0.0"
     # CP-23: `fetch` gives outbound internet (and DNS) for the save-time source address
     # check; nothing is published, and SafeFetcher refuses every non-public address.
-    networks: [regwatch, fetch]
+    # BL-147: `oidc` reaches only the `oidc-test` profile's Keycloak (empty otherwise).
+    networks: [regwatch, fetch, oidc]
     volumes:
       - ../api/src:/app/src:ro
       - objectstore:/data/objectstore
@@ -295,7 +296,8 @@ services:
   # from keycloak.env, made by scripts/oidc-test-env.sh). Profile `oidc-test`. The browser and the
   # api use the same address, http://idp.localhost:8190: browsers resolve *.localhost to
   # loopback, where the port is published on 127.0.0.1 only, and on the internal network the
-  # name is this container's alias. Plain http is allowed only with REGWATCH_OIDC_TEST_PROVIDER,
+  # name is this container's alias on `oidc`, a network shared with the api only (it reaches no
+  # database, queue or sidecar). Plain http is allowed only with REGWATCH_OIDC_TEST_PROVIDER,
   # which production refuses.
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
@@ -311,7 +313,7 @@ services:
     ports:
       - "127.0.0.1:8190:8190"
     networks:
-      regwatch:
+      oidc:
         aliases: [idp.localhost]
       edge: {}
     security_opt: ["no-new-privileges:true"]
@@ -341,6 +343,9 @@ networks:
   # CP-23: outbound internet for the capture path (api and worker) only. Separate from `egress`,
   # so the search sidecar, which parses internet content, cannot reach the API directly.
   fetch: {}
+  # BL-147: the api and the `oidc-test` profile's Keycloak only.
+  oidc:
+    internal: true
 
 volumes:
   pgdata:

@@ -6,7 +6,7 @@
 #   E2E_BASE_URL     the stack under test (required): a loopback address, or with
 #                    E2E_ALLOW_REMOTE=1 an https one; setup adds a test source and two items there
 #   E2E_PRINT_TEST   set to run the acceptance 3 journey against the print-test profile's printer
-#   E2E_OIDC_ENV     the oidc-test profile's deploy/keycloak.env, to run the M1b sign-in journey
+#   E2E_OIDC_ENV     the oidc-test profile's deploy/oidc-test-e2e.env, to run the M1b sign-in journey
 #   E2E_CREDENTIALS  a file with the lines "admin email: …" and "admin password: …" (required),
 #                    kept outside web/ (which is mounted into the container)
 set -euo pipefail
@@ -28,7 +28,7 @@ if [[ -n "${E2E_OIDC_ENV:-}" ]]; then
   case "$(realpath "$E2E_OIDC_ENV")" in
     "$root/web"/*) echo "keep E2E_OIDC_ENV outside web/" >&2; exit 1 ;;
   esac
-  oidc=(-e E2E_OIDC_ENV=/creds/keycloak.env -v "$(realpath "$E2E_OIDC_ENV"):/creds/keycloak.env:ro")
+  oidc=(-e E2E_OIDC_ENV=/creds/oidc-e2e.env -v "$(realpath "$E2E_OIDC_ENV"):/creds/oidc-e2e.env:ro")
 fi
 exec docker run --rm --network host --shm-size=2g \
   --user "$(id -u):$(id -g)" -e HOME=/tmp --cap-drop ALL --security-opt no-new-privileges \
