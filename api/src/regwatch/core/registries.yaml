@@ -75,6 +75,7 @@ settings:                       # runtime-editable, stored in the `setting` tabl
   auth.lockout_minutes:         { type: integer, default: 30, module: M1 }
   auth.password_min_length:     { type: integer, default: 12, module: M1 }
   auth.breach_check_enabled:    { type: boolean, default: false, module: M1 }
+  auth.mfa_required:            { type: enum, values: [none, admins, everyone], default: none, module: M1, note: "BL-148 (CP-40): who must set up two-factor sign-in; accounts linked to the organisation's provider use its own" }
   retention.audit_days:         { type: integer, default: 730, module: M10 }
 
 feature_flags:                  # boolean switches in the `feature_flag` table; all default false unless stated

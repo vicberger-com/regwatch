@@ -256,3 +256,120 @@ async def _secret_enc(url: str) -> str:
         value = (await conn.execute(text("SELECT secret_enc FROM user_mfa"))).scalar_one()
     await engine.dispose()
     return str(value)
+
+
+async def _policy(web: httpx.AsyncClient, value: str) -> httpx.Response:
+    return await web.put(_api("/admin/settings/auth.mfa_required"), json={"value": value})
+
+
+async def _analyst(web: httpx.AsyncClient) -> tuple[httpx.AsyncClient, str]:
+    """A signed-in analyst with their own password, on the same app."""
+    made = await web.post(_api("/admin/users"),
+                          json={"email": "ana@example.org", "display_name": "Ana",
+                                "roles": ["analyst"]})  # fmt: skip
+    temporary = made.json()["temporary_password"]
+    ana = httpx.AsyncClient(transport=web._transport, base_url="https://localhost",
+                            headers=ORIGIN)  # fmt: skip
+    assert (await _login(ana, "ana@example.org", temporary)).status_code == 200
+    own = "ana's own passphrase"
+    change = {"current_password": temporary, "new_password": own}
+    assert (await ana.post(_api("/auth/password"), json=change)).status_code == 204
+    return ana, own
+
+
+async def test_the_policy_is_off_by_default_and_checked(web: httpx.AsyncClient) -> None:
+    assert (await _login(web, ADMIN, ADMIN_PW)).status_code == 200
+    me = (await web.get(_api("/auth/me"))).json()
+    assert me["mfa_setup_required"] is False
+    assert (await _policy(web, "sometimes")).status_code in (400, 422)
+
+
+async def test_admins_must_set_up_before_anything_else(
+    web: httpx.AsyncClient, clock: Clock, db_url: str
+) -> None:
+    assert (await _login(web, ADMIN, ADMIN_PW)).status_code == 200
+    ana, _ = await _analyst(web)
+    assert (await _policy(web, "admins")).status_code == 200
+    blocked = await web.get(_api("/me/preferences"))
+    assert blocked.status_code == 403 and blocked.json()["type"].endswith("/mfa-setup-required")
+    assert (await web.get(_api("/auth/me"))).json()["mfa_setup_required"] is True
+    assert (await ana.get(_api("/me/preferences"))).status_code == 200  # not an admin
+    assert (await web.get(_api("/me/mfa"))).status_code == 200
+    started = await web.post(_api("/me/mfa/setup"), json={"password": ADMIN_PW})
+    code = {"code": clock.code(started.json()["secret"])}
+    assert (await web.post(_api("/me/mfa/confirm"), json=code)).status_code == 200
+    assert (await web.get(_api("/me/preferences"))).status_code == 200
+    assert (await web.get(_api("/auth/me"))).json()["mfa_setup_required"] is False
+    await ana.aclose()
+
+
+async def test_everyone_covers_every_local_account_but_not_linked_ones(
+    web: httpx.AsyncClient, db_url: str
+) -> None:
+    assert (await _login(web, ADMIN, ADMIN_PW)).status_code == 200
+    ana, own = await _analyst(web)
+    # The admin sets the policy from a session that stays usable for the check below.
+    assert (await _policy(web, "everyone")).status_code == 200
+    assert (await ana.get(_api("/me/preferences"))).status_code == 403
+    login = await _login(ana, "ana@example.org", own)
+    assert login.status_code == 200 and login.json()["mfa_setup_required"] is True
+    # A linked account signing in with its password stays covered (review finding 2); only a
+    # session signed in through the provider is exempt.
+    await _sql(db_url, "UPDATE \"user\" SET external_subject = 'linked' "
+                       "WHERE email = 'ana@example.org'")  # fmt: skip
+    assert (await ana.get(_api("/me/preferences"))).status_code == 403
+    await _sql(db_url, "UPDATE session SET method = 'sso' WHERE user_id = "
+                       "(SELECT id FROM \"user\" WHERE email = 'ana@example.org')")  # fmt: skip
+    assert (await ana.get(_api("/me/preferences"))).status_code == 200  # the provider's MFA
+    await ana.aclose()
+
+
+async def test_a_new_account_under_the_policy_changes_its_password_then_enrols(
+    web: httpx.AsyncClient, clock: Clock
+) -> None:
+    assert (await _login(web, ADMIN, ADMIN_PW)).status_code == 200
+    await _enrol_quietly(web, clock)  # the admin is covered too
+    assert (await _policy(web, "everyone")).status_code == 200
+    made = await web.post(_api("/admin/users"),
+                          json={"email": "bo@example.org", "display_name": "Bo",
+                                "roles": ["viewer"]})  # fmt: skip
+    temporary = made.json()["temporary_password"]
+    async with httpx.AsyncClient(transport=web._transport, base_url="https://localhost",
+                                 headers=ORIGIN) as bo:  # fmt: skip
+        first = await _login(bo, "bo@example.org", temporary)
+        me = first.json()
+        assert me["must_change_password"] is True and me["mfa_setup_required"] is True
+        refused = await bo.post(_api("/me/mfa/setup"), json={"password": temporary})
+        assert refused.json()["type"].endswith("/password-change-required")  # password first
+        own = "bo's own passphrase"
+        change = {"current_password": temporary, "new_password": own}
+        assert (await bo.post(_api("/auth/password"), json=change)).status_code == 204
+        gated = await bo.get(_api("/me/preferences"))
+        assert gated.json()["type"].endswith("/mfa-setup-required")
+        started = await bo.post(_api("/me/mfa/setup"), json={"password": own})
+        code = {"code": clock.code(started.json()["secret"])}
+        assert (await bo.post(_api("/me/mfa/confirm"), json=code)).status_code == 200
+        assert (await bo.get(_api("/me/preferences"))).status_code == 200
+
+
+async def _enrol_quietly(web: httpx.AsyncClient, clock: Clock) -> None:
+    started = await web.post(_api("/me/mfa/setup"), json={"password": ADMIN_PW})
+    code = {"code": clock.code(started.json()["secret"])}
+    assert (await web.post(_api("/me/mfa/confirm"), json=code)).status_code == 200
+
+
+async def test_an_operator_resets_a_sole_administrator(
+    web: httpx.AsyncClient, clock: Clock, db_url: str
+) -> None:
+    import asyncio
+
+    from regwatch.identity import admin_cli
+
+    await _enrol(web, clock)
+    assert await asyncio.to_thread(admin_cli.main, ["reset-mfa", "--email", ADMIN]) == 0
+    assert (await web.get(_api("/auth/me"))).status_code == 401  # sessions end
+    rows = await _audit(db_url, "auth.mfa_reset")
+    assert str(rows[-1]["after"]["by"]).startswith("operator:")  # type: ignore[index]
+    assert await asyncio.to_thread(admin_cli.main, ["reset-mfa", "--email", ADMIN]) == 1
+    web.cookies.clear()
+    assert (await _login(web, ADMIN, ADMIN_PW)).status_code == 200

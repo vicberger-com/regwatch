@@ -155,6 +155,18 @@ async def complete_sign_in(db: AsyncSession, request: Request, response: Respons
     return me
 
 
+async def operator_reset(db: AsyncSession, user_id: uuid.UUID, operator: str) -> bool:
+    """``regwatch-admin reset-mfa``: the recovery path from a shell on the host, for an
+    administrator with no other administrator, phone or recovery code. Audited by who ran it."""
+    gone = await db.execute(delete(UserMfa).where(UserMfa.user_id == user_id))
+    if not gone.rowcount:  # type: ignore[attr-defined]
+        return False
+    await _revoke_all(db, user_id)
+    audit(db, "auth.mfa_reset", "user", user_id, after={"by": operator})
+    await db.commit()
+    return True
+
+
 async def reset(db: AsyncSession, user_id: uuid.UUID, actor: Principal, ip: str | None) -> None:
     """An administrator removes a user's authenticator (a lost phone); their sessions end."""
     if user_id == actor.user.id:

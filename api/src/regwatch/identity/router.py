@@ -153,7 +153,8 @@ async def logout(
 
 @router.get("/auth/me", tags=AUTH, **spec(Me, desc="Current user", stub=False))
 async def auth_me(principal: CurrentPrincipal) -> Me:
-    return services.to_me(principal.user, principal.roles, principal.permissions)
+    return services.to_me(principal.user, principal.roles, principal.permissions,
+                          principal.mfa_setup_required)  # fmt: skip
 
 
 @router.post(

@@ -317,6 +317,8 @@ class Principal:
     session_id: uuid.UUID
     roles: tuple[str, ...]
     permissions: frozenset[str]
+    # BL-148 (CP-40): auth.mfa_required covers this account and it has no authenticator yet.
+    mfa_setup_required: bool = False
 
 
 async def roles_and_permissions(
@@ -341,8 +343,10 @@ async def roles_and_permissions(
     return tuple(sorted(roles)), frozenset(perms)
 
 
-def to_me(user: User, roles: tuple[str, ...], perms: frozenset[str]) -> Me:
+def to_me(user: User, roles: tuple[str, ...], perms: frozenset[str],
+          mfa_setup_required: bool = False) -> Me:  # fmt: skip
     return Me(
+        mfa_setup_required=mfa_setup_required,
         id=user.id,
         email=user.email,
         display_name=user.display_name,
@@ -390,7 +394,32 @@ async def resolve_session(db: AsyncSession, token: str, passive: bool = False) -
         sess.last_seen_at = now
         await db.commit()
     roles, perms = await roles_and_permissions(db, user.id)
-    return Principal(user=user, session_id=sess.id, roles=roles, permissions=perms)
+    pending = await mfa_setup_required(db, user, roles, perms, sess.method == "sso")
+    return Principal(user=user, session_id=sess.id, roles=roles, permissions=perms,
+                     mfa_setup_required=pending)  # fmt: skip
+
+
+MFA_POLICY_KEY = "auth.mfa_required"
+
+
+async def mfa_setup_required(db: AsyncSession, user: User, roles: tuple[str, ...],
+                             perms: frozenset[str], via_sso: bool = False) -> bool:  # fmt: skip
+    """BL-148 (CP-40): ``auth.mfa_required`` covers ``user``, who has no authenticator yet.
+    ``admins`` covers the admin role and anyone holding users.manage or roles.manage, like the
+    no-auto-link rule (M1b); ``everyone`` covers every account with a password. A session
+    signed in through the organisation's provider is covered by its own second factor; a
+    password session is covered whether or not the account is linked (review finding 2)."""
+    if via_sso or user.password_hash is None:
+        return False
+    policy = await db.scalar(select(Setting.value).where(Setting.key == MFA_POLICY_KEY))
+    covered = policy == "everyone" or (
+        policy == "admins" and (ADMIN_ROLE in roles or bool(PRIVILEGED & perms))
+    )
+    if not covered:
+        return False
+    from regwatch.identity import mfa
+
+    return await mfa.confirmed(db, user.id) is None
 
 
 def client_ip(request: Request) -> str | None:
@@ -413,8 +442,9 @@ async def _failures_in_window(db: AsyncSession, user: User, now: datetime) -> in
 
 
 async def create_session(
-    db: AsyncSession, user: User, request: Request, cfg: dict[str, int]
-) -> tuple[str, UserSession]:
+    db: AsyncSession, user: User, request: Request, cfg: dict[str, int],
+    method: str = "password",
+) -> tuple[str, UserSession]:  # fmt: skip
     token = security.new_session_token()
     now = _now()
     sess = UserSession(
@@ -425,6 +455,7 @@ async def create_session(
         expires_at=now + timedelta(hours=cfg["sessions.absolute_lifetime_hours"]),
         ip=client_ip(request),
         user_agent=(request.headers.get("user-agent") or "")[:512] or None,
+        method=method,
     )
     db.add(sess)
     await db.flush()
@@ -561,7 +592,7 @@ async def start_session(db: AsyncSession, request: Request, response: Response,
     lifetime = cfg["sessions.absolute_lifetime_hours"] * 3600
     set_session_cookie(response, settings, token, lifetime if remember_me else None)
     roles, perms = await roles_and_permissions(db, user.id)
-    return to_me(user, roles, perms)
+    return to_me(user, roles, perms, await mfa_setup_required(db, user, roles, perms))
 
 
 async def sso_enabled(db: AsyncSession, settings: Settings) -> bool:
@@ -624,7 +655,7 @@ async def sso_sign_in(db: AsyncSession, request: Request, response: Response,
     user.last_login_at = now
     user.must_change_password = False  # the provider holds the credential
     await revoke_token(db, request.cookies.get(settings.session_cookie_name))  # fixation
-    token, sess = await create_session(db, user, request, cfg)
+    token, sess = await create_session(db, user, request, cfg, method="sso")
     audit(db, "auth.login", "session", sess.id, actor=user.id, ip=ip, after={"method": "sso"})
     await db.commit()
     set_session_cookie(response, settings, token, None)

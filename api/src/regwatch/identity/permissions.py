@@ -8,7 +8,9 @@ application-wide dependency (``regwatch.api.app``), so every route passes it:
 2. Routes whose spec is ``public=True`` (``security: []``) need nothing more.
 3. Every other route needs a live session cookie (401 otherwise). Deny by default: a new
    route is protected unless its spec marks it public.
-4. While a temporary password is in force, only ``PASSWORD_CHANGE_ROUTES`` answer (403).
+4. While a temporary password is in force, only ``PASSWORD_CHANGE_ROUTES`` answer (403);
+   while ``auth.mfa_required`` covers an account with no authenticator, only
+   ``MFA_SETUP_ROUTES`` (BL-148, CP-40).
 5. The route's ``x-permission`` key must be among the user's permissions (403).
 """
 
@@ -33,6 +35,9 @@ PERMISSIONS: tuple[str, ...] = ()
 # M1 acceptance 2: with a temporary password the user can only see who they are, change it,
 # or leave.
 PASSWORD_CHANGE_ROUTES = frozenset({"auth_me", "logout", "change_password"})
+# BL-148 (CP-40): an account auth.mfa_required covers can only see who it is, set up an
+# authenticator, or leave.
+MFA_SETUP_ROUTES = frozenset({"auth_me", "logout", "mfa_status", "mfa_setup", "mfa_confirm"})
 MAX_COOKIE_LENGTH = 128
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -60,10 +65,15 @@ async def authorize(request: Request, settings: SettingsDep) -> None:
     if principal is None:
         raise services.unauthenticated()
     name = route.name if isinstance(route, APIRoute) else ""
-    if principal.user.must_change_password and name not in PASSWORD_CHANGE_ROUTES:
-        raise ProblemError(
-            403, "password-change-required", "Change the temporary password to continue."
-        )
+    # The two forced steps are exclusive (review finding 1): while a temporary password is in
+    # force only its gate applies; the authenticator comes after it.
+    if principal.user.must_change_password:
+        if name not in PASSWORD_CHANGE_ROUTES:
+            raise ProblemError(
+                403, "password-change-required", "Change the temporary password to continue."
+            )
+    elif principal.mfa_setup_required and name not in MFA_SETUP_ROUTES:
+        raise ProblemError(403, "mfa-setup-required", "Set up two-factor sign-in to continue.")
     needed = extra.get("x-permission")
     if needed and needed not in principal.permissions:
         raise ProblemError(403, "forbidden", "You do not have permission for this action.")

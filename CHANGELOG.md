@@ -5,6 +5,10 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- `auth.mfa_required` (BL-148 (f); CP-40): `none` (the default, so an upgrade locks no one out), `admins`, or `everyone`.
+  - **Who it covers:** `admins` means the admin role and anyone holding `users.manage` or `roles.manage`; `everyone` means every account with a password. A session signed in through the organisation's provider is exempt, because the provider holds its second factor; a password session is covered even when the account is linked (`session.method`, migration 0013).
+  - **What happens:** a covered account without an authenticator can only see who it is, set one up, or sign out (403 `mfa-setup-required`). A temporary password is changed first. `Me.mfa_setup_required` sends the web app to `/setup-two-factor` after any forced password change.
+  - **Recovery:** `regwatch-admin reset-mfa --email` is the shell-level path for a sole administrator who lost both their phone and their recovery codes. It is audited with who ran it.
 - Two-factor sign-in with TOTP for local accounts (BL-148; ADR-0007 G0 Q4; CP-38; REQ-14, REQ-16; migration 0012).
   - **Enrolment (`/me/mfa`):** the password again, then a new secret as a QR code and as text. It is on once a first code is entered, which also gives 10 one-time recovery codes. Turning it off, or getting new recovery codes, needs the password and a code.
   - **Sign-in:** after a correct password, `401 mfa-required` sets a signed, 5-minute `rw_mfa` cookie (SameSite=Strict, path `/api/v1/auth/mfa`) instead of a session. `POST /auth/mfa` with a code or a recovery code starts the session.

@@ -115,6 +115,7 @@ class UserWithPassword(User):
 
 
 class Me(User):
+    mfa_setup_required: bool = UNSET  # CP-40 (BL-148)
     permissions: list[str] = UNSET
     preferences: Preferences = UNSET
 

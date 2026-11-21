@@ -2,8 +2,9 @@
 
 ``create-user`` makes the first administrator (or any local account) without the web UI;
 ``revoke-sessions`` signs everyone, or one account, out (the incident runbook, M10.6);
-``rotate-mfa-secrets`` re-encrypts the TOTP secrets with the current secret key during a key
-rotation (BL-148).
+``reset-mfa`` removes one account's authenticator, the recovery path for a sole
+administrator (BL-148); ``rotate-mfa-secrets`` re-encrypts the TOTP secrets with the current
+secret key during a key rotation (BL-148).
 The password is read from the terminal without echo, or from standard input with
 ``--password-stdin``; it is never taken as an argument, so it stays out of shell history
 and process listings.
@@ -71,6 +72,24 @@ async def _revoke(url: str, email: str | None) -> int:
         await engine.dispose()
 
 
+async def _reset_mfa(url: str, email: str) -> bool:
+    from sqlalchemy import select
+
+    from regwatch.identity import mfa_services
+    from regwatch.identity.models import User
+
+    engine = create_engine(url, poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            user_id = await db.scalar(select(User.id).where(User.email == check_email(email)))
+            if user_id is None:
+                raise ValueError("no account with that email address")
+            return await mfa_services.operator_reset(db, user_id,
+                                                     f"operator:{getpass.getuser()}")  # fmt: skip
+    finally:
+        await engine.dispose()
+
+
 async def _rotate_mfa(url: str) -> tuple[int, int]:
     from regwatch.core.settings import get_settings
     from regwatch.identity import mfa
@@ -99,12 +118,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     which = revoke.add_mutually_exclusive_group(required=True)
     which.add_argument("--all", action="store_true", help="every account")
     which.add_argument("--email", help="one account")
+    reset_mfa = sub.add_parser("reset-mfa", help="remove one account's authenticator")
+    reset_mfa.add_argument("--email", required=True)
     sub.add_parser("rotate-mfa-secrets",
                    help="re-encrypt the TOTP secrets with the current secret key")  # fmt: skip
     args = parser.parse_args(argv)
     from regwatch.core.settings import get_settings
 
     url = get_settings().database_url.get_secret_value()
+    if args.command == "reset-mfa":
+        try:
+            removed = asyncio.run(_reset_mfa(url, args.email))
+        except ValueError as exc:
+            print(f"regwatch-admin: {exc}", file=sys.stderr)
+            return 1
+        print("regwatch-admin: authenticator removed; the account's sessions ended" if removed
+              else "regwatch-admin: that account has no authenticator")  # fmt: skip
+        return 0 if removed else 1
     if args.command == "rotate-mfa-secrets":
         done, unreadable = asyncio.run(_rotate_mfa(url))
         print(f"regwatch-admin: re-encrypted {done} authenticator(s)"

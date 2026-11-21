@@ -656,6 +656,7 @@ components:
         - { $ref: "#/components/schemas/User" }
         - type: object
           properties:
+            mfa_setup_required: { type: boolean, description: "CP-40 (BL-148): auth.mfa_required covers this account and it has no authenticator yet; until set up, only /auth/me, /auth/logout and /me/mfa (GET, setup, confirm) answer, others 403 mfa-setup-required" }
             permissions: { type: array, items: { type: string } }
             preferences: { $ref: "#/components/schemas/Preferences" }
     Role:

@@ -83,6 +83,9 @@ async def test_first_sign_in_links_by_verified_email_then_by_subject(
     assert len(linked) == 1 and "email_sha256" in linked[0]["after"]  # type: ignore[operator]
     logins = await _audit(db_url, "auth.login")
     assert logins[-1]["after"] == {"method": "sso"}
+    methods = await _count(db_url, "SELECT count(*) FROM session WHERE method = 'sso' "
+                                   "AND revoked_at IS NULL")  # fmt: skip
+    assert methods == 1  # CP-40: the session records how it was signed in
     # Next time by the subject alone, even when the provider's email has changed.
     web.cookies.clear()
     idp.claims = {"email": "renamed@example.org"}

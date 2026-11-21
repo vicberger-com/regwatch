@@ -84,6 +84,7 @@ class UserSession(Base):
     ip: Mapped[str | None] = mapped_column(INET)
     user_agent: Mapped[str | None]
     revoked_at: Mapped[datetime | None]
+    method: Mapped[str] = mapped_column(server_default=text("'password'"))  # CP-40, 0013
 
 
 class UserGroup(Base):

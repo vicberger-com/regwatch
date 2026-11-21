@@ -70,7 +70,8 @@ CREATE TABLE session (
   expires_at timestamptz NOT NULL,
   last_seen_at timestamptz NOT NULL DEFAULT now(),
   ip inet, user_agent text,
-  revoked_at timestamptz
+  revoked_at timestamptz,
+  method text NOT NULL DEFAULT 'password' CHECK (method IN ('password', 'sso'))  -- CP-40 (migration 0013): how it was signed in
 );
 CREATE INDEX ix_session_user ON session(user_id) WHERE revoked_at IS NULL;
 
