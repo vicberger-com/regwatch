@@ -212,9 +212,9 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     result = out(job)
     await db.commit()
     if job.scheduled_cron is None:  # a schedule runs from the tick, when it falls due
-        from regwatch.outputs.tasks import enqueue
+        from regwatch.outputs.tasks import hand_over
 
-        await enqueue(TASKS[job.kind], job.id)
+        await hand_over(TASKS[job.kind], job.id)
     return result
 
 
@@ -380,9 +380,9 @@ async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     audit(db, "output.retry", "output_job", job.id, actor=principal.user.id, ip=ip)
     result = out(job)
     await db.commit()
-    from regwatch.outputs.tasks import enqueue
+    from regwatch.outputs.tasks import hand_over
 
-    await enqueue(TASKS[job.kind], job.id)
+    await hand_over(TASKS[job.kind], job.id)
     return result
 
 

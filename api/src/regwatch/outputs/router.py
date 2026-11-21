@@ -76,10 +76,10 @@ async def delete_printer(id: UUID, principal: CurrentPrincipal, request: Request
 )  # fmt: skip
 async def printer_test_page(id: UUID, principal: CurrentPrincipal, request: Request,
                             db: DbSession) -> OutputJob:  # fmt: skip
-    from regwatch.outputs.tasks import enqueue
+    from regwatch.outputs.tasks import hand_over
 
     job = await printers.test_page(db, id, principal, client_ip(request))
-    await enqueue(services.TASKS["print"], job.id)
+    await hand_over(services.TASKS["print"], job.id)
     return services.out(job, principal)
 
 

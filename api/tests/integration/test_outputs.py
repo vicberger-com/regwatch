@@ -592,3 +592,19 @@ async def test_an_output_no_worker_took_is_handed_over_again_then_failed(
     assert (shown["status"], shown["error_class"]) == ("failed", "queue-unavailable")
     assert "try again" in shown["error_message"]
     assert (await admin.get(_api(f"/outputs/{sid}"))).json()["status"] == "queued"
+
+
+async def test_a_queue_that_is_down_defers_the_hand_over(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """The M10 chaos check: with Valkey stopped, requesting an output answered 500. The job is
+    kept queued and the request answers 202; the unsent sweep hands it over later."""
+
+    async def down(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
+        raise ConnectionError("the queue is not reachable")
+
+    monkeypatch.setattr(tasks, "enqueue", down)
+    made = await _pdf(admin, {"report_template_key": "source-health"})
+    assert made.status_code == 202, made.text
+    assert (await admin.get(_api(f"/outputs/{made.json()['id']}"))).json()["status"] == "queued"

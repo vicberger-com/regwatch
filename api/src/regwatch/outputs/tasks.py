@@ -32,6 +32,18 @@ async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
                                        abandon_on_cancel=True)  # fmt: skip
 
 
+async def hand_over(name: str, job_id: uuid.UUID, countdown: float = 0) -> bool:
+    """``enqueue``, but a queue that is down is not the requester's error (the M10 chaos
+    check: a 500 while Valkey was stopped). The job stays queued, and the tick's unsent sweep
+    hands it over once the queue is back (U-M8-3), or tells its owner after an hour."""
+    try:
+        await enqueue(name, job_id, countdown)
+    except Exception as exc:  # noqa: BLE001 - logged; the sweep delivers it later
+        _log.warning("outputs_enqueue_deferred", job=str(job_id), error=type(exc).__name__)
+        return False
+    return True
+
+
 @shared_task(name="outputs.render_pdf", queue="outputs")  # type: ignore[untyped-decorator]
 def render_pdf(output_job_id: str) -> None:
     anyio.run(_run, uuid.UUID(output_job_id))
@@ -296,5 +308,5 @@ async def tick_once(db: AsyncSession, now: datetime | None = None) -> int:
         _log.error("outputs_requeue_failed", error=type(exc).__name__)
     started = await schedules.tick(db, now)
     for name, job_id in started:
-        await enqueue(name, job_id)
+        await hand_over(name, job_id)
     return len(started)
