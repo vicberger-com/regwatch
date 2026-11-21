@@ -69,10 +69,10 @@ connectors: ## Regenerate the admin UI's connector forms from docs/contracts/con
 
 monitoring-test: ## Check and unit-test the alert rules with promtool (M10.5)
 	docker run --rm --entrypoint promtool -v "$(CURDIR)/deploy/monitoring:/m:ro" -w /m \
-		prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038 \
+		prom/prometheus@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06 \
 		check rules alerts.yml
 	docker run --rm --entrypoint promtool -v "$(CURDIR)/deploy/monitoring:/m:ro" -w /m \
-		prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038 \
+		prom/prometheus@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06 \
 		test rules alerts.test.yml
 
 sbom: ## CycloneDX SBOMs of the release images and the lockfiles into sbom/ (M10.4)

@@ -65,7 +65,7 @@ services:
       REGWATCH_METRICS_PORT: "9464"  # internal networks only; not published, not proxied
       REGWATCH_METRICS_BIND: "0.0.0.0"
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000"]
-    networks: [regwatch, fetch]
+    networks: [regwatch, fetch, monitoring]  # monitoring: Prometheus scrapes 9464
     volumes:
       - objectstore:/data/objectstore
     depends_on:
@@ -169,12 +169,13 @@ services:
     restart: unless-stopped
 
   # Optional monitoring (M10.5; acceptance 4): `--profile monitoring`. Prometheus scrapes the
-  # API's internal metrics and evaluates monitoring/alerts.yml, with no published port. Grafana
+  # API's internal metrics and evaluates monitoring/alerts.yml, with no published port; both are
+  # on their own internal network with the api, apart from the database, queue and sidecars. Grafana
   # (AGPL-3.0, an unmodified separate service, never bundled: 3.5) shows the provisioned
   # dashboard on 127.0.0.1:3000 only; reach it from elsewhere through an SSH tunnel. Its admin
   # password comes from monitoring.env (GF_SECURITY_ADMIN_PASSWORD), required.
   prometheus:
-    image: prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038  # v3.7.3
+    image: prom/prometheus@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06  # v3.16.0
     profiles: [monitoring]
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
               "--storage.tsdb.retention.time=30d", "--web.listen-address=0.0.0.0:9090"]
@@ -182,13 +183,13 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
-    networks: [regwatch]
+    networks: [monitoring]  # reaches the api's metrics only (M10.5 review)
     read_only: true
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana-oss@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d  # 12.1.1
+    image: grafana/grafana@sha256:0615ec4fbd4072004b7d86b46ded63013a74b7d6eb1119273dd89e8fa25c13cf  # 13.3.1
     profiles: [monitoring]
     env_file: monitoring.env
     environment:
@@ -199,13 +200,18 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_SECURITY_COOKIE_SECURE: "false"  # loopback HTTP behind an SSH tunnel
       GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_PLUGINS_PLUGIN_ADMIN_ENABLED: "false"
+      # Every bundled data source but Prometheus is off, so their binaries never run
+      # (.github/trivy/monitoring.trivyignore.yaml).
+      GF_PLUGINS_DISABLE_PLUGINS: "cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,loki,mssql,mysql,opentsdb,stackdriver,tempo,zipkin,grafana-azure-monitor-datasource,graphite,grafana-testdata-datasource"
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    networks: [regwatch, edge]
+    # `monitoring` reaches Prometheus only; `edge` carries the published loopback port.
+    networks: [monitoring, edge]
     read_only: true
     tmpfs: ["/tmp"]
     security_opt: ["no-new-privileges:true"]
@@ -221,6 +227,9 @@ networks:
           ip_range: 10.89.0.128/25
   edge: {}
   fetch: {}
+  # M10.5 review: Prometheus, Grafana and the api's metrics only, apart from everything else.
+  monitoring:
+    internal: true
 
 volumes:
   pgdata:

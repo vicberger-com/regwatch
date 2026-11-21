@@ -129,6 +129,11 @@ jobs:
           echo "::group::regwatch-proxy:ci (accepted findings: .github/trivy/proxy.trivyignore.yaml)"
           trivy image "${release[@]}" --ignorefile /src/.github/trivy/proxy.trivyignore.yaml regwatch-proxy:ci || status=1
           echo "::endgroup::"
+          echo "::group::monitoring profile images (accepted findings: .github/trivy/monitoring.trivyignore.yaml)"
+          for image in $(grep -oE '(prom/prometheus|grafana/grafana)@sha256:[0-9a-f]{64}' deploy/compose.prod.yaml); do
+            trivy image "${release[@]}" --ignorefile /src/.github/trivy/monitoring.trivyignore.yaml "$image" || status=1
+          done
+          echo "::endgroup::"
           echo "::group::regwatch-web:ci (development only, critical; accepted findings: .github/trivy/web.trivyignore.yaml, BL-60)"
           trivy image --severity CRITICAL --ignorefile /src/.github/trivy/web.trivyignore.yaml regwatch-web:ci || status=1
           echo "::endgroup::"

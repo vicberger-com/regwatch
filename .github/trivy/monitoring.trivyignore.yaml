@@ -1,0 +1,59 @@
+# Accepted high findings in the monitoring images (M10.5 review): Grafana 13.3.1 and Prometheus
+# 3.16.0, separate tooling services of the optional `monitoring` profile, never bundled. CI
+# fails on HIGH and CRITICAL findings with a fix; these are fixed upstream but in no release
+# yet, or sit in Grafana data-source plugins disabled by GF_PLUGINS_DISABLE_PLUGINS (only
+# Prometheus is enabled). Each expires within 30 days (BL-146).
+vulnerabilities:
+  - id: CVE-2026-111943
+    paths:
+      - usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-21728
+    paths:
+      - usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-28377
+    paths:
+      - usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-78661
+    paths:
+      - usr/share/grafana/data/plugins-bundled/cloudwatch/gpx_grafana_cloudwatch_datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/influxdb/gpx_grafana_influxdb_datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/loki/gpx_grafana-loki-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/mssql/gpx_grafana-mssql-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64
+      - usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64
+    statement: golang.org/x/net in Grafana's bundled data-source plugins (fixed in 0.62.0; in no Grafana release yet); only the Prometheus plugin is enabled, the rest are disabled
+    expired_at: 2026-12-21
+  - id: CVE-2026-78667
+    paths:
+      - usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-78669
+    paths:
+      - usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-97031
+    paths:
+      - usr/share/grafana/data/plugins-bundled/mysql/gpx_grafana-mysql-datasource_linux_amd64
+    statement: in a Grafana data-source plugin disabled by GF_PLUGINS_DISABLE_PLUGINS (mysql or tempo); never run
+    expired_at: 2026-12-21
+  - id: CVE-2026-78661
+    paths:
+      - bin/prometheus
+      - bin/promtool
+    statement: golang.org/x/net in Prometheus 3.16.0 (fixed in 0.62.0; in no Prometheus release yet)
+    expired_at: 2026-12-21
