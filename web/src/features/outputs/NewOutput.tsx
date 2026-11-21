@@ -16,13 +16,19 @@ import {
 } from "@/features/reports/ParamFields";
 import { problemText } from "@/lib/auth/session";
 
-import { templatesQuery, useCreateOutput, type OutputRequest } from "./api";
+import {
+  printerChoicesQuery,
+  templatesQuery,
+  useCreateOutput,
+  type OutputRequest,
+} from "./api";
 
-type Kind = "pdf" | "email" | "csv";
+type Kind = "pdf" | "email" | "csv" | "print";
 const KINDS: { kind: Kind; label: string; permission: string }[] = [
   { kind: "pdf", label: "PDF download", permission: "outputs.pdf" },
   { kind: "email", label: "Email with the PDF", permission: "outputs.email" },
   { kind: "csv", label: "CSV export", permission: "outputs.csv" },
+  { kind: "print", label: "Network printer", permission: "outputs.print" },
 ];
 const REPEATS = [
   { cron: "0 7 * * 1", label: "Every Monday at 07:00" },
@@ -66,6 +72,12 @@ export function NewOutput(props: {
     enabled: props.can("items.read") && kind === "csv",
   });
   const create = useCreateOutput();
+  const printers = useQuery({
+    ...printerChoicesQuery,
+    enabled: kind === "print",
+  });
+  const [printer, setPrinter] = useState("");
+  const [copies, setCopies] = useState("1"); // as typed; clamped to 1 to 20 when sent
   const [chosen, setParams] = useState<Params | null>(null); // null: the defaults
   if (kinds.length === 0) return null;
   // A stock report, or a layout made from one, asks for its settings (U-M7-1).
@@ -113,6 +125,11 @@ export function NewOutput(props: {
         emails: addresses,
         ...(subject.trim() ? { subject: subject.trim() } : {}),
         copies: 1,
+      };
+    if (kind === "print")
+      body.destination = {
+        printer_id: printer,
+        copies: Math.min(20, Math.max(1, Math.trunc(Number(copies)) || 1)),
       };
     if (defs && defs.length > 0) body.params = params;
     if (repeat) body.schedule = { cron };
@@ -195,6 +212,47 @@ export function NewOutput(props: {
         </select>
       </label>
       <ParamFields defs={defs} values={params} onChange={setParams} />
+      {kind === "print" &&
+        (printers.data === null ? (
+          <p className="text-sm text-text-muted">
+            Printing to network printers is off. Ask an administrator, or print
+            from your browser with the Print button at the top.
+          </p>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1">
+              Printer
+              <select
+                className={field}
+                required
+                value={printer}
+                onChange={(e) => {
+                  setPrinter(e.target.value);
+                }}
+              >
+                <option value="">Choose a printer</option>
+                {printers.data?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              Copies
+              <input
+                type="number"
+                className={field}
+                min={1}
+                max={20}
+                value={copies}
+                onChange={(e) => {
+                  setCopies(e.target.value);
+                }}
+              />
+            </label>
+          </>
+        ))}
       {kind === "email" && (
         <>
           <label className="flex flex-col gap-1">
@@ -271,7 +329,12 @@ export function NewOutput(props: {
         <button
           type="submit"
           className="rounded border border-border px-3 py-1 disabled:opacity-50"
-          disabled={create.isPending || tooMany || lacking.length > 0}
+          disabled={
+            create.isPending ||
+            tooMany ||
+            lacking.length > 0 ||
+            (kind === "print" && (printers.data === null || !printer))
+          }
         >
           {repeat ? "Schedule" : "Request"}
         </button>

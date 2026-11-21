@@ -18,6 +18,7 @@ import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
 import { GroupsPage } from "@/features/admin/GroupsPage";
 import { BuilderPage } from "@/features/reports/BuilderPage";
 import { OutputsPage } from "@/features/outputs/OutputsPage";
+import { PrintersPage } from "@/features/admin/PrintersPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
 import { RolesPage } from "@/features/admin/RolesPage";
 import { UsersPage } from "@/features/admin/UsersPage";
@@ -314,6 +315,17 @@ const flagsRoute = createRoute({
   },
 });
 
+const printersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/printers",
+  staticData: { title: "Printers" },
+  component: function Printers() {
+    const { me } = authedRoute.useRouteContext();
+    if (!hasPermission(me, "settings.manage")) return <NotPermitted />;
+    return <PrintersPage />;
+  },
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/admin/settings",
@@ -382,6 +394,7 @@ export const routeTree = rootRoute.addChildren([
     jurisdictionsRoute,
     sourcesRoute,
     settingsRoute,
+    printersRoute,
     brandingRoute,
     auditRoute,
   ]),

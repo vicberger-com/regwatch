@@ -401,3 +401,82 @@ describe("New output from the Reports page (U-M7-2)", () => {
     });
   });
 });
+
+describe("network printing in New output (M8.5b)", () => {
+  it("sends a report to a chosen printer with its copies", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [
+        200,
+        {
+          ...ADMIN,
+          permissions: ["outputs.pdf", "outputs.print", "reports.print"],
+        },
+      ],
+      "GET /outputs": [200, page([])],
+      "GET /reports/templates": [
+        200,
+        [{ key: "source-health", label: "Source health" }],
+      ],
+      "GET /printers": [200, [{ id: "p1", name: "Floor 2" }]],
+      "POST /outputs": [202, { ...JOB, kind: "print", status: "queued" }],
+    });
+    renderAt("/outputs");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "New output" }),
+    );
+    const form = screen.getByRole("form", { name: "New output" });
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "What" }),
+      "print",
+    );
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "Report" }),
+      await within(form).findByRole("option", { name: "Source health" }),
+    );
+    expect(
+      within(form).getByRole("button", { name: "Request" }),
+    ).toBeDisabled();
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "Printer" }),
+      await within(form).findByRole("option", { name: "Floor 2" }),
+    );
+    const copies = within(form).getByRole("spinbutton", { name: "Copies" });
+    await userEvent.clear(copies);
+    await userEvent.type(copies, "3");
+    await userEvent.click(
+      within(form).getByRole("button", { name: "Request" }),
+    );
+    await within(form).findByText(/Requested\./);
+    expect(api.calls.find((c) => c.key === "POST /outputs")?.body).toEqual({
+      kind: "print",
+      source: { report_template_key: "source-health" },
+      destination: { printer_id: "p1", copies: 3 },
+    });
+  });
+
+  it("says so when server printing is off", async () => {
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["outputs.pdf", "outputs.print"] },
+      ],
+      "GET /outputs": [200, page([])],
+      "GET /printers": [404, problem(404)],
+    });
+    renderAt("/outputs");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "New output" }),
+    );
+    const form = screen.getByRole("form", { name: "New output" });
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "What" }),
+      "print",
+    );
+    expect(
+      await within(form).findByText(/Printing to network printers is off/),
+    ).toBeVisible();
+    expect(
+      within(form).getByRole("button", { name: "Request" }),
+    ).toBeDisabled();
+  });
+});

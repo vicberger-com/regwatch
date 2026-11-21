@@ -118,6 +118,12 @@ export const ADMIN_AREAS = [
     permission: "settings.manage",
   },
   {
+    to: "/admin/printers",
+    title: "Printers",
+    text: "Network printers for server printing.",
+    permission: "settings.manage",
+  },
+  {
     to: "/admin/branding",
     title: "Branding and legal",
     text: "Logo, title, colour and the legal page.",

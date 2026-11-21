@@ -85,3 +85,14 @@ export function useCreateOutput() {
 }
 
 export { templatesQuery } from "@/features/reports/api";
+
+/** CP-33: the printers New output offers; null while server printing is off (404). */
+export const printerChoicesQuery = queryOptions({
+  queryKey: ["printers"],
+  queryFn: async () => {
+    const result = await api.GET("/printers");
+    if (result.response.status === 404) return null;
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+});
