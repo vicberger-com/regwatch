@@ -13,6 +13,7 @@ import { interestOptionsQuery } from "@/features/me/InterestsEditor";
 import { problemText } from "@/lib/auth/session";
 
 import { searchQuery, type ItemSummary, type Query } from "./api";
+import { ItemsActions } from "./ItemsActions";
 import { Marked } from "./Marked";
 import { formatDate } from "@/lib/time/format";
 
@@ -257,6 +258,10 @@ export function ItemsPage(props: {
           </select>
         </label>
       </form>
+      <ItemsActions
+        query={toQuery(search, now, interests)}
+        days={search.days}
+      />
       {(mine || search.all) && Object.keys(interests).length > 0 && (
         <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded border border-accent px-2 py-0.5">
