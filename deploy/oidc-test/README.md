@@ -6,3 +6,5 @@
 - secrets substituted from `keycloak.env`.
 
 Never import it into a Keycloak that real people use.
+
+The users have fixed ids, so their subjects, and the accounts linked to them, survive a new Keycloak container.

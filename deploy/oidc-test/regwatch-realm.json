@@ -27,6 +27,7 @@
   ],
   "users": [
     {
+      "id": "8d3c2a51-6f0e-4b7a-9c1d-2e5f4a3b1c01",
       "username": "oidc-user",
       "enabled": true,
       "email": "oidc-user@example.org",
@@ -36,6 +37,7 @@
       "credentials": [{ "type": "password", "value": "${KC_USER_PASSWORD}", "temporary": false }]
     },
     {
+      "id": "8d3c2a51-6f0e-4b7a-9c1d-2e5f4a3b1c02",
       "username": "oidc-unverified",
       "enabled": true,
       "email": "oidc-unverified@example.org",
