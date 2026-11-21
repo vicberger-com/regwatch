@@ -60,7 +60,7 @@ Without the secret the build uses the image's public trust store.
    export REGWATCH_SITE_ADDRESS=regwatch.example.com   # Caddy obtains its certificate
    export REGWATCH_PUBLISH_ADDRESS=203.0.113.10        # 127.0.0.1 unless set
    ```
-   Only the proxy publishes ports (80 for the redirect, 443). Publishing on a public address is a deliberate choice. The application is for signed-in users only, and every API route but the health, version, login and public branding routes needs a session. Keep `REGWATCH_PUBLISH_ADDRESS` at 127.0.0.1, behind an SSH tunnel or your own front proxy, until you mean to expose it.
+   Only the proxy publishes ports (80 for the redirect, 443). Publishing on a public address is a deliberate choice. The application is for signed-in users only, and every API route but the health, version, login and public branding routes needs a session. Keep `REGWATCH_PUBLISH_ADDRESS` at 127.0.0.1, behind an SSH tunnel or your own front proxy, until you mean to expose it. On the host's firewall, allow only 80 and 443 from outside: on a rootful Docker host, the host itself can reach the containers' internal addresses (the API on 8000, its metrics on 9464), so keep other users off the host too.
 3. **Build and start:**
    ```
    docker compose -f deploy/compose.prod.yaml build

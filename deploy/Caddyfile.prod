@@ -7,7 +7,10 @@
 }
 
 {$REGWATCH_SITE_ADDRESS} {
-	encode zstd gzip
+	# Static files only: API answers stay uncompressed, so no secret can be learnt from their
+	# compressed size (BREACH; M10.3 review).
+	@static not path /api/*
+	encode @static zstd gzip
 	header {
 		-Server
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -22,6 +25,13 @@
 		?Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 	}
 	handle /api/* {
+		# A little above the 25 MB upload limit: larger bodies stop here (M10.3 review).
+		request_body {
+			max_size 26MB
+		}
+		# Users' answers never go to a browser's disk cache, which outlives sign-out on a
+		# shared computer; a route's own value is kept (M10.3 review).
+		header ?Cache-Control "no-store"
 		reverse_proxy api:8000
 	}
 	handle {
