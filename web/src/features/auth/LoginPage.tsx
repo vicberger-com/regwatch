@@ -13,7 +13,7 @@ import {
   useMfaSignIn,
 } from "@/lib/auth/session";
 
-/** `/login` (screens.md): email, password, sign-in button and an error live region; with
+/** `/login` (screens.md), the first screen in daisyUI components (BL-149): email, password, sign-in button and an error live region; with
  * `auth.oidc` on, first the organisation's account (M1b), the password form staying for
  * administrators. */
 export function LoginPage({
@@ -63,7 +63,7 @@ export function LoginPage({
       second.error.problem.type.endsWith("/mfa-expired");
     return (
       <PublicFrame screen="Sign in">
-        <div className="mx-auto max-w-sm rounded border border-border bg-surface p-6">
+        <div className="card card-border mx-auto max-w-sm border-border bg-surface p-6">
           <h1 className="text-xl font-semibold">Sign in</h1>
           <form
             className="mt-4 flex flex-col gap-3"
@@ -80,7 +80,7 @@ export function LoginPage({
                 onChange={(e) => {
                   setCode(e.target.value);
                 }}
-                className="rounded border border-border bg-bg px-2 py-1"
+                className="input w-full"
               />
             </label>
             <p className="text-sm text-text-muted">
@@ -92,14 +92,14 @@ export function LoginPage({
             <button
               type="submit"
               disabled={second.isPending || !code.trim()}
-              className="rounded bg-accent px-3 py-2 font-semibold text-accent-contrast disabled:opacity-50"
+              className="btn btn-primary"
             >
               {second.isPending ? "Checking…" : "Continue"}
             </button>
             {expired && (
               <button
                 type="button"
-                className="rounded border border-border px-3 py-2 font-semibold"
+                className="btn btn-outline"
                 onClick={() => {
                   second.reset();
                   login.reset();
@@ -136,13 +136,13 @@ export function LoginPage({
 
   return (
     <PublicFrame screen="Sign in">
-      <div className="mx-auto max-w-sm rounded border border-border bg-surface p-6">
+      <div className="card card-border mx-auto max-w-sm border-border bg-surface p-6">
         <h1 className="text-xl font-semibold">Sign in</h1>
         {ssoOn && (
           <>
             <a
               href={`/api/v1/auth/oidc/login?next=${encodeURIComponent(safeNext(next))}`}
-              className="mt-4 block rounded bg-accent px-3 py-2 text-center font-semibold text-accent-contrast"
+              className="btn btn-primary mt-4 w-full"
             >
               Sign in with your organisation&apos;s account
             </a>
@@ -162,7 +162,7 @@ export function LoginPage({
               onChange={(e) => {
                 setEmail(e.target.value);
               }}
-              className="rounded border border-border bg-bg px-2 py-1"
+              className="input w-full"
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -175,7 +175,7 @@ export function LoginPage({
               onChange={(e) => {
                 setPassword(e.target.value);
               }}
-              className="rounded border border-border bg-bg px-2 py-1"
+              className="input w-full"
             />
           </label>
           <p role="alert" className="min-h-6 text-critical">
@@ -184,11 +184,7 @@ export function LoginPage({
           <button
             type="submit"
             disabled={login.isPending || !email || !password}
-            className={
-              ssoOn
-                ? "rounded border border-border px-3 py-2 font-semibold disabled:opacity-50"
-                : "rounded bg-accent px-3 py-2 font-semibold text-accent-contrast disabled:opacity-50"
-            }
+            className={ssoOn ? "btn btn-outline" : "btn btn-primary"}
           >
             {login.isPending ? "Signing in…" : "Sign in"}
           </button>
