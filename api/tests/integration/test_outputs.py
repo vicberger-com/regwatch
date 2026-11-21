@@ -55,7 +55,7 @@ def gotenberg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Goten
         "http://pdf:3000", transport=httpx.MockTransport(fake), max_answer=max_bytes))  # fmt: skip
     queued: list[tuple[str, uuid.UUID]] = []
 
-    async def enqueue(name: str, job_id: uuid.UUID) -> None:
+    async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
         queued.append((name, job_id))
 
     monkeypatch.setattr(tasks, "enqueue", enqueue)

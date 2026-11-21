@@ -7,10 +7,10 @@ default checks cannot hold while handlers are stubs and are replaced, not droppe
 (any 5xx other than a documented 501 fails), and ``positive_data_acceptance`` (valid input
 must get 2xx) returns when each module implements its routes.
 
-Two passes: ``test_gated_api_conforms`` runs with the real session gate (cookies dropped, so
-401, 403 or the public routes' own answers); ``test_stub_api_conforms`` replaces the gate in this
-test app only, so the stubs behind it are fuzzed too. Implemented routes need a database and
-are left to the CI contract job and the integration tests.
+``test_gated_api_conforms`` runs with the real session gate (cookies dropped, so 401, 403 or the
+public routes' own answers). The pass that fuzzed stubs without the gate is retired: since
+M8.5b no route is a stub (``test_no_stub_routes_remain``). Implemented routes need a database
+and are left to the CI contract job and the integration tests.
 """
 
 from __future__ import annotations
@@ -53,18 +53,9 @@ gated = (
 )
 
 
-def _implemented(ctx: Any) -> bool:
-    """Operations without a documented 501 have real handlers that need a database."""
-    return "501" not in ctx.operation.definition.raw.get("responses", {})
-
-
-open_stubs = schemathesis.openapi.from_asgi("/api/v1/openapi.json", _app(gated=False)).exclude(
-    _implemented
-)
-
 # A fuzzed body over the 2 MB cap is refused with 413 before anything reads it, which is a
 # correct rejection of invalid data; schemathesis's default list for that check omits 413.
-for _schema in (gated, open_stubs):
+for _schema in (gated,):
     _schema.config.checks.negative_data_rejection = NegativeDataRejectionConfig(
         expected_statuses=[*NEGATIVE_DATA_REJECTION_EXPECTED_STATUSES, "413"]
     )
@@ -94,15 +85,21 @@ def test_gated_api_conforms(case: schemathesis.Case) -> None:
         assert case.call().status_code in {401, 403, 405, 413, 422}
 
 
-@open_stubs.parametrize()
-@settings(max_examples=8, deadline=None, suppress_health_check=list(HealthCheck))
-def test_stub_api_conforms(case: schemathesis.Case) -> None:
-    _validate(case)
+def test_no_stub_routes_remain() -> None:
+    """M8.5b implemented the printer routes, the last stubs: every documented operation has a
+    real handler, fuzzed behind the gate here and through a database by the CI contract job
+    and the integration tests. The stub pass that fuzzed them without the gate is retired."""
+    document = _app(gated=True).openapi()
+    stubs = [f"{method.upper()} {path}" for path, item in document["paths"].items()
+             for method, operation in item.items()
+             if isinstance(operation, dict)
+             and "501" in operation.get("responses", {})]  # fmt: skip
+    assert stubs == []
 
 
 def test_a_body_over_the_cap_counts_as_rejected() -> None:
     """The 413 allowance above reaches the negative-data check (it lives in a private
     schemathesis module, so an upgrade that moves it fails here, not by chance in a fuzz run)."""
-    for schema in (gated, open_stubs):
+    for schema in (gated,):
         statuses = schema.config.checks.negative_data_rejection.expected_statuses
         assert "413" in statuses and "422" in statuses

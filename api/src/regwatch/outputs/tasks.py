@@ -67,7 +67,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
     from regwatch.admin.services import values
     from regwatch.core import objectstore
     from regwatch.core.services import audit
-    from regwatch.outputs import csv_out, mail, pdf, schedules, services
+    from regwatch.outputs import csv_out, ipp, mail, pdf, printers, schedules, services
     from regwatch.outputs.models import OutputJob
     from regwatch.reports.render import render_layout
 
@@ -95,6 +95,10 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
                                  "outputs.allowed_recipient_domains"])  # fmt: skip
     try:
         layout = await services.check_source(db, job, principal)
+        if kind == "print":  # the right, the flag and the printer as they are now (M8.5b)
+            if "outputs.print" not in principal.permissions:
+                return await fail("forbidden", "printing needs outputs.print")
+            printer = await printers.usable(db, destination.get("printer_id"))
         if kind == "email":  # the rights and the allowed domains as they are now
             if "outputs.email" not in principal.permissions:
                 return await fail("forbidden", "sending by email needs outputs.email")
@@ -120,6 +124,29 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
             )
         except pdf.PdfError as exc:
             return await fail(exc.error_class, exc.message)
+    if kind == "print":
+        now = await db.scalar(select(OutputJob.status).where(OutputJob.id == job.id))
+        if now != "rendering":  # cancelled or swept meanwhile: do not print
+            await db.commit()
+            return str(now)
+        networks, plain = await printers.print_settings(db)
+        try:
+            ipp_job = await ipp.send(
+                ipp_url=printer.ipp_url, tls_sha256=printer.tls_sha256, pdf=data,
+                job_name=services.file_name(job, "pdf"),
+                copies=int(destination.get("copies", 1)), media=printer.default_media,
+                networks=networks, allow_plain=plain,
+                allow_test_printer=get_settings().print_test_printer)  # fmt: skip
+        except ipp.PrinterError as exc:
+            if exc.error_class != "printer-unavailable" or job.attempts >= services.MAX_ATTEMPTS:
+                return await fail(exc.error_class, exc.message)
+            job.status, job.error_class, job.error_message = "queued", exc.error_class, exc.message
+            await db.commit()
+            wait = RETRY_AFTER_S[min(job.attempts, len(RETRY_AFTER_S)) - 1]
+            await enqueue("outputs.print_ipp", job.id, countdown=wait)
+            return "retrying"
+        destination = {**destination, "ipp_job_id": ipp_job}
+        job.destination = destination
     if kind == "email":
         name = services.file_name(job, "pdf")
         done = set(destination.get("sent", []))  # those a failed attempt already reached
@@ -166,6 +193,8 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
     job.error_class = job.error_message = None
     after: dict[str, object] = {"kind": kind, "bytes": len(data), "pages": pages,
                                 "layout_version": layout.version}  # fmt: skip
+    if kind == "print":
+        after["printer_id"], after["ipp_job_id"] = destination["printer_id"], ipp_job
     if kind == "csv":
         after["columns"], after["truncated"] = list(layout.columns), cut
     if kind == "email":
@@ -208,6 +237,25 @@ async def _run_csv(job_id: uuid.UUID) -> None:
 async def run_csv(db: AsyncSession, job_id: uuid.UUID) -> str:
     """Export one queued CSV job to the object store; its final status (M8.4)."""
     return await run_job(db, job_id, "csv")
+
+
+@shared_task(name="outputs.print_ipp", queue="outputs")  # type: ignore[untyped-decorator]
+def print_ipp(output_job_id: str) -> None:
+    anyio.run(_run_print, uuid.UUID(output_job_id))
+
+
+async def _run_print(job_id: uuid.UUID) -> None:
+    engine = create_engine(get_settings().database_url.get_secret_value(), poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            await run_print(db, job_id)
+    finally:
+        await engine.dispose()
+
+
+async def run_print(db: AsyncSession, job_id: uuid.UUID) -> str:
+    """Render one queued print job and send it to its printer (M8.5b; CP-33)."""
+    return await run_job(db, job_id, "print")
 
 
 @shared_task(name="outputs.schedule_tick", queue="outputs")  # type: ignore[untyped-decorator]

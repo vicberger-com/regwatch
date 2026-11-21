@@ -345,7 +345,8 @@ CREATE TABLE report_layout ( -- std
 
 CREATE TABLE printer ( -- std
   id uuid PRIMARY KEY DEFAULT uuidv7(), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
-  name text NOT NULL UNIQUE, ipp_url text NOT NULL, default_media text NOT NULL DEFAULT 'iso_a4_210x297mm', enabled boolean NOT NULL DEFAULT true
+  name text NOT NULL UNIQUE, ipp_url text NOT NULL, default_media text NOT NULL DEFAULT 'iso_a4_210x297mm', enabled boolean NOT NULL DEFAULT true,
+  tls_sha256 text CHECK (tls_sha256 ~ '^[0-9a-f]{64}$')  -- CP-33, migration 0011: a pinned certificate digest
 );
 
 CREATE TABLE output_job ( -- std

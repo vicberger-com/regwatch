@@ -1,21 +1,27 @@
-"""Output job and printer routes; mounted under /api/v1. Output jobs are real from M8.1;
-printers answer 501 until the print slice."""
+"""Output job and printer routes; mounted under /api/v1 (M8; printers from M8.5b, CP-33)."""
 
 from __future__ import annotations
 
-from typing import Any, Literal, NoReturn
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request, Response
 
 from regwatch.core.db import DbSession
 from regwatch.core.errors import ProblemError
-from regwatch.core.routing import Paging, Tags, not_implemented, spec
+from regwatch.core.routing import Paging, Tags, spec
 from regwatch.core.schemas import Page
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
-from regwatch.outputs import services
-from regwatch.outputs.schemas import OutputJob, OutputKind, OutputRequest, Printer, PrinterWrite
+from regwatch.outputs import printers, services
+from regwatch.outputs.schemas import (
+    OutputJob,
+    OutputKind,
+    OutputRequest,
+    Printer,
+    PrinterChoice,
+    PrinterWrite,
+)
 
 router = APIRouter()
 OUTPUTS: Tags = ["outputs"]
@@ -23,36 +29,58 @@ ADMIN: Tags = ["admin"]
 PDF, SETTINGS = "outputs.pdf", "settings.manage"
 
 
-@router.get("/admin/printers", tags=ADMIN, **spec(list[Printer], desc="Printers", perm=SETTINGS))
-async def list_printers() -> NoReturn:
-    not_implemented()
+@router.get("/printers", tags=OUTPUTS,
+            **spec(list[PrinterChoice], desc="Printers to choose from", perm="outputs.print",
+                   stub=False))  # fmt: skip
+async def list_printer_choices(db: DbSession) -> list[PrinterChoice]:
+    return await printers.choices(db)
+
+
+@router.get("/admin/printers", tags=ADMIN,
+            **spec(list[Printer], desc="Printers", perm=SETTINGS, stub=False))  # fmt: skip
+async def list_printers(db: DbSession) -> list[Printer]:
+    return await printers.list_printers(db)
 
 
 @router.post(
-    "/admin/printers", tags=ADMIN, **spec(Printer, status=201, desc="Created", perm=SETTINGS)
-)
-async def create_printer(body: PrinterWrite) -> NoReturn:
-    not_implemented()
+    "/admin/printers", tags=ADMIN,
+    **spec(Printer, status=201, desc="Created", perm=SETTINGS, errors=(422,), stub=False),
+)  # fmt: skip
+async def create_printer(body: PrinterWrite, principal: CurrentPrincipal, request: Request,
+                         db: DbSession) -> Printer:  # fmt: skip
+    return await printers.create_printer(db, body, principal, client_ip(request))
 
 
-@router.patch("/admin/printers/{id}", tags=ADMIN, **spec(Printer, desc="Updated", perm=SETTINGS))
-async def update_printer(id: UUID, body: PrinterWrite) -> NoReturn:
-    not_implemented()
+@router.patch(
+    "/admin/printers/{id}", tags=ADMIN,
+    **spec(Printer, desc="Updated", perm=SETTINGS, errors=(422,), stub=False),
+)  # fmt: skip
+async def update_printer(id: UUID, body: PrinterWrite, principal: CurrentPrincipal,
+                         request: Request, db: DbSession) -> Printer:  # fmt: skip
+    return await printers.update_printer(db, id, body, principal, client_ip(request))
 
 
 @router.delete(
-    "/admin/printers/{id}", tags=ADMIN, **spec(status=204, desc="Deleted", perm=SETTINGS)
-)
-async def delete_printer(id: UUID) -> NoReturn:
-    not_implemented()
+    "/admin/printers/{id}", tags=ADMIN,
+    **spec(status=204, desc="Deleted", perm=SETTINGS, stub=False),
+)  # fmt: skip
+async def delete_printer(id: UUID, principal: CurrentPrincipal, request: Request,
+                         db: DbSession) -> Response:  # fmt: skip
+    await printers.delete_printer(db, id, principal, client_ip(request))
+    return Response(status_code=204)
 
 
 @router.post(
     "/admin/printers/{id}/test-page", tags=ADMIN,
-    **spec(OutputJob, status=202, desc="Test page queued", perm=SETTINGS),
+    **spec(OutputJob, status=202, desc="Test page queued", perm=SETTINGS, stub=False),
 )  # fmt: skip
-async def printer_test_page(id: UUID) -> NoReturn:
-    not_implemented()
+async def printer_test_page(id: UUID, principal: CurrentPrincipal, request: Request,
+                            db: DbSession) -> OutputJob:  # fmt: skip
+    from regwatch.outputs.tasks import enqueue
+
+    job = await printers.test_page(db, id, principal, client_ip(request))
+    await enqueue(services.TASKS["print"], job.id)
+    return services.out(job, principal)
 
 
 @router.get(

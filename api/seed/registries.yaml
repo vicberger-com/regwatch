@@ -65,6 +65,8 @@ settings:                       # runtime-editable, stored in the `setting` tabl
   outputs.allowed_recipient_domains: { type: list, default: [], module: M8, note: empty list blocks all email }
   outputs.attachment_max_bytes: { type: integer, default: 20971520, module: M8 }
   outputs.artifact_retention_days: { type: integer, default: 90, module: M8 }
+  outputs.printer_networks: { type: list, default: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"], module: M8, note: CP-33; printers must resolve into these }
+  outputs.printer_plain_ipp: { type: boolean, default: false, module: M8, note: CP-33; allows clear-text ipp:// printers }
   outputs.rate_per_hour_per_user: { type: integer, default: 20, module: M8 }
   reports.default_page_size:    { type: enum, values: [A4, Letter], default: A4, module: M7 }
   sessions.idle_timeout_max_minutes: { type: integer, default: 480, module: M1 }

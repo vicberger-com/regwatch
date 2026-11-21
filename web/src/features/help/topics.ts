@@ -334,6 +334,20 @@ const SETTINGS: Topic[] = [
   ),
   T(
     "Settings",
+    "outputs.printer_networks",
+    "Allowed printer networks",
+    "The networks a printer's address must be in, one per line (the private ranges by default).",
+    "Every address a printer's name resolves to must fall in one of these, and never on this computer, a link-local or multicast address, or one of the application's own services. Narrow it to your printers' subnets where you can.",
+  ),
+  T(
+    "Settings",
+    "outputs.printer_plain_ipp",
+    "Allow clear-text printers",
+    "Allows printers at ipp:// addresses, which send documents unencrypted. Off by default; prefer ipps://.",
+    "With it on, a document crosses the network readable by anyone on the path. A printer with a self-signed certificate can use ipps:// with its certificate's fingerprint instead.",
+  ),
+  T(
+    "Settings",
     "outputs.rate_per_hour_per_user",
     "Outputs per hour",
     "How many reports or emails one user may produce each hour.",
@@ -413,6 +427,7 @@ const FLAGS: Topic[] = [
     "outputs.server_print",
     "Server printing",
     "Enables printing reports to network printers from the server.",
+    "Printers are added under Settings, Printers, by an administrator; users with the print permission then choose one in New output. Each printer's address is checked against the allowed printer networks when it is saved and again before each job.",
   ),
 ];
 

@@ -75,10 +75,20 @@ class Printer(BaseModel):
     ipp_url: str = UNSET
     default_media: str = UNSET
     enabled: bool = UNSET
+    tls_sha256: str | None = UNSET  # CP-33
 
 
 class PrinterWrite(BaseModel):
-    name: str = UNSET
-    ipp_url: str = Field(default=UNSET, pattern=r"^ipps?://")
-    default_media: str = UNSET
+    name: str = Field(default=UNSET, min_length=1, max_length=100)
+    ipp_url: str = Field(default=UNSET, pattern=r"^ipps?://", max_length=500)
+    default_media: str = Field(default=UNSET, pattern=r"^[a-z0-9_.-]{1,64}$")
     enabled: bool = UNSET
+    # CP-33: the SHA-256 of the printer's DER certificate, 64 hex digits (colons allowed)
+    tls_sha256: str | None = Field(default=UNSET, pattern=r"^[0-9A-Fa-f:]{64,95}$")
+
+
+class PrinterChoice(BaseModel):
+    """CP-33 ``GET /printers``: what New output offers (``outputs.print``)."""
+
+    id: UUID
+    name: str

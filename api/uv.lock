@@ -578,6 +578,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ippx"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/aa/aa/2865b63cb172fca3fdfb13671918e8dc6a86cf768fb048f75630f0b678d8/ippx-0.1.1.tar.gz", hash = "sha256:ce7a6555f27beeecb8ad09defd56f124ea660dc0de49f4203fe757c1bf50e94c", size = 23902, upload-time = "2026-08-23T11:25:17.397Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/3c/61acd5a99c7e1b404dad4971f966a1fbf2553ba9d01660e36b4e72ad78af/ippx-0.1.1-py3-none-any.whl", hash = "sha256:1e9f7cc26167a160d438d134412b7eb55408ac6f8ac5d8401a50c3b0ff187fc9", size = 20727, upload-time = "2026-08-23T11:25:16.296Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1064,6 +1076,7 @@ dependencies = [
     { name = "google-re2" },
     { name = "html5lib" },
     { name = "httpx" },
+    { name = "ippx" },
     { name = "jinja2" },
     { name = "lingua-language-detector" },
     { name = "markdown-it-py" },
@@ -1109,6 +1122,7 @@ requires-dist = [
     { name = "google-re2", specifier = ">=1.1,<2" },
     { name = "html5lib", specifier = ">=1.1,<2" },
     { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "ippx", specifier = "==0.1.1" },
     { name = "jinja2", specifier = ">=3.1,<4" },
     { name = "lingua-language-detector", specifier = "==2.2.0" },
     { name = "markdown-it-py", specifier = ">=4.3,<5" },

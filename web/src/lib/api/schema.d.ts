@@ -1283,6 +1283,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/printers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-33: the enabled printers, for New output (404 while outputs.server_print is off) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Printers to choose from */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PrinterChoice"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/printers": {
         parameters: {
             query?: never;
@@ -4103,12 +4139,20 @@ export interface components {
             ipp_url?: string;
             default_media?: string;
             enabled?: boolean;
+            /** @description CP-33: the pinned SHA-256 of the printer's certificate */
+            tls_sha256?: string | null;
         };
         PrinterWrite: {
             name?: string;
             ipp_url?: string;
             default_media?: string;
             enabled?: boolean;
+            tls_sha256?: string | null;
+        };
+        PrinterChoice: {
+            /** Format: uuid */
+            id: string;
+            name: string;
         };
         Facet: {
             /** Format: uuid */

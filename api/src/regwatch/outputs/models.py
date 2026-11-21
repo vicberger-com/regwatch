@@ -39,3 +39,18 @@ class OutputJob(Base):
     layout_version: Mapped[int | None]
     attempts: Mapped[int] = mapped_column(server_default=text("0"))
     finished_at: Mapped[datetime | None]
+
+
+class Printer(Base):
+    """An administrator's IPP printer (M8.5b; CP-33: ``tls_sha256``, migration 0011)."""
+
+    __tablename__ = "printer"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, server_default=text("uuidv7()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    name: Mapped[str]
+    ipp_url: Mapped[str]
+    default_media: Mapped[str] = mapped_column(server_default=text("'iso_a4_210x297mm'"))
+    enabled: Mapped[bool] = mapped_column(server_default=text("true"))
+    tls_sha256: Mapped[str | None]

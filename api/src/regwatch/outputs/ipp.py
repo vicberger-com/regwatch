@@ -1,0 +1,206 @@
+"""Network printing (M8.5b; BL-15, CP-33, BL-145): a PDF to an administrator's IPP printer,
+from the outputs worker, with ippx (MIT, pinned in pyproject; register 3.6).
+
+A printer is an address the server connects to, so it is treated as an outbound request to a
+host an administrator chose, never one a user chose:
+- ``ipps://`` with certificate verification, or the printer's pinned SHA-256 fingerprint for a
+  self-signed certificate; ``ipp://`` (clear text) only with ``outputs.printer_plain_ipp``, and
+  then sent to the address checked here, so DNS cannot move it (rebinding).
+- The address must resolve, every answer, into ``outputs.printer_networks`` (the private
+  ranges by default) and never to loopback, link-local, multicast or unspecified addresses,
+  nor to an address of the stack's own services (whose network is private too); their names
+  are refused outright. Checked when a printer is saved and before each
+  send.
+- No user information in the URL, no query or fragment, no redirects, one attempt, 30 s, and a
+  printer's answer is read to at most ``MAX_ANSWER`` bytes (ippx reads whole answers).
+- TLS keeps the full default policy (``SECLEVEL=2``), not ippx's relaxed default for old
+  printers.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import ssl
+from collections.abc import Iterable
+from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
+
+import anyio
+import httpx
+import ippx
+
+from regwatch.core.schemas import has_control
+
+MAX_ANSWER = 1_000_000
+TIMEOUT_S = 30.0
+CIPHERS = "DEFAULT:@SECLEVEL=2"
+DEFAULT_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
+# deploy/compose.yaml's services: never a printer, whatever the networks allow.
+STACK_NAMES = frozenset({"localhost", "proxy", "api", "web", "worker", "beat", "db", "queue",
+                         "pdf", "search", "translate", "mailpit", "ippeveprinter"})  # fmt: skip
+TEST_PRINTER = "ippeveprinter"  # the test printer of the `print-test` profile (dev and QA)
+
+
+class PrinterError(Exception):
+    def __init__(self, error_class: str, message: str) -> None:
+        super().__init__(message)
+        self.error_class = error_class
+        self.message = message
+
+
+@dataclass(frozen=True)
+class Target:
+    scheme: str  # ipps or ipp
+    host: str
+    port: int
+    path: str
+
+    def url(self, host: str | None = None) -> str:
+        name = host or self.host
+        netloc = f"[{name}]:{self.port}" if ":" in name else f"{name}:{self.port}"
+        return urlunsplit((self.scheme, netloc, self.path, "", ""))
+
+
+def parse(url: str, allow_plain: bool, allow_test_printer: bool = False) -> Target:
+    """The printer's address, or a ``ValueError`` saying what is wrong."""
+    text = url.strip()
+    if has_control(text) or len(text) > 500:
+        raise ValueError("one line, at most 500 characters")
+    parts = urlsplit(text)
+    if parts.scheme not in ("ipps", "ipp"):
+        raise ValueError("an ipps:// address, such as ipps://printer.example.internal/ipp/print")
+    if parts.scheme == "ipp" and not allow_plain:
+        raise ValueError("ipps:// only: clear-text ipp:// is off (outputs.printer_plain_ipp)")
+    if parts.username or parts.password or parts.query or parts.fragment:
+        raise ValueError("no user name, password, query or fragment in the address")
+    host = (parts.hostname or "").rstrip(".").lower()
+    try:
+        port = parts.port or 631
+    except ValueError:
+        raise ValueError("a port from 1 to 65535") from None
+    if not host:
+        raise ValueError("a printer host name or address")
+    if host in STACK_NAMES and not (allow_test_printer and host == TEST_PRINTER):
+        raise ValueError("not one of the application's own services")
+    path = parts.path or "/ipp/print"
+    return Target(parts.scheme, host, port, path)
+
+
+def networks_of(values: Iterable[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    return [ipaddress.ip_network(v.strip(), strict=False) for v in values if v.strip()]
+
+
+def allowed(address: str, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
+    ip = ipaddress.ip_address(address)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+        return False
+    return any(ip in n for n in networks if n.version == ip.version)
+
+
+async def lookup(host: str) -> set[str]:
+    """The addresses of ``host``; empty when it does not resolve. Tests replace it."""
+    try:
+        with anyio.fail_after(5):
+            infos = await anyio.getaddrinfo(host, None, type=0)
+    except (OSError, TimeoutError):
+        return set()
+    return {str(info[4][0]) for info in infos}
+
+
+async def stack_addresses() -> set[str]:
+    """The addresses of the application's own services, on the stack's private network: a
+    printer is never one of them, whatever the allowed networks say."""
+    found: set[str] = set()
+    for name in sorted(STACK_NAMES - {"localhost", TEST_PRINTER}):
+        found |= await lookup(name)
+    return found
+
+
+async def resolve(target: Target, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]
+                  ) -> str:  # fmt: skip
+    """One checked address of the printer; a ``PrinterError`` unless every answer is allowed."""
+    try:
+        found = {str(ipaddress.ip_address(target.host))}
+    except ValueError:
+        found = await lookup(target.host)
+    if not found:
+        raise PrinterError("printer-not-found", "the printer's name does not resolve")
+    own = await stack_addresses()
+    if not all(allowed(a, networks) and a not in own for a in found):
+        raise PrinterError("printer-address-refused", "the printer's address is outside "
+                           "the allowed printer networks")  # fmt: skip
+    return sorted(found)[0]
+
+
+class _Capped(httpx.AsyncBaseTransport):
+    """Reads a printer's whole answer, as ippx does, but never more than ``MAX_ANSWER``."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport) -> None:
+        self.inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self.inner.handle_async_request(request)
+        body = bytearray()
+        try:
+            async for chunk in response.stream:  # type: ignore[union-attr]
+                body += chunk
+                if len(body) > MAX_ANSWER:
+                    raise PrinterError("printer-answer-too-large", "the printer's answer is "
+                                       "larger than expected") from None  # fmt: skip
+        finally:
+            await response.aclose()
+        return httpx.Response(response.status_code, headers=response.headers,
+                              content=bytes(body), request=request)  # fmt: skip
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
+
+def transport_factory(verify: bool | str | ssl.SSLContext) -> httpx.AsyncBaseTransport:
+    """The connection to the printer; tests replace it with a mock printer."""
+    return httpx.AsyncHTTPTransport(verify=verify, retries=0)
+
+
+def _tls(fingerprint: str | None) -> ippx.TlsConfig:
+    return ippx.TlsConfig(fingerprint=fingerprint or None, ciphers=CIPHERS)
+
+
+async def send(*, ipp_url: str, tls_sha256: str | None, pdf: bytes, job_name: str, copies: int,
+               media: str, networks: Iterable[str], allow_plain: bool,
+               allow_test_printer: bool = False) -> int:  # fmt: skip
+    """Print ``pdf``; the printer's job id once it accepts the job."""
+    try:
+        target = parse(ipp_url, allow_plain, allow_test_printer)
+    except ValueError as exc:
+        raise PrinterError("printer-address-refused", str(exc)) from None
+    nets = networks_of(networks)
+    if target.host == TEST_PRINTER and allow_test_printer:
+        address = target.host  # the stack's own test printer, on the stack's network
+    else:
+        address = await resolve(target, nets)
+    # Clear text has no certificate to hold the name to its printer: send to the address that
+    # was checked. ipps keeps the name, which the certificate (or the pin) is checked against.
+    url = target.url(address if target.scheme == "ipp" else None)
+    tls = _tls(tls_sha256)
+    client = ippx.AsyncIppClient(url, tls=tls, timeout=TIMEOUT_S, requesting_user_name="regwatch")
+    await client._http.aclose()  # noqa: SLF001 - ippx 0.1.1 (pinned): replace its client
+    client._http = httpx.AsyncClient(  # noqa: SLF001
+        transport=_Capped(transport_factory(tls.httpx_verify())), timeout=TIMEOUT_S,
+        follow_redirects=False, headers={"Content-Type": "application/ipp",
+                                         "Accept": "application/ipp"})  # fmt: skip
+    try:
+        async with client:
+            job = await client.print_job(
+                pdf, document_format="application/pdf", job_name=job_name[:200],
+                job_attributes={"copies": copies, "media": media})  # fmt: skip
+    except PrinterError:
+        raise
+    except ippx.IppResponseError as exc:
+        raise PrinterError("printer-refused", f"the printer refused the job ({exc})"[:300]) \
+            from None  # fmt: skip
+    except (ippx.IppError, httpx.HTTPError, ssl.SSLError, OSError) as exc:
+        raise PrinterError("printer-unavailable", "the printer could not be reached "
+                           f"({type(exc).__name__})") from None  # fmt: skip
+    return int(job.job_id)

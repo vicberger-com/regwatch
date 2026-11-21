@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
     smtp_from: str = "regwatch@example.com"
+    # --- printing (CP-33) ---
+    print_test_printer: bool = False  # the `print-test` profile's ippeveprinter (dev and QA)
 
     # --- sidecar services (internal fixed-URL client, ADR-0001) ---
     pdf_url: AnyHttpUrl = AnyHttpUrl("http://pdf:3000")

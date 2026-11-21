@@ -109,9 +109,16 @@ async def test_permitted_user_reaches_the_handler(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _resolve_to(monkeypatch, _principal({"settings.manage"}))
-    assert (
-        await _get(app, "/admin/printers", cookies={"rw_session": "t"})
-    ).status_code == 501  # a stub (M8 print): the gate let the call through
+    from regwatch.core.db import get_db
+    from regwatch.outputs import printers
+
+    async def none(db: object) -> list[object]:
+        return []
+
+    monkeypatch.setattr(printers, "list_printers", none)  # the handler, without a database
+    app.dependency_overrides[get_db] = lambda: None
+    got = await _get(app, "/admin/printers", cookies={"rw_session": "t"})
+    assert (got.status_code, got.json()) == (200, [])  # the gate let the call through
 
 
 async def test_temporary_password_allows_only_the_change(

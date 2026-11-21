@@ -43,11 +43,11 @@ def _routed(app: FastAPI) -> dict[tuple[str, str], APIRoute]:
     return pairs
 
 
-def test_contract_has_82_paths_and_110_operations() -> None:
+def test_contract_has_83_paths_and_111_operations() -> None:
     # CP-07, CP-08, CP-10 (GET /admin/audit/export), CP-17 (POST /sources/{id}/documents)
     # CP-24 (/me/interest-options), CP-25 (/catalogue), CP-26 (/feed-requests), CP-27 (groups)
-    assert len(CONTRACT["paths"]) == 82
-    assert len(operations(CONTRACT)) == 110
+    assert len(CONTRACT["paths"]) == 83  # CP-33 added GET /printers
+    assert len(operations(CONTRACT)) == 111
 
 
 def test_every_contract_operation_is_routed(app: FastAPI) -> None:
@@ -80,7 +80,11 @@ def _mutate(doc: dict[str, Any]) -> dict[str, Any]:
     users[PERMISSION_KEY] = "users.read"
     next(p for p in users["parameters"] if p["name"] == "page")["schema"]["minimum"] = 0
     doc["components"]["schemas"]["User"]["properties"]["email"]["format"] = "uri"
-    doc["paths"]["/admin/printers"]["get"]["responses"]["501"]["content"] = {"application/json": {}}
+    # No route is a stub since M8.5b; a 501 answered with plain JSON is still reported.
+    doc["paths"]["/admin/printers"]["get"]["responses"]["501"] = {
+        "description": "Not implemented",
+        "content": {"application/json": {}},
+    }
     return doc
 
 
@@ -117,11 +121,15 @@ async def test_stubs_answer_501_problem(app: FastAPI) -> None:
     app.dependency_overrides[authorize] = lambda: None  # past the gate (#31)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get(f"{API_PREFIX}/admin/printers")  # a print-slice stub
+        # No route is a stub since M8.5b; a stub's 501 is still problem details.
+        from regwatch.core.routing import not_implemented
+
+        app.add_api_route(
+            f"{API_PREFIX}/a-stub", not_implemented, methods=["GET"], response_model=None
+        )
+        resp = await client.get(f"{API_PREFIX}/a-stub")
         assert resp.status_code == 501
         assert resp.headers["content-type"] == "application/problem+json"
-        resp = await client.get(f"{API_PREFIX}/admin/printers")
-        assert resp.status_code == 501
         # A raw (non-JSON) body reaches its handler: the YAML import, implemented in M2,
         # rejects a malformed document before touching the database.
         app.dependency_overrides[current_principal] = lambda: Principal(

@@ -34,9 +34,9 @@ from regwatch.outputs.schemas import OutputRequest, OutputSchedule
 
 READ_ALL = "outputs.read_all"
 LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
-KINDS_NOW = {"pdf", "email", "csv"}  # M8.1, M8.2, M8.4; print follows
+KINDS_NOW = {"pdf", "email", "csv", "print"}  # M8.1, M8.2, M8.4, M8.5b
 TASKS = {"pdf": "outputs.render_pdf", "email": "outputs.send_email",
-         "csv": "outputs.export_csv"}  # fmt: skip
+         "csv": "outputs.export_csv", "print": "outputs.print_ipp"}  # fmt: skip
 RECIPIENTS_PER_HOUR = 100  # email recipients a user may reach in an hour (M8.1 review)
 MAX_ATTEMPTS = 3  # renders per job, first try and retries together (M8.1 review finding 3)
 STALE_AFTER = timedelta(minutes=5)  # a render outlives its 90-second limit: interrupted
@@ -90,8 +90,11 @@ def out(job: OutputJob, viewer: Principal | None = None) -> JobOut:
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
         source_summary=source,
-        destination_summary=(f"email to {len((job.destination or {}).get('emails', []))} "
-                             "recipients" if job.kind == "email" else "download"),
+        destination_summary=(
+            f"email to {len((job.destination or {}).get('emails', []))} recipients"
+            if job.kind == "email" else
+            f"printer, {(job.destination or {}).get('copies', 1)} copies" if job.kind == "print"
+            else "download"),
         artifact_available=job.artifact_ref is not None, artifact_bytes=job.artifact_bytes,
         error_class=job.error_class, error_message=job.error_message,
         scheduled_cron=job.scheduled_cron, next_run_at=job.next_run_at,
@@ -160,7 +163,7 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     from regwatch.reports import templates
 
     if body.kind.value not in KINDS_NOW:
-        raise _invalid("kind", "PDF, email and CSV for now; print comes next")
+        raise _invalid("kind", "PDF, email, CSV or print")
     planned = (await _schedule(db, body.schedule, principal)
                if body.schedule is not None else None)  # fmt: skip
     chosen = body.source.model_dump(exclude_unset=True)
@@ -171,6 +174,8 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     destination: dict[str, Any] = {"report_params": params}
     if body.kind.value == "email":
         destination.update(await _email_destination(db, body, principal))
+    if body.kind.value == "print":
+        destination.update(await _print_destination(db, body, principal))
     job = OutputJob(requested_by=principal.user.id, kind=body.kind.value,
                     report_layout_id=body.source.report_layout_id
                     if "report_layout_id" in chosen else None,
@@ -232,6 +237,21 @@ async def _schedule(db: AsyncSession, schedule: OutputSchedule,
         raise ProblemError(409, "conflict", f"At most {schedules.MAX_SCHEDULES} schedules; "
                            "remove one first.")  # fmt: skip
     return first, str(zone)
+
+
+async def _print_destination(db: AsyncSession, body: OutputRequest,
+                             principal: Principal) -> dict[str, Any]:  # fmt: skip
+    """A registered, enabled printer and the copies (M8.5b; CP-33)."""
+    from regwatch.outputs import printers
+
+    if "outputs.print" not in principal.permissions:
+        raise ProblemError(403, "forbidden", "Printing to network printers needs outputs.print.")
+    given = body.destination.model_dump(exclude_unset=True) \
+        if "destination" in body.model_fields_set else {}  # fmt: skip
+    if "printer_id" not in given:
+        raise _invalid("destination.printer_id", "choose a printer")
+    printer = await printers.usable(db, given["printer_id"])
+    return {"printer_id": str(printer.id), "copies": int(given.get("copies", 1))}
 
 
 async def _email_destination(db: AsyncSession, body: OutputRequest,

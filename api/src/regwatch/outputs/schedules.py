@@ -77,6 +77,9 @@ PAUSE_ON = frozenset(
         "recipient-refused",
         "conflict",
         "invalid-query",
+        "printing-off",
+        "printer-removed",
+        "printer-address-refused",
     }
 )  # a saved view no longer visible; a bad query
 
