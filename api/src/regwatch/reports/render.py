@@ -344,7 +344,7 @@ async def render_layout(db: AsyncSession, row: ReportLayout, principal: Principa
         elif kind in ("BarChart", "LineChart", "MapSnapshot"):
             # Built by svg.py, which escapes every label (numbers and fixed colours otherwise):
             # the one markup the template is given; test_report_svg checks hostile labels.
-            block["svg"] = Markup(_chart(kind, props, rows))  # noqa: S704
+            block["svg"] = Markup(_chart(kind, props, rows))  # noqa: S704  # nosec B704 - svg.py escapes
         blocks.append(block)
     html = _environment().get_template("page.html.j2").render(
         title=root.get("title") or row.name, page_size=row.page_size,

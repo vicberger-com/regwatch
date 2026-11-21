@@ -64,7 +64,8 @@ async def build(db: AsyncSession, src: QuerySource,
     """The file, and whether it was cut short at ``max_bytes``."""
     from regwatch.search import export
 
-    assert db.bind is not None  # noqa: S101 - a bound session
+    if db.bind is None:
+        raise RuntimeError("a CSV export needs a session bound to an engine")
     chunks: list[bytes] = []
     size = 0
     truncated = False

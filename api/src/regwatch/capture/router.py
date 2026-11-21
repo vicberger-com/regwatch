@@ -12,7 +12,8 @@ from uuid import UUID
 from fastapi import APIRouter, Request, Response
 from starlette.datastructures import UploadFile
 
-from regwatch.capture import catalogue, dryrun, manual, requests, runs, services, tasks
+from regwatch.capture import catalogue, dryrun, manual, runs, services, tasks
+from regwatch.capture import requests as feed_requests  # the feed requests, not an HTTP client
 from regwatch.capture.schemas import (
     CaptureJob,
     CaptureJobWrite,
@@ -240,7 +241,7 @@ async def unfollow_source(
 async def create_feed_request(
     body: FeedRequestWrite, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> FeedRequestOut:
-    return await requests.create(db, body, principal, client_ip(request))
+    return await feed_requests.create(db, body, principal, client_ip(request))
 
 
 @router.get(
@@ -252,7 +253,7 @@ async def list_feed_requests(
     principal: CurrentPrincipal, db: DbSession,
     status: Literal["pending", "approved", "declined", "withdrawn"] | None = None,
 ) -> list[FeedRequestOut]:  # fmt: skip
-    return await requests.listed(db, principal, status)
+    return await feed_requests.listed(db, principal, status)
 
 
 @router.delete(
@@ -262,7 +263,7 @@ async def list_feed_requests(
 async def withdraw_feed_request(
     id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Response:
-    await requests.withdraw(db, id, principal, client_ip(request))
+    await feed_requests.withdraw(db, id, principal, client_ip(request))
     return Response(status_code=204)
 
 
@@ -274,4 +275,4 @@ async def decide_feed_request(
     id: UUID, body: FeedRequestDecision, principal: CurrentPrincipal, request: Request,
     db: DbSession,
 ) -> FeedRequestOut:  # fmt: skip
-    return await requests.decide(db, id, body, principal, client_ip(request))
+    return await feed_requests.decide(db, id, body, principal, client_ip(request))

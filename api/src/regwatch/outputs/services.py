@@ -30,7 +30,7 @@ from regwatch.identity.models import User
 from regwatch.identity.services import Principal, roles_and_permissions
 from regwatch.outputs.models import OutputJob
 from regwatch.outputs.schemas import OutputJob as JobOut
-from regwatch.outputs.schemas import OutputRequest
+from regwatch.outputs.schemas import OutputRequest, OutputSchedule
 
 READ_ALL = "outputs.read_all"
 LINK_S = 600  # a signed artifact link lasts 10 minutes (contract)
@@ -127,7 +127,8 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
 
     if body.kind.value not in KINDS_NOW:
         raise _invalid("kind", "PDF, email and CSV for now; print comes next")
-    planned = await _schedule(db, body, principal) if body.schedule is not None else None
+    planned = (await _schedule(db, body.schedule, principal)
+               if body.schedule is not None else None)  # fmt: skip
     chosen = body.source.model_dump(exclude_unset=True)
     if len(chosen) != 1:
         raise _invalid("source", "exactly one of report_layout_id, report_template_key, "
@@ -177,20 +178,19 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     return result
 
 
-async def _schedule(db: AsyncSession, body: OutputRequest,
+async def _schedule(db: AsyncSession, schedule: OutputSchedule,
                     principal: Principal) -> tuple[datetime, str]:  # fmt: skip
     """A checked schedule's first run and its time zone (M8.3)."""
     from regwatch.outputs import schedules
 
-    assert body.schedule is not None  # noqa: S101 - the caller checked
     if "outputs.schedule" not in principal.permissions:
         raise ProblemError(403, "forbidden", "Scheduled outputs need outputs.schedule.")
-    zone = body.schedule.timezone if "timezone" in body.schedule.model_fields_set else (
+    zone = schedule.timezone if "timezone" in schedule.model_fields_set else (
         (principal.user.preferences or {}).get("timezone") or "UTC")  # fmt: skip
-    if "cron" not in body.schedule.model_fields_set:
+    if "cron" not in schedule.model_fields_set:
         raise _invalid("schedule.cron", "a cron expression is required")
     try:
-        first = schedules.check(body.schedule.cron, str(zone))
+        first = schedules.check(schedule.cron, str(zone))
     except ValueError as exc:
         raise _invalid("schedule", str(exc)) from None
     if await schedules.count_active(db, principal.user.id) >= schedules.MAX_SCHEDULES:
