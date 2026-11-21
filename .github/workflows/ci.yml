@@ -96,10 +96,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - name: Build api (runtime stage) and web images
+      - name: Build the release images (api runtime stage; proxy with the built web app)
         run: |
           docker build --target runtime -t regwatch-api:ci api
-          docker build -t regwatch-web:ci web
+          docker build -f deploy/proxy/Dockerfile -t regwatch-proxy:ci web
+          docker build -t regwatch-web:ci web  # the development image, still scanned (BL-60)
+      - name: Every module imports in the release image (M10.4; the M10.3 packaging lesson)
+        run: scripts/release-imports.sh regwatch-api:ci
       - id: day
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -107,21 +110,37 @@ jobs:
           path: ~/.cache/trivy
           key: trivy-db-${{ steps.day.outputs.date }}
           restore-keys: trivy-db-
-      - name: Trivy, fail on critical vulnerabilities
+      - name: Trivy, fail on critical vulnerabilities in the release images and the lockfiles
         run: |
           source scripts/ci-tools.env
           mkdir -p ~/.cache/trivy
-          scan() {
+          trivy() {
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-              -v ~/.cache/trivy:/root/.cache/trivy -v "$PWD/.github/trivy:/cfg:ro" \
-              "$TRIVY_IMAGE" image --quiet --severity CRITICAL --exit-code 1 "$@"
+              -v ~/.cache/trivy:/root/.cache/trivy -v "$PWD:/src:ro" \
+              "$TRIVY_IMAGE" "$@" --quiet --severity CRITICAL --exit-code 1
           }
           status=0
-          echo "::group::regwatch-api:ci" && { scan regwatch-api:ci || status=1; } && echo "::endgroup::"
-          echo "::group::regwatch-web:ci (accepted findings: .github/trivy/web.trivyignore.yaml)"
-          scan --ignorefile /cfg/web.trivyignore.yaml regwatch-web:ci || status=1
+          for image in regwatch-api:ci regwatch-proxy:ci; do
+            echo "::group::$image" && { trivy image "$image" || status=1; } && echo "::endgroup::"
+          done
+          echo "::group::regwatch-web:ci (development only; accepted findings: .github/trivy/web.trivyignore.yaml, BL-60)"
+          trivy image --ignorefile /src/.github/trivy/web.trivyignore.yaml regwatch-web:ci || status=1
+          echo "::endgroup::"
+          echo "::group::lockfiles (api/uv.lock, web/pnpm-lock.yaml)"
+          trivy fs --scanners vuln --skip-dirs /src/web/node_modules /src || status=1
           echo "::endgroup::"
           exit $status
+
+  security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - uses: ./.github/actions/setup-api
+      - uses: ./.github/actions/setup-web
+      - name: Bandit, Semgrep, pip-audit, pnpm audit, gitleaks (make security; 8.6)
+        run: make security
 
   migrations:
     runs-on: ubuntu-24.04

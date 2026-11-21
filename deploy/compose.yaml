@@ -14,7 +14,7 @@ x-app: &app
 
 services:
   proxy:
-    image: caddy:2@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+    image: caddy:2@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b
     # Published on loopback only: the development stack is not reachable from other machines.
     # From elsewhere, use an SSH tunnel (ssh -L 8080:127.0.0.1:80 host), never a wider bind.
     ports:

@@ -1,0 +1,48 @@
+# Release (M10.4; M10 acceptance 5): for a version tag, build the release images, scan them,
+# and publish CycloneDX SBOMs of both images and of the source tree's lockfiles with the GitHub
+# release. Actions pinned to full commit SHAs; the scanner by digest (scripts/ci-tools.env).
+# Only this workflow may write: to create the release and attach its files, nothing else.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write  # gh release create/upload for this tag
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: Build the release images
+        run: |
+          docker build --target runtime -t "regwatch-api:${GITHUB_REF_NAME}" api
+          docker build -f deploy/proxy/Dockerfile -t "regwatch-proxy:${GITHUB_REF_NAME}" web
+      - name: Every module imports in the release image
+        run: scripts/release-imports.sh "regwatch-api:${GITHUB_REF_NAME}"
+      - name: No critical vulnerability (the same gate as CI)
+        run: |
+          source scripts/ci-tools.env
+          mkdir -p ~/.cache/trivy
+          for image in "regwatch-api:${GITHUB_REF_NAME}" "regwatch-proxy:${GITHUB_REF_NAME}"; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v ~/.cache/trivy:/root/.cache/trivy "$TRIVY_IMAGE" image --quiet \
+              --severity CRITICAL --exit-code 1 "$image"
+          done
+      - name: CycloneDX SBOMs
+        run: scripts/sbom.sh "regwatch-api:${GITHUB_REF_NAME}" "regwatch-proxy:${GITHUB_REF_NAME}" "${GITHUB_REF_NAME}"
+      - name: Publish them with the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1 \
+            || gh release create "${GITHUB_REF_NAME}" --verify-tag --title "${GITHUB_REF_NAME}" \
+                 --notes "See CHANGELOG.md. SBOMs (CycloneDX) and their SHA-256 sums are attached."
+          gh release upload "${GITHUB_REF_NAME}" sbom/*-"${GITHUB_REF_NAME}".cdx.json \
+            "sbom/SHA256SUMS-${GITHUB_REF_NAME}" --clobber

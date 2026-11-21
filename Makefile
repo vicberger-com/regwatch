@@ -5,7 +5,7 @@ UNIT_MARKERS := not integration and not security and not perf
 # the Compose stack and run in test-integration only.
 DB_MARKERS := integration and not stack
 
-.PHONY: help dev stop migrate seed lint lint-api lint-web test test-api test-web \
+.PHONY: help dev stop migrate seed lint lint-api lint-web test test-api test-web sbom \
         test-unit test-integration e2e openapi licenses security backup restore env
 
 help: ## List targets
@@ -66,6 +66,11 @@ openapi: ## Export the live OpenAPI document, diff it with the contract, regener
 
 connectors: ## Regenerate the admin UI's connector forms from docs/contracts/connectors.yaml
 	cd api && uv run python -I ../scripts/gen_connector_forms.py
+
+sbom: ## CycloneDX SBOMs of the release images and the lockfiles into sbom/ (M10.4)
+	docker build --target runtime -t regwatch-api:release api
+	docker build -f deploy/proxy/Dockerfile -t regwatch-proxy:release web
+	scripts/sbom.sh regwatch-api:release regwatch-proxy:release
 
 licenses: ## License inventory and allow-list check
 	scripts/license-scan.sh
