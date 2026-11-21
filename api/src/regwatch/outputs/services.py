@@ -337,6 +337,40 @@ async def cancel(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
     await db.commit()
 
 
+UNSENT_AFTER = timedelta(minutes=5)  # queued this long with no worker: hand it over again
+GIVE_UP_AFTER = timedelta(hours=1)  # and after this long, tell the user (U-M8-3)
+
+
+async def sweep_unsent(db: AsyncSession) -> list[tuple[str, uuid.UUID]]:
+    """Queued outputs no worker has taken: the hand-off failed or the message was lost when a
+    worker stopped (use testing U-M8-3, a job Queued for hours). Handed over again after five
+    minutes (a second message is harmless: a run claims the job once, with SKIP LOCKED); failed
+    with a clear message after an hour. Uses the database clock, as ``updated_at`` does."""
+    from sqlalchemy import update
+
+    stale = (await db.scalars(select(OutputJob).where(
+        OutputJob.status == "queued", OutputJob.scheduled_cron.is_(None),
+        OutputJob.updated_at < func.now() - UNSENT_AFTER)
+        .order_by(OutputJob.updated_at).limit(100)
+        .with_for_update(skip_locked=True))).all()  # fmt: skip
+    again: list[tuple[str, uuid.UUID]] = []
+    for job in stale:
+        given_up = await db.scalar(select(OutputJob.updated_at < func.now() - GIVE_UP_AFTER)
+                                   .where(OutputJob.id == job.id))  # fmt: skip
+        if given_up:
+            job.status, job.error_class = "failed", "queue-unavailable"
+            job.error_message = "No worker took this output for an hour; try again."
+            job.finished_at = datetime.now(UTC)
+            audit(db, "output.failed", "output_job", job.id, actor=job.requested_by,
+                  after={"error_class": "queue-unavailable"})  # fmt: skip
+        else:
+            await db.execute(update(OutputJob).where(OutputJob.id == job.id)
+                             .values(updated_at=func.now()))  # fmt: skip
+            again.append((TASKS[job.kind], job.id))
+    await db.commit()
+    return again
+
+
 RETENTION_BATCH = 500  # files removed a tick at most
 
 

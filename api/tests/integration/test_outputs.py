@@ -557,3 +557,33 @@ async def test_a_failing_sweep_does_not_stop_schedules(
     monkeypatch.setattr(services, "sweep_stale", broken)
     await _pdf(admin, {"report_template_key": "source-health"}, schedule=WEEKLY)
     assert await tasks.tick_once(db, now=datetime.now(UTC) + timedelta(days=8)) == 1
+
+
+async def test_an_output_no_worker_took_is_handed_over_again_then_failed(
+    admin: httpx.AsyncClient, db: AsyncSession, gotenberg: Gotenberg,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:  # fmt: skip
+    """Use testing U-M8-3: a job stayed Queued for hours when its message never reached a
+    worker. The tick hands it over again, and after an hour fails it with a clear message."""
+    from regwatch.outputs import services
+
+    sent: list[tuple[str, uuid.UUID]] = []
+
+    async def enqueue(name: str, job_id: uuid.UUID, countdown: float = 0) -> None:
+        sent.append((name, job_id))
+
+    job = (await _pdf(admin, {"report_template_key": "source-health"})).json()["id"]
+    sid = (await _pdf(admin, {"report_template_key": "source-health"}, schedule=WEEKLY)).json()[
+        "id"
+    ]
+    monkeypatch.setattr(tasks, "enqueue", enqueue)  # from here on: the tick's hand-overs
+    monkeypatch.setattr(services, "UNSENT_AFTER", timedelta(0))
+    await tasks.tick_once(db)
+    assert sent == [("outputs.render_pdf", uuid.UUID(job))]  # not the schedule itself
+    assert (await admin.get(_api(f"/outputs/{job}"))).json()["status"] == "queued"
+    monkeypatch.setattr(services, "GIVE_UP_AFTER", timedelta(0))
+    await tasks.tick_once(db)
+    shown = (await admin.get(_api(f"/outputs/{job}"))).json()
+    assert (shown["status"], shown["error_class"]) == ("failed", "queue-unavailable")
+    assert "try again" in shown["error_message"]
+    assert (await admin.get(_api(f"/outputs/{sid}"))).json()["status"] == "queued"

@@ -239,6 +239,13 @@ async def tick_once(db: AsyncSession, now: datetime | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 - logged; the next tick tries again
             await db.rollback()
             _log.error(f"outputs_{step}_failed", error=type(exc).__name__)
+    try:
+        for name, job_id in await services.sweep_unsent(db):
+            await enqueue(name, job_id)
+            _log.info("outputs_requeued", job=str(job_id))
+    except Exception as exc:  # noqa: BLE001 - logged; the next tick tries again
+        await db.rollback()
+        _log.error("outputs_requeue_failed", error=type(exc).__name__)
     started = await schedules.tick(db, now)
     for name, job_id in started:
         await enqueue(name, job_id)
