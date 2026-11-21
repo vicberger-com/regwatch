@@ -32,8 +32,9 @@ echo "==> database"
   'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --single-transaction' < "$src/db.dump"
 echo "==> object store"
 # Extracted beside the store first, swapped in only once whole: a failed extract leaves the
-# store as it was (the database is already restored; re-run the restore to finish).
-trap 'echo "restore stopped: the database is restored; the object store is unchanged. Fix the cause and run the restore again; the application stays stopped." >&2' ERR
+# store as it was; a failure while swapping can leave it part-restored. Either way the database
+# is already restored: re-run the restore to finish.
+trap 'echo "restore stopped: the database is restored; the object store may be partly restored (unchanged if the extract failed). Fix the cause and run the restore again; the application stays stopped." >&2' ERR
 "${compose[@]}" run --rm --no-deps -T --entrypoint sh api -c '
   set -e
   staging=/data/objectstore/.restoring
