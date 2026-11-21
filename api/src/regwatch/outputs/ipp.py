@@ -257,7 +257,9 @@ async def send(*, ipp_url: str, tls_sha256: str | None, pdf: bytes, job_name: st
         raise PrinterError("printer-address-refused", str(exc)) from None
     nets = networks_of(networks)
     if target.host == TEST_PRINTER and allow_test_printer:
-        address = target.host  # the stack's own test printer, on the stack's network
+        # The stack's own test printer, on the stack's network: by its address, as clear text
+        # is sent to any printer (it accepts a numeric Host header, not its bare name).
+        address = min(await lookup(target.host), default=target.host)
     else:
         address = await resolve(target, nets)
     # Clear text has no certificate to hold the name to its printer: send to the address that
