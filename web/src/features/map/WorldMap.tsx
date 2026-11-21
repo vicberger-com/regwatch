@@ -15,7 +15,7 @@ function readColours(): Colours {
     steps: [0, 1, 2, 3, 4].map((i) =>
       cssVar(`--map-${String(i)}`),
     ) as Colours["steps"],
-    border: cssVar("--border"),
+    border: cssVar("--line"),
     selected: cssVar("--focus"),
     disputed: cssVar("--map-0"),
     patterns: document.documentElement.dataset.theme === "high-contrast",

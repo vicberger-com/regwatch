@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Changed
+- Tailwind CSS 4 with daisyUI 5 (BL-149; ADR-0013; CP-39), at the owner's request.
+  - The theme moves to `src/styles/index.css`, through `@tailwindcss/vite`. The generated CSS was compared class by class with Tailwind 3's, and every difference is an equivalent rewrite.
+  - daisyUI's themes take the app's theme names and tokens, so its components follow light, dark and high contrast, the font scale, density and the accessibility preset.
+  - The app's focus ring, field borders and high-contrast disabled buttons stay as tested.
+  - The token `--border` is now `--line`.
+  - The login page is the first screen in daisyUI components.
+
 ### Added
 - Two-factor sign-in with TOTP for local accounts (BL-148; ADR-0007 G0 Q4; CP-38; REQ-14, REQ-16; migration 0012).
   - **Enrolment (`/me/mfa`):** the password again, then a new secret as a QR code and as text. It is on once a first code is entered, which also gives 10 one-time recovery codes. Turning it off, or getting new recovery codes, needs the password and a code.

@@ -27,7 +27,7 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 - Layout: `src/app` (router, providers, shell), `src/features/<module>` (pages, hooks, components), `src/components/ui` (shadcn copies), `src/lib/api` (generated client), `src/lib/i18n`, `src/styles` (tokens, themes), `e2e/` (Playwright).
 - API client: types generated with `openapi-typescript` (MIT) from `openapi/regwatch.v1.yaml` into `src/lib/api/schema.d.ts`, fetch wrapper `src/lib/api/client.ts` using `openapi-fetch` (MIT). Generated files are committed; CI fails if regeneration differs.
 - Lint: ESLint 9 flat config with `typescript-eslint`, `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`; Prettier with defaults (double quotes off: `singleQuote: false` is the default, keep it). Stylelint not used.
-- Styling: Tailwind CSS 3.4 with tokens from `src/styles/tokens.css` exposed as CSS variables; themes via `html[data-theme="light|dark|high-contrast"]`; shadcn/ui components copied with `pnpm dlx shadcn@latest add`.
+- Styling: Tailwind CSS 4 (CP-39, ADR-0013; through `@tailwindcss/vite`, the theme in `src/styles/index.css`) with daisyUI 5 components themed from the same tokens, and tokens from `src/styles/tokens.css` exposed as CSS variables; themes via `html[data-theme="light|dark|high-contrast"]`; shadcn/ui components copied with `pnpm dlx shadcn@latest add`.
 - Tests: Vitest with jsdom and Testing Library; Playwright with `@axe-core/playwright`; Lighthouse CI config in `web/lighthouserc.json`.
 - Fonts: Inter self-hosted under `web/public/fonts/` with its SIL OFL licence file beside it.
 

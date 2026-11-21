@@ -1,10 +1,8 @@
 /// <reference types="vitest/config" />
 import { fileURLToPath, URL } from "node:url";
 
-import tailwindcss from "tailwindcss";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-
-import tailwindConfig from "./tailwind.config";
 
 // Optional: the host name of an HTTPS proxy in front of the stack, such as a DevSpaces URL
 // (deploy/README.md). The dev server then accepts that Host and runs live reload over it.
@@ -28,11 +26,9 @@ function devPublicHost(raw: string | undefined): string | undefined {
 
 // React JSX is compiled by Vite's built-in esbuild ("jsx": "react-jsx" in tsconfig.app.json).
 export default defineConfig({
+  plugins: [tailwindcss()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
-  },
-  css: {
-    postcss: { plugins: [tailwindcss(tailwindConfig)] },
   },
   server: {
     host: "0.0.0.0",

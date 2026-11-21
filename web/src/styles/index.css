@@ -1,8 +1,207 @@
 @import "./tokens.css";
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * daisyUI 5 (BL-149): its components (btn, input, card, ...) take their colours, radius, border
+ * and size from the app's tokens. Its own themes are off; the three below have the app's
+ * theme names, so html[data-theme] switches daisyUI with everything else. Text on the status
+ * colours is chosen per theme for contrast.
+ */
+@plugin "daisyui" {
+  themes: false;
+  logs: false;
+}
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: var(--bg);
+  --color-base-200: var(--surface);
+  --color-base-300: var(--line);
+  --color-base-content: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-content: var(--accent-contrast);
+  --color-secondary: var(--text-muted);
+  --color-secondary-content: var(--bg);
+  --color-accent: var(--accent);
+  --color-accent-content: var(--accent-contrast);
+  --color-neutral: var(--text);
+  --color-neutral-content: var(--bg);
+  --color-info: var(--accent);
+  --color-info-content: var(--accent-contrast);
+  --color-success: var(--good);
+  --color-warning: var(--warning);
+  --color-error: var(--critical);
+  --radius-selector: var(--radius);
+  --radius-field: var(--radius);
+  --radius-box: var(--radius);
+  --size-selector: 0.25rem;
+  --size-field: calc(
+    var(--hit-target) / 10
+  ); /* a field is the hit target: 32 px, 44 in the preset */
+  --border: var(--border-width);
+  --depth: 0; /* borders instead of shadows (design brief) */
+  --noise: 0;
+  --color-success-content: #ffffff;
+  --color-warning-content: #1b2430;
+  --color-error-content: #ffffff;
+}
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+  --color-base-100: var(--bg);
+  --color-base-200: var(--surface);
+  --color-base-300: var(--line);
+  --color-base-content: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-content: var(--accent-contrast);
+  --color-secondary: var(--text-muted);
+  --color-secondary-content: var(--bg);
+  --color-accent: var(--accent);
+  --color-accent-content: var(--accent-contrast);
+  --color-neutral: var(--text);
+  --color-neutral-content: var(--bg);
+  --color-info: var(--accent);
+  --color-info-content: var(--accent-contrast);
+  --color-success: var(--good);
+  --color-warning: var(--warning);
+  --color-error: var(--critical);
+  --radius-selector: var(--radius);
+  --radius-field: var(--radius);
+  --radius-box: var(--radius);
+  --size-selector: 0.25rem;
+  --size-field: calc(
+    var(--hit-target) / 10
+  ); /* a field is the hit target: 32 px, 44 in the preset */
+  --border: var(--border-width);
+  --depth: 0; /* borders instead of shadows (design brief) */
+  --noise: 0;
+  --color-success-content: #0f141a;
+  --color-warning-content: #0f141a;
+  --color-error-content: #0f141a;
+}
+@plugin "daisyui/theme" {
+  name: "high-contrast";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+  --color-base-100: var(--bg);
+  --color-base-200: var(--surface);
+  --color-base-300: var(--line);
+  --color-base-content: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-content: var(--accent-contrast);
+  --color-secondary: var(--text-muted);
+  --color-secondary-content: var(--bg);
+  --color-accent: var(--accent);
+  --color-accent-content: var(--accent-contrast);
+  --color-neutral: var(--text);
+  --color-neutral-content: var(--bg);
+  --color-info: var(--accent);
+  --color-info-content: var(--accent-contrast);
+  --color-success: var(--good);
+  --color-warning: var(--warning);
+  --color-error: var(--critical);
+  --radius-selector: var(--radius);
+  --radius-field: var(--radius);
+  --radius-box: var(--radius);
+  --size-selector: 0.25rem;
+  --size-field: calc(
+    var(--hit-target) / 10
+  ); /* a field is the hit target: 32 px, 44 in the preset */
+  --border: var(--border-width);
+  --depth: 0; /* borders instead of shadows (design brief) */
+  --noise: 0;
+  --color-success-content: #000000;
+  --color-warning-content: #000000;
+  --color-error-content: #000000;
+}
+
+/*
+ * Tailwind 4 (BL-149): the theme lives here instead of tailwind.config.ts. Every value is one
+ * of the tokens in tokens.css, so the three themes still switch by html[data-theme] alone.
+ * `inline` puts the token itself in each utility; `reference` emits no --color-* or --text-*
+ * variables of its own, which would shadow the tokens of the same name (--text-xs, --font-sans,
+ * --radius).
+ */
+@theme inline reference {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-border: var(--line);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-critical: var(--critical);
+  --color-focus: var(--focus);
+  --color-map-0: var(--map-0);
+  --color-map-1: var(--map-1);
+  --color-map-2: var(--map-2);
+  --color-map-3: var(--map-3);
+  --color-map-4: var(--map-4);
+
+  --font-*: initial;
+  --font-sans: var(--font-sans);
+
+  --text-*: initial;
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-semibold: 600;
+
+  --leading-*: initial;
+  --leading-normal: var(--leading);
+
+  --radius-*: initial;
+  --radius: var(--radius);
+
+  --shadow-*: initial;
+  --shadow-menu: var(--shadow-menu);
+
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-12: var(--space-12);
+
+  --min-height-hit: var(--hit-target);
+  --min-width-hit: var(--hit-target);
+
+  --default-transition-duration: var(--motion-duration);
+  /* `border`, `border-b` and the like: the token's width (2 px in high contrast). */
+  --default-border-width: var(--border-width);
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Tailwind 3's defaults that Tailwind 4 changed, kept so nothing moves (upgrade guide). */
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 @layer base {
   html {
@@ -12,11 +211,32 @@
     font-size: var(--text-base);
     line-height: var(--leading);
   }
+}
 
-  :focus-visible {
-    outline: var(--focus-width) solid var(--focus);
-    outline-offset: 2px;
-  }
+/* Fields have the app's border colour, white in high contrast (design brief: 2 px white). */
+.input,
+.select,
+.textarea {
+  --input-color: var(--line);
+}
+
+/* High contrast keeps no faint text (tokens.css): a disabled button reads in the muted text,
+   with a dashed border, instead of daisyUI's 20 % text on a 10 % fill. */
+:root[data-theme="high-contrast"]
+  .btn:is(:disabled, [disabled], .btn-disabled, [aria-disabled="true"]) {
+  color: var(--text-muted);
+  background-color: transparent;
+  border: var(--border-width) dashed var(--line);
+}
+
+/* The focus ring stays the tested amber one (CP-09), over daisyUI's components too: outside any
+   layer, so it wins over theirs. */
+:focus-visible,
+.input:focus-within,
+.select:focus-within,
+.textarea:focus {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 2px;
 }
 
 /*
@@ -30,7 +250,7 @@
   :root[data-theme] {
     --bg: #ffffff;
     --surface: #ffffff;
-    --border: #8a929c;
+    --line: #8a929c;
     --text: #000000;
     --text-muted: #333333;
   }
