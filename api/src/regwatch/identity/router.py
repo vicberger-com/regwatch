@@ -13,10 +13,11 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from regwatch.core.db import DbSession
+from regwatch.core.errors import ProblemError
 from regwatch.core.routing import Paging, Tags, spec
 from regwatch.core.schemas import Page
 from regwatch.core.settings import Settings, get_settings
-from regwatch.identity import groups, oidc, services
+from regwatch.identity import groups, mfa, mfa_services, oidc, services
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.schemas import (
     Group,
@@ -24,10 +25,16 @@ from regwatch.identity.schemas import (
     InterestOptions,
     Login,
     Me,
+    MfaChange,
+    MfaCode,
+    MfaPassword,
+    MfaSetup,
+    MfaStatus,
     MyGroup,
     PasswordChange,
     Permission,
     Preferences,
+    RecoveryCodes,
     Role,
     RoleWrite,
     SessionInfo,
@@ -59,6 +66,18 @@ async def login(
     return await services.login(
         db, request, response, settings, body.email, body.password, body.remember_me
     )
+
+
+@router.post(
+    "/auth/mfa", tags=AUTH,
+    **spec(Me, desc="The second step of a password sign-in: session cookie set (CP-38)",
+           public=True, errors=(400, 401, 423, 429), error_desc={423: "Account locked"},
+           stub=False),
+)  # fmt: skip
+async def mfa_sign_in(
+    body: MfaCode, request: Request, response: Response, db: DbSession, settings: SettingsDep
+) -> Me:
+    return await mfa_services.complete_sign_in(db, request, response, settings, body.code)
 
 
 @router.get("/auth/sso", tags=AUTH,
@@ -209,6 +228,17 @@ async def reset_password(
     return TemporaryPassword(temporary_password=temporary)
 
 
+@router.delete(
+    "/admin/users/{id}/mfa", tags=ADMIN,
+    **spec(status=204, desc="The user's authenticator removed; their sessions end (CP-38)",
+           perm=USERS, errors=(404,), stub=False),
+)  # fmt: skip
+async def reset_mfa(id: UUID, principal: CurrentPrincipal, request: Request, db: DbSession
+                    ) -> Response:  # fmt: skip
+    await mfa_services.reset(db, id, principal, services.client_ip(request))
+    return Response(status_code=204)
+
+
 @router.get(
     "/admin/roles", tags=ADMIN, **spec(list[Role], desc="Roles", perm=ROLES, stub=False)
 )  # fmt: skip
@@ -290,6 +320,65 @@ async def get_interest_options(principal: CurrentPrincipal, db: DbSession) -> In
 )  # fmt: skip
 async def get_my_groups(principal: CurrentPrincipal, db: DbSession) -> list[MyGroup]:
     return await groups.my_groups(db, principal.user.id)
+
+
+@router.get(
+    "/me/mfa",
+    tags=ME,
+    **spec(MfaStatus, desc="Whether two-factor sign-in is on (CP-38)", stub=False),
+)
+async def mfa_status(principal: CurrentPrincipal, db: DbSession) -> MfaStatus:
+    found = await mfa.status(db, principal.user.id)
+    return MfaStatus(enabled=found.enabled, confirmed_at=found.confirmed_at,
+                     recovery_codes_left=found.recovery_codes_left)  # fmt: skip
+
+
+@router.post("/me/mfa/setup", tags=ME,
+             **spec(MfaSetup, desc="A new authenticator secret, to confirm (CP-38)",
+                    errors=(400, 409, 429), stub=False))  # fmt: skip
+async def mfa_setup(body: MfaPassword, principal: CurrentPrincipal, request: Request,
+                    response: Response, db: DbSession, settings: SettingsDep
+                    ) -> MfaSetup:  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"  # carries a secret
+    if principal.user.password_hash is None:
+        raise ProblemError(409, "mfa-local-only",
+                           "Two-factor sign-in is for accounts with a password.")  # fmt: skip
+    secret, uri, qr = await mfa_services.setup(db, settings, principal, request, body.password)
+    return MfaSetup(secret=secret, otpauth_uri=uri, qr=qr)
+
+
+@router.post("/me/mfa/confirm", tags=ME,
+             **spec(RecoveryCodes, desc="On; the one-time recovery codes (CP-38)",
+                    errors=(401, 409, 429), stub=False))  # fmt: skip
+async def mfa_confirm(body: MfaCode, principal: CurrentPrincipal, request: Request,
+                      response: Response, db: DbSession, settings: SettingsDep
+                      ) -> RecoveryCodes:  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
+    codes = await mfa_services.confirm(db, settings, principal, request, body.code)
+    return RecoveryCodes(recovery_codes=codes)
+
+
+@router.post(
+    "/me/mfa/disable",
+    tags=ME,
+    **spec(status=204, desc="Off (CP-38)", errors=(400, 401, 409, 429), stub=False),
+)
+async def mfa_disable(body: MfaChange, principal: CurrentPrincipal, request: Request,
+                      db: DbSession, settings: SettingsDep) -> Response:  # fmt: skip
+    await mfa_services.disable(db, settings, principal, request, body.password, body.code)
+    return Response(status_code=204)
+
+
+@router.post("/me/mfa/recovery-codes", tags=ME,
+             **spec(RecoveryCodes, desc="New recovery codes; the old ones stop working (CP-38)",
+                    errors=(400, 401, 409, 429), stub=False))  # fmt: skip
+async def mfa_recovery_codes(body: MfaChange, principal: CurrentPrincipal, request: Request,
+                             response: Response, db: DbSession, settings: SettingsDep
+                             ) -> RecoveryCodes:  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
+    codes = await mfa_services.new_recovery_codes(db, settings, principal, request,
+                                                  body.password, body.code)  # fmt: skip
+    return RecoveryCodes(recovery_codes=codes)
 
 
 @router.get(

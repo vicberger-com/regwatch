@@ -1,7 +1,9 @@
 """``regwatch-admin``: operator commands run inside the api container (#31).
 
 ``create-user`` makes the first administrator (or any local account) without the web UI;
-``revoke-sessions`` signs everyone, or one account, out (the incident runbook, M10.6).
+``revoke-sessions`` signs everyone, or one account, out (the incident runbook, M10.6);
+``rotate-mfa-secrets`` re-encrypts the TOTP secrets with the current secret key during a key
+rotation (BL-148).
 The password is read from the terminal without echo, or from standard input with
 ``--password-stdin``; it is never taken as an argument, so it stays out of shell history
 and process listings.
@@ -69,6 +71,18 @@ async def _revoke(url: str, email: str | None) -> int:
         await engine.dispose()
 
 
+async def _rotate_mfa(url: str) -> tuple[int, int]:
+    from regwatch.core.settings import get_settings
+    from regwatch.identity import mfa
+
+    engine = create_engine(url, poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            return await mfa.rotate_all(db, get_settings())
+    finally:
+        await engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="regwatch-admin", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -85,10 +99,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     which = revoke.add_mutually_exclusive_group(required=True)
     which.add_argument("--all", action="store_true", help="every account")
     which.add_argument("--email", help="one account")
+    sub.add_parser("rotate-mfa-secrets",
+                   help="re-encrypt the TOTP secrets with the current secret key")  # fmt: skip
     args = parser.parse_args(argv)
     from regwatch.core.settings import get_settings
 
     url = get_settings().database_url.get_secret_value()
+    if args.command == "rotate-mfa-secrets":
+        done, unreadable = asyncio.run(_rotate_mfa(url))
+        print(f"regwatch-admin: re-encrypted {done} authenticator(s)"
+              + (f"; {unreadable} unreadable, to reset" if unreadable else ""))  # fmt: skip
+        return 1 if unreadable else 0
     if args.command == "revoke-sessions":
         try:
             count = asyncio.run(_revoke(url, None if args.all else args.email))

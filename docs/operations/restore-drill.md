@@ -10,6 +10,8 @@ Backups older than 30 days (`BACKUP_KEEP_DAYS`) are removed when a new one is ma
 
 **A backup is as sensitive as the database.** It holds every item, users' addresses and password hashes, and the audit log. On the host it is readable by its owner only. Keep backups only where operators alone can write: the sums show a backup is whole, not who made it, and a restore runs what the dump holds. **Encrypt every copy that leaves the host** (for example `age -r <operator key>` or GPG, with the key kept away from the backups), and keep the sums of off-host copies signed or beside the key. The restore refuses an archive holding anything but files and directories, or a path outside the store.
 
+**Keep the secret key with the backups' key, not in them.** Two-factor secrets are encrypted, and recovery codes keyed, with `REGWATCH_SECRET_KEY`. A restore with another key leaves every authenticator unreadable, and each user then needs an administrator's reset (BL-148).
+
 ## Restore on a clean host, step by step
 
 1. **Install the release.** Clone or unpack it, copy `deploy/.env`, `deploy/db.env` and `deploy/queue.env` from the secret store, and install Docker with the Compose plugin.

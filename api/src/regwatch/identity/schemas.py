@@ -211,3 +211,36 @@ class SsoStatus(BaseModel):
     """CP-37 ``GET /auth/sso``: whether the login page offers the organisation's sign-in."""
 
     enabled: bool
+
+
+# BL-148 (CP-38): two-factor sign-in with TOTP.
+MfaCodeIn = Annotated[str, Field(min_length=6, max_length=20, pattern=r"^[0-9A-Za-z -]+$")]
+
+
+class MfaStatus(BaseModel):
+    enabled: bool
+    confirmed_at: datetime | None = None
+    recovery_codes_left: int
+
+
+class MfaPassword(BaseModel):
+    password: Secret
+
+
+class MfaSetup(BaseModel):
+    secret: str
+    otpauth_uri: str
+    qr: list[str]
+
+
+class MfaCode(BaseModel):
+    code: MfaCodeIn
+
+
+class MfaChange(BaseModel):
+    password: Secret
+    code: MfaCodeIn
+
+
+class RecoveryCodes(BaseModel):
+    recovery_codes: list[str]

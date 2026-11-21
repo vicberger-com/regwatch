@@ -55,6 +55,18 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "423": { description: Account locked, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
         "429": { $ref: "#/components/responses/Problem" }
+  /auth/mfa:
+    post:
+      tags: [auth]
+      security: []
+      description: "CP-38 (BL-148): the second step of a password sign-in, after 401 mfa-required set the rw_mfa cookie: a code from the authenticator app, or a recovery code"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MfaCode" } } } }
+      responses:
+        "200": { description: "The second step of a password sign-in: session cookie set (CP-38)", content: { application/json: { schema: { $ref: "#/components/schemas/Me" } } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "423": { description: Account locked, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+        "429": { $ref: "#/components/responses/Problem" }
   /auth/sso:
     get:
       tags: [auth]
@@ -133,6 +145,9 @@ paths:
   /admin/users/{id}/reset-password:
     parameters: [ { $ref: "#/components/parameters/id" } ]
     post: { tags: [admin], x-permission: users.manage, responses: { "200": { description: One-time temporary password, content: { application/json: { schema: { type: object, properties: { temporary_password: { type: string } } } } } } } }
+  /admin/users/{id}/mfa:
+    parameters: [ { $ref: "#/components/parameters/id" } ]
+    delete: { tags: [admin], x-permission: users.manage, description: "CP-38: removes the user's authenticator (a lost phone); their sessions end", responses: { "204": { description: "The user's authenticator removed; their sessions end (CP-38)" }, "404": { $ref: "#/components/responses/Problem" } } }
   /admin/groups:
     get: { tags: [admin], x-permission: users.manage, description: "CP-27: groups, with their roles and members", responses: { "200": { description: Groups, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Group" } } } } } } }
     post:
@@ -545,6 +560,29 @@ paths:
     get: { tags: [me], x-permission: items.read, description: "CP-24: what a user may pick as interests", responses: { "200": { description: What a user may pick as interests, content: { application/json: { schema: { $ref: "#/components/schemas/InterestOptions" } } } } } }
   /me/groups:
     get: { tags: [me], description: "CP-27: your groups and their interests", responses: { "200": { description: Your groups and their interests, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/MyGroup" } } } } } } }
+  /me/mfa:
+    get: { tags: [me], description: "CP-38 (BL-148)", responses: { "200": { description: Whether two-factor sign-in is on (CP-38), content: { application/json: { schema: { $ref: "#/components/schemas/MfaStatus" } } } } } }
+  /me/mfa/setup:
+    post:
+      tags: [me]
+      description: "CP-38: the password again, then a new secret (a QR code as rows of 0 and 1, and text); on only after /me/mfa/confirm"
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MfaPassword" } } } }
+      responses: { "200": { description: "A new authenticator secret, to confirm (CP-38)", content: { application/json: { schema: { $ref: "#/components/schemas/MfaSetup" } } } }, "400": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" }, "429": { $ref: "#/components/responses/Problem" } }
+  /me/mfa/confirm:
+    post:
+      tags: [me]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MfaCode" } } } }
+      responses: { "200": { description: "On; the one-time recovery codes (CP-38)", content: { application/json: { schema: { $ref: "#/components/schemas/RecoveryCodes" } } } }, "401": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" }, "429": { $ref: "#/components/responses/Problem" } }
+  /me/mfa/disable:
+    post:
+      tags: [me]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MfaChange" } } } }
+      responses: { "204": { description: Off (CP-38) }, "400": { $ref: "#/components/responses/Problem" }, "401": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" }, "429": { $ref: "#/components/responses/Problem" } }
+  /me/mfa/recovery-codes:
+    post:
+      tags: [me]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MfaChange" } } } }
+      responses: { "200": { description: "New recovery codes; the old ones stop working (CP-38)", content: { application/json: { schema: { $ref: "#/components/schemas/RecoveryCodes" } } } }, "400": { $ref: "#/components/responses/Problem" }, "401": { $ref: "#/components/responses/Problem" }, "409": { $ref: "#/components/responses/Problem" }, "429": { $ref: "#/components/responses/Problem" } }
   /me/sessions:
     get: { tags: [me], responses: { "200": { description: Active sessions, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/SessionInfo" } } } } } } }
   /me/sessions/{id}:
@@ -1042,6 +1080,30 @@ components:
       type: object
       required: [key, label]
       properties: { key: { type: string }, label: { type: string } }
+    MfaStatus:
+      type: object
+      required: [enabled, recovery_codes_left]
+      properties: { enabled: { type: boolean }, confirmed_at: { type: string, format: date-time, nullable: true }, recovery_codes_left: { type: integer } }
+    MfaPassword:
+      type: object
+      required: [password]
+      properties: { password: { type: string } }
+    MfaSetup:
+      type: object
+      required: [secret, otpauth_uri, qr]
+      properties: { secret: { type: string }, otpauth_uri: { type: string }, qr: { type: array, items: { type: string } } }
+    MfaCode:
+      type: object
+      required: [code]
+      properties: { code: { type: string, minLength: 6, maxLength: 20, pattern: "^[0-9A-Za-z -]+$" } }
+    MfaChange:
+      type: object
+      required: [password, code]
+      properties: { password: { type: string }, code: { type: string, minLength: 6, maxLength: 20, pattern: "^[0-9A-Za-z -]+$" } }
+    RecoveryCodes:
+      type: object
+      required: [recovery_codes]
+      properties: { recovery_codes: { type: array, items: { type: string } } }
     SessionInfo:
       type: object
       properties: { id: { type: string, format: uuid }, created_at: { type: string, format: date-time }, last_seen_at: { type: string, format: date-time }, expires_at: { type: string, format: date-time }, ip: { type: string, nullable: true }, user_agent: { type: string, nullable: true }, current: { type: boolean } }

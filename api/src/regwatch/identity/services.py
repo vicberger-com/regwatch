@@ -530,16 +530,36 @@ async def login(
             raise ProblemError(403, "sso-required", "Sign in with your organisation's account.")
     if security.needs_rehash(user.password_hash):
         user.password_hash = await security.hash_password_async(password)
+    from regwatch.identity import mfa
+
+    if await mfa.confirmed(db, user.id) is not None:
+        # BL-148: the second step; the session starts at POST /auth/mfa. The account's
+        # failures are not cleared yet: wrong codes count toward the same lockout.
+        await db.commit()
+        forgive(rate_ticket)
+        pending = mfa.pending_cookie(settings, user, remember_me)
+        raise ProblemError(401, "mfa-required", "Enter the code from your authenticator app.",
+                           headers={"set-cookie": mfa.pending_header(pending),
+                                    "cache-control": "no-store"})  # fmt: skip
+    me = await start_session(db, request, response, settings, user, cfg, ip, remember_me, None)
+    forgive(rate_ticket)  # only failures count toward the failure limits
+    return me
+
+
+async def start_session(db: AsyncSession, request: Request, response: Response,
+                        settings: Settings, user: User, cfg: dict[str, int], ip: str | None,
+                        remember_me: bool, method: str | None) -> Me:  # fmt: skip
+    """A signed-in session for ``user``, whose credentials were all checked."""
     user.failed_logins = 0
-    user.last_login_at = now
+    user.last_login_at = _now()
     # Rotation on login: a session cookie the browser already holds is revoked (fixation).
     await revoke_token(db, request.cookies.get(settings.session_cookie_name))
     token, sess = await create_session(db, user, request, cfg)
-    audit(db, "auth.login", "session", sess.id, actor=user.id, ip=ip)
+    audit(db, "auth.login", "session", sess.id, actor=user.id, ip=ip,
+          after={"method": method} if method else None)  # fmt: skip
     await db.commit()
     lifetime = cfg["sessions.absolute_lifetime_hours"] * 3600
     set_session_cookie(response, settings, token, lifetime if remember_me else None)
-    forgive(rate_ticket)  # only failures count toward the failure limits
     roles, perms = await roles_and_permissions(db, user.id)
     return to_me(user, roles, perms)
 
@@ -897,12 +917,13 @@ async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID | None = None,
     return count
 
 
-async def _revoke_all(db: AsyncSession, user_id: uuid.UUID) -> None:
-    await db.execute(
-        update(UserSession)
-        .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
-        .values(revoked_at=_now())
+async def _revoke_all(db: AsyncSession, user_id: uuid.UUID, keep: uuid.UUID | None = None) -> None:
+    stmt = update(UserSession).where(
+        UserSession.user_id == user_id, UserSession.revoked_at.is_(None)
     )
+    if keep is not None:
+        stmt = stmt.where(UserSession.id != keep)
+    await db.execute(stmt.values(revoked_at=_now()))
 
 
 async def update_user(

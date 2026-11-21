@@ -26,10 +26,11 @@ For the production stack (`deploy/compose.prod.yaml`; setup in `deploy/README.md
 ## Rotating secrets
 Plan rotations in the maintenance window (business hours, weekly; M10 question 3).
 
-**The signing key (`REGWATCH_SECRET_KEY`).** It signs artifact links and keys query hashes. Sessions are stored as token hashes, so rotating it signs no one out.
+**The signing key (`REGWATCH_SECRET_KEY`).** It signs artifact links, sign-in state cookies and the two-factor step, keys query hashes, and encrypts two-factor secrets. Sessions are stored as token hashes, so rotating it signs no one out.
 1. Set `REGWATCH_SECRET_KEY_PREVIOUS` to the current key and `REGWATCH_SECRET_KEY` to a new one, 64 hex characters: `openssl rand -hex 32`.
 2. Restart: `$P up -d api worker`. Links issued in the last 10 minutes keep working.
-3. After 10 minutes, remove `REGWATCH_SECRET_KEY_PREVIOUS` and restart again.
+3. Re-encrypt the two-factor secrets with the new key: `$P exec api regwatch-admin rotate-mfa-secrets`. It reports how many it re-encrypted. Any it calls unreadable were encrypted with an older key; reset those users' authenticators (Settings, Users). Recovery codes cannot be re-keyed: those made before the rotation stop working when the previous key is removed, so ask users with two-factor sign-in to get new ones (User tab) in the meantime.
+4. After 10 minutes, remove `REGWATCH_SECRET_KEY_PREVIOUS` and restart again.
 
 **Database passwords** (`db.env`: the owner and `regwatch_api`):
 1. In the database, use psql's `\password`, which sends the password already hashed: `$P exec db psql -U regwatch -d regwatch`, then `\password regwatch_api`. Never type `ALTER ROLE … PASSWORD '…'` with a literal password; it can end up in psql's history and the server log.
