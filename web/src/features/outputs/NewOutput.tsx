@@ -40,11 +40,15 @@ const ALL_ITEMS = {
   facet_counts: false,
 } as const;
 
-export function NewOutput(props: { can: (permission: string) => boolean }) {
+export function NewOutput(props: {
+  can: (permission: string) => boolean;
+  /** A source to start from: `t:<stock report>` or `l:<layout>` (from /reports). */
+  initial?: string;
+}) {
   const id = useId();
   const kinds = KINDS.filter((k) => props.can(k.permission));
   const [kind, setKind] = useState<Kind>(kinds[0]?.kind ?? "pdf");
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState(props.initial ?? "");
   const [emails, setEmails] = useState("");
   const [subject, setSubject] = useState("");
   const [repeat, setRepeat] = useState(false);
@@ -62,7 +66,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
     enabled: props.can("items.read") && kind === "csv",
   });
   const create = useCreateOutput();
-  const [params, setParams] = useState<Params>({});
+  const [chosen, setParams] = useState<Params | null>(null); // null: the defaults
   if (kinds.length === 0) return null;
   // A stock report, or a layout made from one, asks for its settings (U-M7-1).
   const [type, value = ""] = source.split(":", 2);
@@ -76,6 +80,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
     kind === "csv"
       ? undefined
       : templates.data?.find((t) => t.key === templateKey)?.parameters;
+  const params = chosen ?? defaults(defs);
   const lacking = missing(defs, params);
 
   // One address a line; blank lines and repeats dropped. The server checks each again.
@@ -183,14 +188,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
           value={kind === "csv" && source === "" ? "all" : source}
           onChange={(e) => {
             setSource(e.target.value);
-            const [t, v = ""] = e.target.value.split(":", 2);
-            const key =
-              t === "t"
-                ? v
-                : layouts.data?.find((l) => l.id === v)?.based_on_template_key;
-            setParams(
-              defaults(templates.data?.find((x) => x.key === key)?.parameters),
-            );
+            setParams(null);
           }}
         >
           {kind === "csv" ? csvSources : pdfSources}

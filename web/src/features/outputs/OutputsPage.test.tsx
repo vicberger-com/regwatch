@@ -378,3 +378,26 @@ describe("stock report settings (use testing U-M7-1)", () => {
     });
   });
 });
+
+describe("New output from the Reports page (U-M7-2)", () => {
+  it("opens with the chosen stock report", async () => {
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...ADMIN, permissions: ["outputs.pdf", "reports.print"] },
+      ],
+      "GET /outputs": [200, page([])],
+      "GET /reports/templates": [
+        200,
+        [{ key: "source-health", label: "Source health" }],
+      ],
+    });
+    renderAt("/outputs?new=t:source-health");
+    const form = await screen.findByRole("form", { name: "New output" });
+    await waitFor(() => {
+      expect(
+        within(form).getByRole("combobox", { name: "Report" }),
+      ).toHaveValue("t:source-health");
+    });
+  });
+});

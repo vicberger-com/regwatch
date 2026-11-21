@@ -253,14 +253,22 @@ const outputsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/outputs",
   staticData: { title: "Outputs" },
+  // ?new=t:<stock report> or l:<layout>: New output opened for it (from /reports, U-M7-2).
+  validateSearch: (search: Record<string, unknown>): { new?: string } =>
+    typeof search.new === "string" &&
+    /^[tl]:[A-Za-z0-9_-]{1,64}$/.test(search.new)
+      ? { new: search.new }
+      : {},
   component: function Outputs() {
     const { me } = authedRoute.useRouteContext();
+    const { new: initial } = outputsRoute.useSearch();
     if (!hasPermission(me, "outputs.pdf")) return <NotPermitted />;
     return (
       <OutputsPage
         userId={me.id}
         canReadAll={hasPermission(me, "outputs.read_all")}
         can={(permission) => hasPermission(me, permission)}
+        {...(initial ? { initial } : {})}
       />
     );
   },

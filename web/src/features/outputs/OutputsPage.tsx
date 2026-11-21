@@ -46,10 +46,11 @@ export function OutputsPage(props: {
   userId: string;
   canReadAll: boolean;
   can: (permission: string) => boolean;
+  initial?: string;
 }) {
   const [tab, setTab] = useState("history");
   const [scope, setScope] = useState<Scope>("mine");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(props.initial));
   return (
     <section aria-labelledby="outputs-heading" className="flex flex-col gap-4">
       <h1 id="outputs-heading" className="text-2xl font-semibold">
@@ -67,7 +68,12 @@ export function OutputsPage(props: {
           New output
         </button>
       </div>
-      {creating && <NewOutput can={props.can} />}
+      {creating && (
+        <NewOutput
+          can={props.can}
+          {...(props.initial ? { initial: props.initial } : {})}
+        />
+      )}
       {props.canReadAll && (
         <fieldset className="flex gap-4 text-sm">
           <legend className="sr-only">Whose outputs</legend>

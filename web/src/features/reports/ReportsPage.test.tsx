@@ -171,6 +171,49 @@ describe("reports (M7.4)", () => {
     ).toEqual({ jurisdiction: "DE" });
   });
 
+  it("offers the stock reports, a preview, and PDF or email (U-M7-2)", async () => {
+    fakeApi({
+      "GET /auth/me": [
+        200,
+        {
+          ...BUILDER,
+          permissions: [...BUILDER.permissions, "reports.print", "outputs.pdf"],
+        },
+      ],
+      "GET /reports/layouts": [200, [LAYOUT]],
+      "GET /reports/templates": [
+        200,
+        [
+          {
+            key: "source-health",
+            label: "Source health",
+            description: "Sources and their last runs.",
+          },
+        ],
+      ],
+      "POST /reports/layouts/l1/preview": [200, "<p>Europe</p>"],
+    });
+    renderAt("/reports");
+    const stock = await screen.findByRole("region", { name: "Stock reports" });
+    expect(
+      within(stock).getByText("Sources and their last runs."),
+    ).toBeVisible();
+    expect(
+      within(stock).getByRole("link", {
+        name: "PDF or email of Source health",
+      }),
+    ).toHaveAttribute("href", "/outputs?new=t%3Asource-health");
+    expect(
+      screen.getByRole("link", { name: "PDF or email of Europe weekly" }),
+    ).toHaveAttribute("href", "/outputs?new=l%3Al1");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Preview Europe weekly" }),
+    );
+    const frame = await screen.findByTitle("Report preview");
+    expect(frame).toHaveAttribute("sandbox", "");
+    expect(frame.getAttribute("srcdoc")).toContain("Europe");
+  });
+
   it("is only for those who build reports", async () => {
     fakeApi({
       "GET /auth/me": [200, { ...ADMIN, permissions: ["items.read"] }],
