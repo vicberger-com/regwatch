@@ -116,3 +116,32 @@ license = "CC-BY-4.0"
 scope = "tooling"
 reason = "browserslist build data. 3.5 allows CC-BY-4.0 for data; build-time only, not shipped"
 reviewed = "browserslist/caniuse-lite tag 1.0.30001820 (a16a804) LICENSE, read 2026-11-02 (#29)"
+
+# --- M1b and BL-148 (2026-11-21) -------------------------------------------------------------
+
+[[exception]]
+ecosystem = "python"
+package = "joserfc"
+version = "1.8.0"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "the joserfc 1.8.0 wheel's licenses/LICENSE, read 2026-11-21 (M1b OIDC); register row in docs/03-architecture.md, notice in api/THIRD_PARTY_NOTICES.md"
+
+[[exception]]
+ecosystem = "python"
+package = "segno"
+version = "1.6.6"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "the segno 1.6.6 wheel's licenses/LICENSE, read 2026-11-21 (BL-148 TOTP); register row in docs/03-architecture.md, notice in api/THIRD_PARTY_NOTICES.md"
+
+[[exception]]
+ecosystem = "python"
+package = "Authlib"
+version = "1.9.10"
+license = "BSD-3-Clause"
+scope = "any"
+reason = "Wheel metadata says only the classifier 'BSD License'; the LICENSE file is the 3-clause text with no advertising clause"
+reviewed = "the Authlib 1.9.10 wheel's licenses/LICENSE, read 2026-11-21 (M1b OIDC); register row V 46b9487, notice in api/THIRD_PARTY_NOTICES.md"
