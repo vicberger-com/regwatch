@@ -35,3 +35,29 @@ test("the print layout keeps the page and the markings, not the frame", async ({
   await page.emulateMedia({ media: "screen" });
   await expect(page.getByRole("banner")).toBeVisible();
 });
+
+test("the map prints light in the dark and high-contrast themes (U-M8-2)", async ({
+  page,
+}) => {
+  await signInByKeyboard(page);
+  await expect(page.getByRole("list", { name: "Legend" })).toBeVisible();
+  for (const theme of ["dark", "high-contrast"]) {
+    await page.evaluate((t) => {
+      document.documentElement.dataset.theme = t;
+    }, theme);
+    await page.emulateMedia({ media: "print" });
+    const swatch = page.locator("[data-map-swatch]").first();
+    expect(
+      await swatch.evaluate((el) => getComputedStyle(el).filter),
+    ).toContain("invert(1)");
+    const canvas = page.locator(".maplibregl-canvas");
+    if ((await canvas.count()) > 0)
+      expect(
+        await canvas.evaluate((el) => getComputedStyle(el).filter),
+      ).toContain("invert(1)");
+    await page.emulateMedia({ media: "screen" });
+    expect(await swatch.evaluate((el) => getComputedStyle(el).filter)).toBe(
+      "none",
+    );
+  }
+});

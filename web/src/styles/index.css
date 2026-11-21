@@ -57,6 +57,21 @@
     display: table-header-group;
   }
 
+  /* The map's canvas keeps the colours it was drawn with, so a dark or high-contrast map would
+     print near-black (use testing U-M8-2). On paper it and its legend are turned light
+     together, so the legend still matches the shading. */
+  .maplibregl-canvas,
+  [data-map-swatch] {
+    print-color-adjust: exact;
+  }
+
+  :root[data-theme="dark"] .maplibregl-canvas,
+  :root[data-theme="dark"] [data-map-swatch],
+  :root[data-theme="high-contrast"] .maplibregl-canvas,
+  :root[data-theme="high-contrast"] [data-map-swatch] {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
   tr,
   img,
   svg {

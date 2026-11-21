@@ -373,6 +373,7 @@ export function MapPage() {
                   <li key={i} className="flex items-center gap-1">
                     <span
                       aria-hidden="true"
+                      data-map-swatch=""
                       className="inline-block h-3 w-6 rounded-sm border border-border"
                       style={{
                         backgroundColor: `var(--map-${String(i)})`,
