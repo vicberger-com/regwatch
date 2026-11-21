@@ -323,8 +323,10 @@ async def get_job(db: AsyncSession, job_id: uuid.UUID, principal: Principal) -> 
     return job
 
 
-def _signature(job_id: uuid.UUID, expires: int) -> str:
-    key = get_settings().secret_key.get_secret_value().encode()
+def _signature(job_id: uuid.UUID, expires: int, previous: bool = False) -> str:
+    settings = get_settings()
+    secret = settings.secret_key_previous if previous else settings.secret_key
+    key = secret.get_secret_value().encode() if secret is not None else b""
     return hmac.new(key, f"artifact:{job_id}:{expires}".encode(), hashlib.sha256).hexdigest()
 
 
@@ -334,7 +336,14 @@ def signed_link(job_id: uuid.UUID, prefix: str) -> str:
 
 
 def link_valid(job_id: uuid.UUID, exp: int, sig: str) -> bool:
-    return exp >= int(time.time()) and hmac.compare_digest(_signature(job_id, exp), sig)
+    """Signed with the key, or during a rotation with the previous one (REGWATCH_SECRET_KEY_
+    PREVIOUS, M10.6), so a link issued just before the rotation still works for its 10 minutes."""
+    if exp < int(time.time()):
+        return False
+    if hmac.compare_digest(_signature(job_id, exp), sig):
+        return True
+    return get_settings().secret_key_previous is not None and hmac.compare_digest(
+        _signature(job_id, exp, previous=True), sig)  # fmt: skip
 
 
 async def retry(db: AsyncSession, job_id: uuid.UUID, principal: Principal,
