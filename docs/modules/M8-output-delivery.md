@@ -21,12 +21,12 @@ Out: fax, SharePoint or cloud drive push (backlog), webhooks (E19).
 `output_job`, `printer`, object store `outputs/{job_id}.pdf|csv`.
 
 ## Open-source components
-Gotenberg (MIT, service), aiosmtplib (MIT), email-validator (CC0), Mailpit (MIT, dev), Node `ipp` (MIT) in `print-bridge/`, WeasyPrint (BSD-3) fallback, croniter (MIT) for schedules.
+Gotenberg (MIT, service), aiosmtplib (MIT), email-validator (CC0), Mailpit (MIT, dev), ippx (MIT) in the outputs worker (CP-33, BL-15; Node `ipp` was rejected by R-04), WeasyPrint (BSD-3) fallback, croniter (MIT) for schedules.
 
 ## Design notes
 - Email: HTML body is the report's first page summary plus a link to the application; attachments capped at 20 MB; recipients restricted to allowed domains list (admin setting) to prevent data exfiltration by a compromised account; all sends audited.
 - PDF: Gotenberg Chromium route with the report HTML and inlined CSS and fonts; PDF/A-2b option for archival; metadata title and creator set.
-- Printing: the bridge accepts `{printer_url, pdf_ref, copies, media}` on an internal-only port, streams the PDF to the IPP printer, and reports job state; browser print uses `@media print` CSS from M7.
+- Printing (CP-33, BL-15, BL-145): the outputs worker sends the rendered PDF to a registered printer with ippx (`outputs.print_ipp`): `ipps://` with certificate verification or a pinned fingerprint, addresses only in `outputs.printer_networks`, answers capped; there is no separate bridge service or port. Browser print uses `@media print` CSS.
 - Schedules run under the requesting user's permissions snapshot and are disabled automatically if the user is disabled.
 - Retention job deletes artifacts older than the setting and keeps the job record.
 

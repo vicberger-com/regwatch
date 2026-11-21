@@ -7,7 +7,7 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 | Area | Decision |
 | --- | --- |
 | Python | 3.12. Project in `api/` with `pyproject.toml`; dependency and environment management with `uv` (Apache-2.0 or MIT; verify); `uv.lock` committed. |
-| Node | 22 LTS. Project in `web/` with `pnpm` 9 (MIT); `pnpm-lock.yaml` committed. `print-bridge/` is a second Node package with its own lockfile. |
+| Node | 22 LTS. Project in `web/` with `pnpm` 9 (MIT); `pnpm-lock.yaml` committed. (CP-33: there is no `print-bridge/` package; IPP printing runs in the Python outputs worker with ippx.) |
 | Containers | Docker Engine 26 or later, Compose v2 file format in `deploy/compose.yaml` (development) and `deploy/compose.prod.yaml` (production overrides). |
 
 ## Python project
@@ -51,7 +51,7 @@ Fixed choices for the scaffold. Where a version line is given, the agent pins th
 
 ## Compose services (names are part of the contract)
 
-`proxy` (caddy:2), `api`, `worker`, `beat`, `db` (postgres:16), `queue` (valkey/valkey:9), `pdf` (gotenberg/gotenberg:8), `search` (searxng/searxng, profile `search`), `print-bridge` (profile `print`), `mailpit` (axllent/mailpit, development only), `translate` (profile `translate`, LibreTranslate or an Argos service as decided by R-08). Internal network `regwatch`; only `proxy` publishes 80 and 443; `mailpit` publishes 8025 in development. Volumes `pgdata`, `objectstore`, `caddy-data`.
+`proxy` (caddy:2), `api`, `worker`, `beat`, `db` (postgres:16), `queue` (valkey/valkey:9), `pdf` (gotenberg/gotenberg:8), `search` (searxng/searxng, profile `search`), `ippeveprinter` (a CUPS test printer, profile `print-test`, development and QA only; CP-33), `mailpit` (axllent/mailpit, development only), `translate` (profile `translate`, LibreTranslate or an Argos service as decided by R-08). Internal network `regwatch`; only `proxy` publishes 80 and 443; `mailpit` publishes 8025 in development. Volumes `pgdata`, `objectstore`, `caddy-data`.
 
 ## CI (`.github/workflows/ci.yml`)
 

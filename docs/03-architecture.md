@@ -33,7 +33,7 @@ Reading: the browser talks only to the API through the proxy. Workers do all out
 | Report builder | Puck visual editor with custom field components; dnd-kit for list ordering | MIT (both) | Puck already provides drag-and-drop page composition, saved JSON layouts and a plugin API, which covers REQ-12 and REQ-13. react-grid-layout (MIT) is the fallback if Puck's layout model proves too page-centric. |
 | PDF rendering | Gotenberg container (Chromium and LibreOffice behind an HTTP API) | MIT | Renders the same HTML the browser prints, so screen and PDF match. WeasyPrint (BSD) is the fallback without a browser engine. |
 | Email | aiosmtplib plus Python stdlib email; Mailpit in development | MIT (both) | Any SMTP relay; no vendor SDK. |
-| Printing | Browser print dialog always; server-side IPP printing behind a feature flag, deferred from the first release (R-04, BL-13, BL-15) | n/a | pycups is GPL-2 and excluded; no Node IPP client passed the license gate. Python clients (ippx, aioipp; MIT) printed to a test server, but need a contract change (BL-15). |
+| Printing | Browser print dialog always; network printing to admin-registered IPP printers from the outputs worker with ippx, behind `outputs.server_print` (owner decision BL-15, 2026-11-21; CP-33) | ippx (MIT) | pycups is GPL-2 and excluded; no Node IPP client passed the license gate (R-04); aioipp needs Python 3.14. |
 | Authentication | Local accounts with Argon2id hashing (argon2-cffi), server-side sessions, optional OpenID Connect via Authlib in Phase 5; Keycloak as the reference identity provider for testing | MIT, BSD-3, Apache-2.0 | Keeps Phase 1 small; SSO added without changing the permission model. |
 | Authorization | Role and permission tables in PostgreSQL enforced by a FastAPI dependency; Casbin considered if policies grow beyond role-to-permission | Apache-2.0 (pycasbin) | Explicit tables are auditable and simple for the admin UI in M1. |
 | Content extraction | html5lib parsing with the project's own CSS-subset selectors and main-text heuristic (ADR-0009, CP-15), the project's own bounded crawl (ADR-0009 amendment 2), Playwright for JavaScript-rendered pages | MIT, BSD-3, Apache-2.0 | trafilatura, readability-lxml and Scrapy were dropped: what they install bundles LGPL code (libiconv in lxml's wheels, chardet) and CNRI-Python (regex). |
@@ -47,7 +47,7 @@ Reading: the browser talks only to the API through the proxy. Workers do all out
 
 ## 3.3 Runtime topology (default deployment)
 
-Containers: `proxy` (Caddy), `api`, `worker` (scaled 1 to N), `beat` (scheduler, exactly one), `db` (PostgreSQL), `queue` (Valkey), `pdf` (Gotenberg), `search` (SearXNG, optional), `print-bridge` (optional), `mailpit` (development only). Persistent volumes: `pgdata`, `objectstore`. All inter-container traffic on an internal network; only `proxy` publishes ports 80 and 443.
+Containers: `proxy` (Caddy), `api`, `worker` (scaled 1 to N), `beat` (scheduler, exactly one), `db` (PostgreSQL), `queue` (Valkey), `pdf` (Gotenberg), `search` (SearXNG, optional), `ippeveprinter` (a test printer, development and QA only; CP-33), `mailpit` (development only). Persistent volumes: `pgdata`, `objectstore`. All inter-container traffic on an internal network; only `proxy` publishes ports 80 and 443.
 
 ## 3.4 Cross-cutting conventions
 
@@ -135,7 +135,8 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | WeasyPrint | fallback PDF | BSD-3 | V `4d3b7b6` | dependency | M8 |
 | aiosmtplib | SMTP client | MIT | V `9cc4254` | dependency | M8 |
 | Mailpit | development mail catcher | MIT | V `364916b` | tooling | M8 |
-| ipp (npm) | IPP printing bridge | none (MIT claimed; no LICENSE file) | rejected (R-01 E1, R-04) | not used; print bridge deferred (BL-13) | M8 |
+| ipp (npm) | IPP printing bridge | none (MIT claimed; no LICENSE file) | rejected (R-01 E1, R-04) | not used (BL-13); replaced by ippx (CP-33) | M8 |
+| ippx | IPP client for network printing from the outputs worker (CP-33, BL-15) | MIT | V `4ea06b4` (v0.1.1, re-scored 2026-11-21) | dependency, pinned exactly | M8 |
 | argon2-cffi | password hashing | MIT | V `1fcae4f` | dependency | M1 |
 | google-re2 1.1.20251105 (RE2 with statically linked Abseil and pybind11) | linear-time regular expressions for term match rules, run on captured text (BL-74, M2 review finding 1) | BSD-3-Clause; bundled Abseil Apache-2.0, pybind11 BSD-3-Clause | V `927f5d5` (tag 2025-11-05, which `python/setup.py` builds as 1.1.20251105); bundled libraries identified from the extension's symbols | dependency | M2, M4 |
 | nh3 0.3.7 (Python binding to the Rust ammonia sanitizer; the wheel statically links ammonia 4.1.4, html5ever 0.39, cssparser 0.37, url 2.5 with ICU4X 2.3 and PyO3 0.29, 85 crates in its `Cargo.lock`) | allowlist HTML sanitizer: the rendered `/legal` page (BL-68), and captured HTML at ingestion later (8.1) | MIT; bundled crates MIT or Apache-2.0, cssparser and dtoa-short MPL-2.0 (unmodified), 18 ICU4X crates Unicode-3.0 (allowed by BL-78, ADR-0003 amendment 3; notice in `api/THIRD_PARTY_NOTICES.md`) | V `74f36b8` (nh3 v0.3.7), `fba7512` (ammonia v4.1.4); crate licenses from crates.io for every `Cargo.lock` entry | dependency | M1 |
