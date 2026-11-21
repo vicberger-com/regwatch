@@ -266,6 +266,7 @@ services:
     build:
       context: ./print-test
     image: regwatch-print-test:dev
+    hostname: ippeveprinter  # the printer checks the Host header against its own name
     profiles: [print-test]
     networks: [regwatch]
     healthcheck:
