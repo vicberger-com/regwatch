@@ -1,13 +1,29 @@
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { PublicFrame } from "@/app/PublicFrame";
-import { ApiProblem, loginErrorMessage, useLogin } from "@/lib/auth/session";
+import {
+  ApiProblem,
+  loginErrorMessage,
+  ssoErrorMessage,
+  ssoQuery,
+  useLogin,
+} from "@/lib/auth/session";
 
-/** `/login` (screens.md): email, password, sign-in button and an error live region. */
-export function LoginPage({ next }: { next?: string | undefined }) {
+/** `/login` (screens.md): email, password, sign-in button and an error live region; with
+ * `auth.oidc` on, first the organisation's account (M1b), the password form staying for
+ * administrators. */
+export function LoginPage({
+  next,
+  sso,
+}: {
+  next?: string | undefined;
+  sso?: string | undefined;
+}) {
   const navigate = useNavigate();
   const login = useLogin();
+  const ssoOn = useQuery(ssoQuery).data === true;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const error =
@@ -15,7 +31,7 @@ export function LoginPage({ next }: { next?: string | undefined }) {
       ? loginErrorMessage(login.error.problem)
       : login.error
         ? "Sign-in failed. Try again."
-        : "";
+        : ssoErrorMessage(sso);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -37,6 +53,19 @@ export function LoginPage({ next }: { next?: string | undefined }) {
     <PublicFrame screen="Sign in">
       <div className="mx-auto max-w-sm rounded border border-border bg-surface p-6">
         <h1 className="text-xl font-semibold">Sign in</h1>
+        {ssoOn && (
+          <>
+            <a
+              href={`/api/v1/auth/oidc/login?next=${encodeURIComponent(safeNext(next))}`}
+              className="mt-4 block rounded bg-accent px-3 py-2 text-center font-semibold text-accent-contrast"
+            >
+              Sign in with your organisation&apos;s account
+            </a>
+            <p className="mt-4 text-sm text-text-muted">
+              Administrators can also sign in with a password.
+            </p>
+          </>
+        )}
         <form className="mt-4 flex flex-col gap-3" onSubmit={submit} noValidate>
           <label className="flex flex-col gap-1">
             <span>Email</span>
@@ -70,7 +99,11 @@ export function LoginPage({ next }: { next?: string | undefined }) {
           <button
             type="submit"
             disabled={login.isPending || !email || !password}
-            className="rounded bg-accent px-3 py-2 font-semibold text-accent-contrast disabled:opacity-50"
+            className={
+              ssoOn
+                ? "rounded border border-border px-3 py-2 font-semibold disabled:opacity-50"
+                : "rounded bg-accent px-3 py-2 font-semibold text-accent-contrast disabled:opacity-50"
+            }
           >
             {login.isPending ? "Signing in…" : "Sign in"}
           </button>

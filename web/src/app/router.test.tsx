@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { safeNext } from "@/features/auth/LoginPage";
-import { hasPermission, loginErrorMessage } from "@/lib/auth/session";
+import {
+  hasPermission,
+  loginErrorMessage,
+  ssoErrorMessage,
+} from "@/lib/auth/session";
 import { ADMIN, fakeApi, problem } from "@/test/api";
 import { renderAt } from "@/test/render";
 
@@ -20,6 +24,61 @@ afterEach(() => {
 });
 
 describe("sign-in flow", () => {
+  it("offers the organisation's account when SSO is on (M1b)", async () => {
+    fakeApi({
+      "GET /auth/me": [401, problem(401)],
+      "GET /auth/sso": [200, { enabled: true }],
+    });
+    renderAt("/login?next=%2Fitems");
+    const link = await screen.findByRole("link", {
+      name: "Sign in with your organisation's account",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/api/v1/auth/oidc/login?next=%2Fitems",
+    );
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("hides it when SSO is off, and never forwards another site", async () => {
+    fakeApi({ "GET /auth/me": [401, problem(401)] });
+    renderAt("/login");
+    await screen.findByRole("heading", { name: "Sign in" });
+    expect(
+      screen.queryByRole("link", { name: /organisation/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("explains why the provider's sign-in came back", async () => {
+    fakeApi({
+      "GET /auth/me": [401, problem(401)],
+      "GET /auth/sso": [200, { enabled: true }],
+    });
+    renderAt("/login?sso=unknown");
+    expect(
+      await screen.findByText(/There is no account for you here yet/),
+    ).toHaveAttribute("role", "alert");
+  });
+
+  it("tells non-administrators to use the organisation's account", async () => {
+    fakeApi({
+      "GET /auth/me": [401, problem(401)],
+      "GET /auth/sso": [200, { enabled: true }],
+      "POST /auth/login": [
+        403,
+        {
+          ...problem(403),
+          type: "https://regwatch.example/problems/sso-required",
+        },
+      ],
+    });
+    renderAt("/login");
+    await signIn();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sign in with your organisation's account.",
+    );
+  });
+
   it("sends anonymous visitors to the login page and back after signing in", async () => {
     const api = fakeApi({
       "GET /auth/me": [401, problem(401)],
@@ -149,6 +208,9 @@ describe("session helpers", () => {
     expect(loginErrorMessage(problem(429))).toMatch(/Too many/);
     expect(loginErrorMessage(problem(500, "Boom"))).toBe("Boom");
     expect(loginErrorMessage(problem(500))).toBe("Sign-in failed. Try again.");
+    expect(ssoErrorMessage(undefined)).toBe("");
+    for (const reason of ["inactive", "state", "provider", "refused", "token"])
+      expect(ssoErrorMessage(reason)).not.toBe("");
   });
 
   it("follows only same-site paths after sign-in", () => {

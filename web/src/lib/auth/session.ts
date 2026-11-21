@@ -126,8 +126,42 @@ export function loginErrorMessage(problem: Problem): string {
       return "This account is locked. Try again later or ask an administrator.";
     case 429:
       return "Too many attempts. Wait and try again.";
+    case 403:
+      return problem.type.endsWith("/sso-required")
+        ? "Sign in with your organisation's account."
+        : (problem.detail ?? "Sign-in failed. Try again.");
     default:
       return problem.detail ?? "Sign-in failed. Try again.";
+  }
+}
+
+/** Whether the login page offers the organisation's account (M1b; CP-37). */
+export const ssoQuery = queryOptions({
+  queryKey: ["auth", "sso"],
+  queryFn: async (): Promise<boolean> => {
+    const result = await api.GET("/auth/sso");
+    return result.response.ok && result.data?.enabled === true;
+  },
+  staleTime: 60_000,
+  retry: false,
+});
+
+/** Why a sign-in through the provider came back to the login page (`/login?sso=`). */
+export function ssoErrorMessage(reason: string | undefined): string {
+  switch (reason) {
+    case undefined:
+    case "":
+      return "";
+    case "unknown":
+      return "There is no account for you here yet. Ask an administrator to add you.";
+    case "inactive":
+      return "This account is disabled or locked. Ask an administrator.";
+    case "state":
+      return "The sign-in took too long or was started elsewhere. Try again.";
+    case "provider":
+      return "Your organisation's sign-in service cannot be reached. Try again later.";
+    default:
+      return "Sign-in with your organisation's account did not complete. Try again.";
   }
 }
 

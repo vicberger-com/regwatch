@@ -9,6 +9,7 @@ export type Routes = Record<
 /** Answers every test gets unless it routes the request itself: the map on `/` (M6) and the
  * preferences the shell's idle watch reads (M9). */
 const DEFAULTS: Routes = {
+  "GET /auth/sso": [200, { enabled: false }],
   "GET /me/preferences": [200, { session_idle_timeout_minutes: 480 }],
   "GET /me/interest-options": [
     200,

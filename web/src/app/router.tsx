@@ -55,11 +55,15 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
-  validateSearch: (search: Record<string, unknown>): { next?: string } =>
-    typeof search.next === "string" ? { next: search.next } : {},
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { next?: string; sso?: string } => ({
+    ...(typeof search.next === "string" ? { next: search.next } : {}),
+    ...(typeof search.sso === "string" ? { sso: search.sso } : {}),
+  }),
   component: function Login() {
-    const { next } = loginRoute.useSearch();
-    return <LoginPage next={next} />;
+    const { next, sso } = loginRoute.useSearch();
+    return <LoginPage next={next} sso={sso} />;
   },
 });
 
