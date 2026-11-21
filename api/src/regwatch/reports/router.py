@@ -3,11 +3,14 @@ preview are stubs until M7.2 and M7.3."""
 
 from __future__ import annotations
 
+import json
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 
 from regwatch.core.db import DbSession
+from regwatch.core.errors import ProblemError
 from regwatch.core.routing import spec
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.services import client_ip
@@ -104,7 +107,33 @@ async def preview_layout(
     given = body.model_dump() if body is not None else {}
     layout = await services.get_layout(db, id, principal)
     html = await render.render_layout(db, layout, principal, given)
-    # The HTML holds hostile captured text: no scripts, no external loads, its own sandbox.
+    return _preview_response(html)
+
+
+def _preview_response(html: str) -> Response:
+    # The HTML holds hostile captured text: no scripts, no external loads, its own sandbox;
+    # framed by this site only (the proxies set DENY only where a response sets nothing).
     return Response(html, media_type="text/html; charset=utf-8", headers={
         "Content-Security-Policy": render.CSP, "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})  # fmt: skip
+        "X-Frame-Options": "SAMEORIGIN", "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer"})  # fmt: skip
+
+
+@router.get(
+    "/reports/layouts/{id}/preview",
+    **spec(desc="The preview as a page of its own, for a frame (CP-35)", perm=BUILD,
+           content="text/html", stub=False),
+)  # fmt: skip
+async def preview_layout_page(
+    id: UUID, principal: CurrentPrincipal, db: DbSession,
+    params: Annotated[str, Query(max_length=2000)] = "{}",
+) -> Response:  # fmt: skip
+    """CP-35 (M10.3; BL-140 g): the same preview, loaded by URL into a frame, so it keeps its
+    own CSP; a srcdoc frame inherits the page's, which in production blocks its styles."""
+    try:
+        given = ReportParams.model_validate(json.loads(params)).model_dump()
+    except (ValueError, TypeError):
+        raise ProblemError(422, "validation", "params is a JSON object of report settings.") \
+            from None  # fmt: skip
+    layout = await services.get_layout(db, id, principal)
+    return _preview_response(await render.render_layout(db, layout, principal, given))

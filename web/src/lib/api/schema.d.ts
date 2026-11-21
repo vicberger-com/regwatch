@@ -3577,7 +3577,33 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** @description CP-35 (M10.3; BL-140 g): the preview as a page of its own, loaded by URL into a frame so it keeps its own CSP */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description ReportParams as JSON */
+                    params?: string;
+                };
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Server-rendered HTML identical to the PDF input */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/html": string;
+                    };
+                };
+                422: components["responses"]["Problem"];
+            };
+        };
         put?: never;
         post: {
             parameters: {

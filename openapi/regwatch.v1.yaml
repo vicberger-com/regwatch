@@ -476,6 +476,12 @@ paths:
     delete: { tags: [reports], x-permission: reports.build, responses: { "204": { description: Deleted } } }
   /reports/layouts/{id}/preview:
     parameters: [ { $ref: "#/components/parameters/id" } ]
+    get:
+      tags: [reports]
+      x-permission: reports.build
+      description: "CP-35 (M10.3; BL-140 g): the preview as a page of its own, loaded by URL into a frame so it keeps its own CSP"
+      parameters: [ { name: params, in: query, schema: { type: string, maxLength: 2000, default: "{}" }, description: "ReportParams as JSON" } ]
+      responses: { "200": { description: Server-rendered HTML identical to the PDF input, content: { text/html: { schema: { type: string } } } }, "422": { $ref: "#/components/responses/Problem" } }
     post:
       tags: [reports]
       x-permission: reports.build

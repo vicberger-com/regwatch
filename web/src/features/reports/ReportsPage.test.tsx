@@ -84,7 +84,7 @@ describe("reports (M7.4)", () => {
         200,
         { ...LAYOUT, ...(body as object), version: 4 },
       ],
-      "POST /reports/layouts/l1/preview": [200, "<p>Rendered</p>"],
+      "GET /reports/layouts/l1/preview": [200, "<p>Rendered</p>"],
     });
     renderAt("/reports/l1");
     const form = await screen.findByRole("form", { name: "Report settings" });
@@ -114,7 +114,11 @@ describe("reports (M7.4)", () => {
     );
     const frame = await screen.findByTitle("Report preview");
     expect(frame).toHaveAttribute("sandbox", "");
-    expect(frame.getAttribute("srcdoc")).toContain("Rendered");
+    // By URL, not srcdoc, so the page keeps its own CSP (CP-35; BL-140 g).
+    expect(frame.getAttribute("srcdoc")).toBeNull();
+    expect(frame.getAttribute("src")).toMatch(
+      /^\/api\/v1\/reports\/layouts\/l1\/preview\?params=/,
+    );
   });
 
   it("previews a layout made from a stock report with its settings (U-M7-1)", async () => {
@@ -154,7 +158,7 @@ describe("reports (M7.4)", () => {
           regions: [],
         },
       ],
-      "POST /reports/layouts/l1/preview": [200, "<p>Germany</p>"],
+      "GET /reports/layouts/l1/preview": [200, "<p>Germany</p>"],
     });
     renderAt("/reports/l1");
     const place = await screen.findByRole("combobox", { name: "Jurisdiction" });
@@ -165,10 +169,13 @@ describe("reports (M7.4)", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Preview the saved version" }),
     );
-    await screen.findByTitle("Report preview");
+    const frame = await screen.findByTitle("Report preview");
     expect(
-      api.calls.find((c) => c.key === "POST /reports/layouts/l1/preview")?.body,
-    ).toEqual({ jurisdiction: "DE" });
+      api.calls.some((c) => c.key === "GET /reports/layouts/l1/preview"),
+    ).toBe(true);
+    expect(decodeURIComponent(frame.getAttribute("src") ?? "")).toContain(
+      'params={"jurisdiction":"DE"}',
+    );
   });
 
   it("offers the stock reports, a preview, and PDF or email (U-M7-2)", async () => {
@@ -191,7 +198,7 @@ describe("reports (M7.4)", () => {
           },
         ],
       ],
-      "POST /reports/layouts/l1/preview": [200, "<p>Europe</p>"],
+      "GET /reports/layouts/l1/preview": [200, "<p>Europe</p>"],
     });
     renderAt("/reports");
     const stock = await screen.findByRole("region", { name: "Stock reports" });
@@ -211,7 +218,9 @@ describe("reports (M7.4)", () => {
     );
     const frame = await screen.findByTitle("Report preview");
     expect(frame).toHaveAttribute("sandbox", "");
-    expect(frame.getAttribute("srcdoc")).toContain("Europe");
+    expect(frame.getAttribute("src")).toContain(
+      "/reports/layouts/l1/preview?params=%7B%7D",
+    );
   });
 
   it("is only for those who build reports", async () => {

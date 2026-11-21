@@ -110,3 +110,24 @@ async def test_renders_are_limited(
     assert (await admin.post(_api(f"/reports/layouts/{lid}/preview"))).status_code == 200
     limited = await admin.post(_api(f"/reports/layouts/{lid}/preview"))
     assert limited.status_code == 429 and limited.headers["Retry-After"]
+
+
+async def test_the_preview_as_a_page_for_a_frame(
+    admin: httpx.AsyncClient, db: AsyncSession
+) -> None:
+    """CP-35 (BL-140 g): the same HTML by GET, framed by this site only, with its own CSP; the
+    settings come as JSON in `params`, checked as in the POST form."""
+    await corpus(admin, db)
+    made = (await admin.post(_api("/reports/layouts"), json=body(TABLE))).json()
+    url = _api(f"/reports/layouts/{made['id']}/preview")
+    got = await admin.get(url)
+    assert got.status_code == 200, got.text
+    assert got.headers["x-frame-options"] == "SAMEORIGIN"
+    csp = got.headers["content-security-policy"]
+    assert "sandbox" in csp and "frame-ancestors 'self'" in csp and "script-src" not in csp
+    posted = (await admin.post(url)).text
+    assert f"{TAG} NIS2 scope" in got.text and f"{TAG} NIS2 scope" in posted  # the same rows
+    for bad in ("not json", "[1, 2]", '{"no_such": 1}'):
+        refused = await admin.get(url, params={"params": bad})
+        assert refused.status_code == 422, (bad, refused.text)
+    assert (await admin.get(url, params={"params": "x" * 2001})).status_code == 422

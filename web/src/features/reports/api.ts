@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { api, type Schemas } from "@/lib/api/client";
+import { api, API_BASE_URL, type Schemas } from "@/lib/api/client";
 import { failure } from "@/lib/auth/session";
 
 export type ReportLayout = Schemas["ReportLayout"];
@@ -84,19 +84,22 @@ export function useDeleteLayout() {
   });
 }
 
-/** The server-rendered preview (M7.2): HTML shown in a sandboxed frame, never inline. */
-export async function previewHtml(
+/**
+ * The server-rendered preview (M7.2) as a URL for a sandboxed frame (CP-35; BL-140 g): loaded
+ * by URL, the page keeps its own CSP; a srcdoc frame would inherit the app's, which in
+ * production blocks the report's styles. Checked first, so a refusal is shown as text.
+ */
+export async function previewUrl(
   id: string,
   params: Record<string, unknown> = {},
 ): Promise<string> {
-  const result = await api.POST("/reports/layouts/{id}/preview", {
-    params: { path: { id } },
-    body: params, // a stock report's settings, such as its jurisdiction (U-M7-1)
+  const url = `${API_BASE_URL}/reports/layouts/${encodeURIComponent(id)}/preview?params=${encodeURIComponent(JSON.stringify(params))}`;
+  const result = await api.GET("/reports/layouts/{id}/preview", {
+    params: { path: { id }, query: { params: JSON.stringify(params) } },
     parseAs: "text",
   });
-  if (!result.response.ok || typeof result.data !== "string")
-    throw failure(result);
-  return result.data;
+  if (!result.response.ok) throw failure(result);
+  return `${url}&t=${String(Date.now())}`; // a fresh render each time
 }
 
 export const templatesQuery = queryOptions({

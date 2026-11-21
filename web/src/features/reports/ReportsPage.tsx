@@ -16,7 +16,7 @@ import {
 
 import {
   layoutsQuery,
-  previewHtml,
+  previewUrl,
   templatesQuery,
   useDeleteLayout,
   asLayout,
@@ -67,7 +67,7 @@ export function ReportsPage({ userId }: { userId: string }) {
     onSuccess: (made) =>
       navigate({ to: "/reports/$id", params: { id: made.id } }),
   });
-  const [preview, setPreview] = useState<{ name: string; html: string } | null>(
+  const [preview, setPreview] = useState<{ name: string; url: string } | null>(
     null,
   );
   const [previewError, setPreviewError] = useState<unknown>(null);
@@ -214,8 +214,8 @@ export function ReportsPage({ userId }: { userId: string }) {
                       aria-label={`Preview ${l.name}`}
                       onClick={() => {
                         setPreviewError(null);
-                        previewHtml(l.id).then((html) => {
-                          setPreview({ name: l.name, html });
+                        previewUrl(l.id).then((url) => {
+                          setPreview({ name: l.name, url });
                         }, setPreviewError);
                       }}
                     >
@@ -263,7 +263,7 @@ export function ReportsPage({ userId }: { userId: string }) {
           <iframe
             title="Report preview"
             sandbox=""
-            srcDoc={preview.html}
+            src={preview.url}
             className="h-[70vh] w-full max-w-4xl rounded border border-border bg-white"
           />
         </section>

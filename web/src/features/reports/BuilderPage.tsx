@@ -12,7 +12,7 @@ import { problemText } from "@/lib/auth/session";
 import {
   fieldsQuery,
   layoutQuery,
-  previewHtml,
+  previewUrl,
   templatesQuery,
   useSaveLayout,
   asLayout,
@@ -208,10 +208,10 @@ function Settings({
             className={button}
             onClick={() => {
               setPreviewError(null);
-              previewHtml(
-                layout.id,
-                defs && defs.length > 0 ? values : {},
-              ).then(setPreview, setPreviewError);
+              previewUrl(layout.id, defs && defs.length > 0 ? values : {}).then(
+                setPreview,
+                setPreviewError,
+              );
             }}
           >
             Preview the saved version
@@ -240,7 +240,7 @@ function Settings({
         <iframe
           title="Report preview"
           sandbox=""
-          srcDoc={preview}
+          src={preview}
           className="h-[70vh] w-full max-w-4xl rounded border border-border bg-white"
         />
       )}
