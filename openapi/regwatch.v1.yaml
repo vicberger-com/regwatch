@@ -192,6 +192,8 @@ paths:
       x-permission: audit.read
       parameters: [ { $ref: "#/components/parameters/page" }, { $ref: "#/components/parameters/page_size" }, { name: actor, in: query, schema: { type: string, format: uuid } }, { name: action, in: query, schema: { type: string } }, { name: entity_type, in: query, schema: { type: string } }, { name: entity_id, in: query, schema: { type: string } }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } } ]
       responses: { "200": { description: Audit rows, content: { application/json: { schema: { allOf: [ { $ref: "#/components/schemas/Page" }, { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/AuditEntry" } } } } ] } } } } }
+  /printers:
+    get: { tags: [outputs], x-permission: outputs.print, description: "CP-33: the enabled printers, for New output (404 while outputs.server_print is off)", responses: { "200": { description: Printers to choose from, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/PrinterChoice" } } } } } } }
   /admin/printers:
     get: { tags: [admin], x-permission: settings.manage, responses: { "200": { description: Printers, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Printer" } } } } } } }
     post:
@@ -610,10 +612,14 @@ components:
       properties: { id: { type: string, format: uuid }, occurred_at: { type: string, format: date-time }, actor_user_id: { type: string, format: uuid, nullable: true }, actor_email: { type: string, nullable: true }, action: { type: string }, entity_type: { type: string }, entity_id: { type: string, nullable: true }, before: { nullable: true }, after: { nullable: true }, ip: { type: string, nullable: true }, request_id: { type: string, nullable: true } }
     Printer:
       type: object
-      properties: { id: { type: string, format: uuid }, name: { type: string }, ipp_url: { type: string }, default_media: { type: string }, enabled: { type: boolean } }
+      properties: { id: { type: string, format: uuid }, name: { type: string }, ipp_url: { type: string }, default_media: { type: string }, enabled: { type: boolean }, tls_sha256: { type: string, nullable: true, description: "CP-33: the pinned SHA-256 of the printer's certificate" } }
     PrinterWrite:
       type: object
-      properties: { name: { type: string }, ipp_url: { type: string, pattern: "^ipps?://" }, default_media: { type: string }, enabled: { type: boolean } }
+      properties: { name: { type: string, minLength: 1, maxLength: 100 }, ipp_url: { type: string, pattern: "^ipps?://", maxLength: 500 }, default_media: { type: string, pattern: "^[a-z0-9_.-]{1,64}$" }, enabled: { type: boolean }, tls_sha256: { type: string, nullable: true, pattern: "^[0-9A-Fa-f:]{64,95}$" } }
+    PrinterChoice:
+      type: object
+      required: [id, name]
+      properties: { id: { type: string, format: uuid }, name: { type: string } }
     Facet:
       type: object
       required: [id, key, label, value_type, multi, required, show_in_view_selector, show_in_filters, sort_order, system, hidden]
