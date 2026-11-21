@@ -808,6 +808,22 @@ async def admin_create_user(
     return UserWithPasswordOut(**out.model_dump(exclude_unset=True), temporary_password=temporary)
 
 
+async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID | None = None) -> int:
+    """Revoke every live session, or one user's (``regwatch-admin revoke-sessions``; M10.6): the
+    incident runbook's sign-everyone-out, since rotating secrets signs no one out. Audited."""
+    where: list[Any] = [UserSession.revoked_at.is_(None)]
+    if user_id is not None:
+        where.append(UserSession.user_id == user_id)
+    done = await db.execute(update(UserSession).where(*where).values(revoked_at=_now())
+                            .returning(UserSession.id))  # fmt: skip
+    count = len(done.scalars().all())
+    audit(db, "session.revoke_all", "user" if user_id else "session",
+          str(user_id) if user_id else None,
+          after={"sessions": count, "by": "operator"})  # fmt: skip
+    await db.commit()
+    return count
+
+
 async def _revoke_all(db: AsyncSession, user_id: uuid.UUID) -> None:
     await db.execute(
         update(UserSession)

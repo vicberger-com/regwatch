@@ -384,3 +384,36 @@ async def test_passive_requests_never_renew_an_idle_session(
         )
     await engine.dispose()
     assert fresh is True
+
+
+async def test_revoke_sessions_signs_everyone_or_one_account_out(
+    client: httpx.AsyncClient, db_url: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """M10.6 incident runbook: rotating secrets signs no one out; this does, and is audited."""
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+    assert (
+        await asyncio.to_thread(
+            admin_cli.main, ["revoke-sessions", "--email", "nobody@example.org"]
+        )
+        == 1
+    )
+    assert "no account" in capsys.readouterr().err
+    assert (
+        await asyncio.to_thread(admin_cli.main, ["revoke-sessions", "--email", "admin@example.org"])
+        == 0
+    )
+    assert "revoked 1 session(s)" in capsys.readouterr().out
+    assert (await client.get("/api/v1/auth/me")).status_code == 401  # signed out
+    assert (await _login(client, "admin@example.org", ADMIN_PW)).status_code == 200
+    assert await asyncio.to_thread(admin_cli.main, ["revoke-sessions", "--all"]) == 0
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
+    from regwatch.core.db import create_engine
+
+    engine = create_engine(db_url)
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT after FROM audit_log WHERE action = 'session.revoke_all' ORDER BY occurred_at"
+        ))).scalars().all()  # fmt: skip
+    await engine.dispose()
+    assert [r["sessions"] for r in rows] == [1, 1]

@@ -32,7 +32,7 @@ Plan rotations in the maintenance window (business hours, weekly; M10 question 3
 3. After 10 minutes, remove `REGWATCH_SECRET_KEY_PREVIOUS` and restart again.
 
 **Database passwords** (`db.env`: the owner and `regwatch_api`):
-1. In the database, run `ALTER ROLE … PASSWORD …`. For example: `$P exec db psql -U regwatch -d regwatch`, then `\password regwatch_api`.
+1. In the database, use psql's `\password`, which sends the password already hashed: `$P exec db psql -U regwatch -d regwatch`, then `\password regwatch_api`. Never type `ALTER ROLE … PASSWORD '…'` with a literal password; it can end up in psql's history and the server log.
 2. Update `db.env`, and the database URL in `.env`.
 3. Restart api, worker and beat.
 
@@ -50,4 +50,4 @@ Plan rotations in the maintenance window (business hours, weekly; M10 question 3
 | Queue backlog (alert) | `$P ps worker`, `$P logs worker`; scale with `$P up -d --scale worker=3` |
 | Disk filling | The object store (outputs older than the retention are removed every minute), the database, backups older than 30 days (removed by `make backup`), and Docker's images (`docker image prune`) |
 | Data lost or damaged | Stop the application (`$P stop api worker beat`) and restore the last good backup (restore-drill.md) |
-| A suspected compromise | Keep the evidence: copy the logs, `$P logs > incident.log`, and take a backup. Then rotate every secret (above) and disable the affected accounts (Settings, Users). Read the audit log (Settings, Audit log). Follow `SECURITY.md` |
+| A suspected compromise | 1. Keep the evidence: `$P logs > incident.log`, and a backup labelled as evidence, kept apart from the normal ones and never restored (it may hold the attacker's changes). 2. Sign everyone out: `$P run --rm --no-deps api regwatch-admin revoke-sessions --all` (rotating secrets alone signs no one out; sessions are stored as token hashes). 3. Reset the passwords of the administrators and of every affected account, and disable accounts you do not recognise (Settings, Users). 4. Rotate every secret (above). 5. In the audit log (Settings, Audit log), review recently created or changed users, roles, groups, printers, sources and settings. 6. Follow `SECURITY.md` |

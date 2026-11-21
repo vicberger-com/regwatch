@@ -26,7 +26,7 @@ The fix ships in a release whose notes name the issue once users can upgrade.
 
 ## Supported versions
 
-The latest release receives security fixes. Earlier releases do not; upgrade by following `docs/operations/release.md`.
+Only the latest release receives security fixes. Earlier releases do not; upgrade by following `docs/operations/release.md`.
 
 ## Scope
 
@@ -44,9 +44,12 @@ Two examples of such boundaries: printers may only reach the configured printer 
 ## Good faith
 
 Testing in good faith against your own installation is welcome:
-- do not access other people's data;
-- do not degrade a service others use;
+- do not access other people's data beyond what proves the issue;
+- do not degrade a service others use, and no denial-of-service testing;
+- no social engineering or phishing of users or staff;
 - give us reasonable time to fix before disclosure.
+
+There is no bug bounty.
 
 We will not pursue such research.
 

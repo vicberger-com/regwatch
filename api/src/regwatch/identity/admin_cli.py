@@ -1,6 +1,7 @@
 """``regwatch-admin``: operator commands run inside the api container (#31).
 
-``create-user`` makes the first administrator (or any local account) without the web UI.
+``create-user`` makes the first administrator (or any local account) without the web UI;
+``revoke-sessions`` signs everyone, or one account, out (the incident runbook, M10.6).
 The password is read from the terminal without echo, or from standard input with
 ``--password-stdin``; it is never taken as an argument, so it stays out of shell history
 and process listings.
@@ -49,6 +50,24 @@ async def _create(url: str, email: str, name: str, password: str, roles: list[st
         await engine.dispose()
 
 
+async def _revoke(url: str, email: str | None) -> int:
+    from sqlalchemy import select
+
+    from regwatch.identity.models import User
+
+    engine = create_engine(url, poolclass_null=True)
+    try:
+        async with session_factory(engine)() as db:
+            user_id = None
+            if email is not None:
+                user_id = await db.scalar(select(User.id).where(User.email == check_email(email)))
+                if user_id is None:
+                    raise ValueError("no account with that email address")
+            return await services.revoke_sessions(db, user_id)
+    finally:
+        await engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="regwatch-admin", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -61,10 +80,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="read the password from standard input")  # fmt: skip
     create.add_argument("--temporary", action="store_true",
                         help="require a password change at first login")  # fmt: skip
+    revoke = sub.add_parser("revoke-sessions", help="sign everyone, or one account, out")
+    which = revoke.add_mutually_exclusive_group(required=True)
+    which.add_argument("--all", action="store_true", help="every account")
+    which.add_argument("--email", help="one account")
     args = parser.parse_args(argv)
     from regwatch.core.settings import get_settings
 
     url = get_settings().database_url.get_secret_value()
+    if args.command == "revoke-sessions":
+        try:
+            count = asyncio.run(_revoke(url, None if args.all else args.email))
+        except ValueError as exc:
+            print(f"regwatch-admin: {exc}", file=sys.stderr)
+            return 1
+        print(f"regwatch-admin: revoked {count} session(s)")
+        return 0
     try:
         password = _read_password(args.password_stdin)
         user_id = asyncio.run(
