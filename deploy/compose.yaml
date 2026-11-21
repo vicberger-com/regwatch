@@ -48,6 +48,9 @@ services:
       # CP-33: printers are checked when saved, here too (the `print-test` printer, dev and QA).
       - path: print-test.env
         required: false
+      # BL-147: the `oidc-test` provider's issuer and client (scripts/oidc-test-env.sh).
+      - path: oidc-test.env
+        required: false
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       # M10.1b: Prometheus metrics on 9464 inside the container, for a scraper on the internal
@@ -285,6 +288,40 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    restart: unless-stopped
+
+  # A test OpenID Connect provider for development and QA only (BL-147; M1b): Keycloak,
+  # unmodified, with the `regwatch` realm imported (deploy/oidc-test/regwatch-realm.json; secrets
+  # from keycloak.env, made by scripts/oidc-test-env.sh). Profile `oidc-test`. The browser and the
+  # api use the same address, http://idp.localhost:8190: browsers resolve *.localhost to
+  # loopback, where the port is published on 127.0.0.1 only, and on the internal network the
+  # name is this container's alias. Plain http is allowed only with REGWATCH_OIDC_TEST_PROVIDER,
+  # which production refuses.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.2@sha256:7e66a96e4739239070aeaf72e4c5decf0f7f682cfc725b9f7ea2b336eaba38b3
+    profiles: [oidc-test]
+    command: ["start-dev", "--import-realm", "--http-port=8190", "--hostname=http://idp.localhost:8190"]
+    env_file:
+      - path: keycloak.env
+        required: true
+    environment:
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./oidc-test/regwatch-realm.json:/opt/keycloak/data/import/regwatch-realm.json:ro
+    ports:
+      - "127.0.0.1:8190:8190"
+    networks:
+      regwatch:
+        aliases: [idp.localhost]
+      edge: {}
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     restart: unless-stopped
 
 networks:

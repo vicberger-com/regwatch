@@ -1,0 +1,47 @@
+{
+  "realm": "regwatch",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "regwatch",
+      "name": "regwatch (oidc-test)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${KC_REDIRECT_URI}"],
+      "webOrigins": [],
+      "attributes": { "pkce.code.challenge.method": "S256" }
+    }
+  ],
+  "users": [
+    {
+      "username": "oidc-user",
+      "enabled": true,
+      "email": "oidc-user@example.org",
+      "emailVerified": true,
+      "firstName": "OIDC",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "${KC_USER_PASSWORD}", "temporary": false }]
+    },
+    {
+      "username": "oidc-unverified",
+      "enabled": true,
+      "email": "oidc-unverified@example.org",
+      "emailVerified": false,
+      "firstName": "Unverified",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "${KC_USER_PASSWORD}", "temporary": false }]
+    }
+  ]
+}

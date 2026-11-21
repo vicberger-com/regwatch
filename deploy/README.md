@@ -80,3 +80,12 @@ Without the secret the build uses the image's public trust store.
 6. **Back up nightly** with `COMPOSE="docker compose -f deploy/compose.prod.yaml" make backup`, and keep encrypted copies off the host (`docs/operations/restore-drill.md`).
 
 The API runs one process a container. Its metrics (port 9464) answer only on the internal networks, for an optional scraper. To use more CPU, scale the `api` service rather than adding processes inside it.
+
+## Sign-in with an organisation's account: the `oidc-test` profile (BL-147; M1b)
+A Keycloak with a `regwatch` realm, for development and QA only:
+1. `scripts/oidc-test-env.sh http://localhost` (the stack's `REGWATCH_BASE_URL`) writes `oidc-test.env` (for the api) and `keycloak.env` (for Keycloak), both owner-only with fresh secrets. Never commit them.
+2. Start the stack with `--profile oidc-test`. Keycloak listens on `127.0.0.1:8190` only. The browser and the api both use `http://idp.localhost:8190`: browsers resolve `*.localhost` to loopback, and on the internal network the name is the container's alias.
+3. Turn on `auth.oidc` (Settings, Feature flags).
+4. To sign in, an administrator first adds the person with the realm user's email: `oidc-user@example.org` (verified) or `oidc-unverified@example.org` (refused). Their password is `KC_USER_PASSWORD` in `keycloak.env`. Administrators' accounts are never linked by email; they keep their passwords.
+
+The e2e journey: `E2E_OIDC_ENV=deploy/keycloak.env scripts/e2e.sh oidc`, with the usual variables. `REGWATCH_OIDC_TEST_PROVIDER`, which allows plain http, is refused in production.

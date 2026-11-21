@@ -26,3 +26,5 @@ deploy/monitoring.env
 deploy/opensearch/generated/
 /backups/
 /sbom/
+deploy/oidc-test.env
+deploy/keycloak.env

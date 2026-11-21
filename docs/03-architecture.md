@@ -148,7 +148,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Authlib 1.9.10 (exact pin) | OpenID Connect client: the authorization-code flow with PKCE and the token exchange (M1b, ADR-0007; CP-37); notices in `api/THIRD_PARTY_NOTICES.md` | BSD-3 | V `46b9487`; the 1.9.10 wheel's licence file checked 2026-11-21 | dependency | M1b |
 | joserfc 1.8.0 | verifies the ID token's signature (asymmetric algorithms only) and claims (M1b); brought by Authlib | BSD-3 | the 1.8.0 wheel's licence file checked 2026-11-21 | dependency (transitive, used directly) | M1b |
 | cryptography 50.0.2 (its wheel statically links OpenSSL 4.0.3) | RSA and EC keys for joserfc; brought by Authlib and joserfc | Apache-2.0 OR BSD-3 (used under BSD-3); OpenSSL Apache-2.0 | the 50.0.2 wheel's licence files checked 2026-11-21 | dependency (transitive) | M1b |
-| Keycloak | reference identity provider for tests | Apache-2.0 | V `24ed1da` | tooling, optional service | M1 |
+| Keycloak 26.8.2 (`quay.io/keycloak/keycloak`, pinned by digest) | reference identity provider for development and QA, profile `oidc-test` (BL-147), unmodified, on 127.0.0.1 only | Apache-2.0 | V `24ed1da` | tooling, optional service, never in production | M1b |
 | pycasbin (optional) | policy engine | Apache-2.0 | V `f858158` | dependency | M1 |
 | Caddy | reverse proxy | Apache-2.0 | V `72dd0fb` | service | M10 |
 | structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 AND BSD-2-Clause | V `8174a86`, `ad75594`, `9b6b971` | dependency (prometheus-client 0.23.1 pinned, M10.1b) | M10 |
