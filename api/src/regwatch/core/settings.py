@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     smtp_starttls: bool = False
     smtp_from: str = "regwatch@example.com"
     # --- printing (CP-33) ---
+    # --- metrics (M10.1b) ---
+    metrics_port: int | None = Field(default=None, ge=1, le=65535)  # off unless set
+    metrics_bind: str = "127.0.0.1"  # Compose sets the container's internal address only
     print_test_printer: bool = False  # the `print-test` profile's ippeveprinter (dev and QA)
     # The worker's own networks, never printers; read from the kernel's routes when unset.
     stack_networks: list[str] | None = None

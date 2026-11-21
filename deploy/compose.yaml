@@ -49,6 +49,11 @@ services:
       - path: print-test.env
         required: false
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      # M10.1b: Prometheus metrics on 9464 inside the container, for a scraper on the internal
+      # network (the `monitoring` profile). Not published, and the proxy routes only to 8000.
+      REGWATCH_METRICS_PORT: "9464"
+      REGWATCH_METRICS_BIND: "0.0.0.0"
     # CP-23: `fetch` gives outbound internet (and DNS) for the save-time source address
     # check; nothing is published, and SafeFetcher refuses every non-public address.
     networks: [regwatch, fetch]

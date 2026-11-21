@@ -148,7 +148,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | Keycloak | reference identity provider for tests | Apache-2.0 | V `24ed1da` | tooling, optional service | M1 |
 | pycasbin (optional) | policy engine | Apache-2.0 | V `f858158` | dependency | M1 |
 | Caddy | reverse proxy | Apache-2.0 | V `72dd0fb` | service | M10 |
-| structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 | V `8174a86`, `ad75594`, `9b6b971` | dependency | M10 |
+| structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 AND BSD-2-Clause | V `8174a86`, `ad75594`, `9b6b971` | dependency (prometheus-client 0.23.1 pinned, M10.1b) | M10 |
 | Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
 | pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
 | pytest-asyncio | async tests (#27) | Apache-2.0 | V `e420349` | tooling | tests |

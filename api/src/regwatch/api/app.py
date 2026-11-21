@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import anyio
 import structlog
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute
@@ -17,6 +18,7 @@ from regwatch.api.middleware import BodySizeLimitMiddleware, RequestContextMiddl
 from regwatch.api.openapi import install_openapi
 from regwatch.api.router import router as system_router
 from regwatch.capture.router import router as capture_router
+from regwatch.core import metrics
 from regwatch.core.db import audit_log_is_append_only, create_engine, session_factory
 from regwatch.core.errors import install_problem_handlers
 from regwatch.core.logging_setup import configure_logging
@@ -102,7 +104,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await check_database_login(engine, settings)
-        yield
+        async with anyio.create_task_group() as group:
+            if settings.metrics_port is not None:  # M10.1b: an internal listener only
+                metrics.serve(settings.metrics_port, settings.metrics_bind)
+                group.start_soon(metrics.refresh_forever, session_factory(engine),
+                                 metrics.queue_depths)  # fmt: skip
+            yield
+            group.cancel_scope.cancel()
         await engine.dispose()
 
     # The API description and docs are served outside production only (no session needed).
@@ -123,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Last added runs first: request ids are bound before the body limit can answer 413.
     app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(metrics.MetricsMiddleware)  # outermost: times the whole request
     for router in MODULE_ROUTERS:
         app.include_router(router, prefix=API_PREFIX)
     install_problem_handlers(app, api_routes())

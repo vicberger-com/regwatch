@@ -194,3 +194,46 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## prometheus-client 0.23.1 (Apache-2.0, with decorator 4.0.10 under BSD-2-Clause)
+
+Source: https://github.com/prometheus/client_python, the `NOTICE` of the 0.23.1 wheel, reproduced unchanged below. The Apache-2.0 text is in the wheel's `LICENSE`; the BSD-2-Clause notice of the bundled decorator is the header of `prometheus_client/decorator.py`, also below.
+
+```
+Prometheus instrumentation library for Python applications
+Copyright 2015 The Prometheus Authors
+
+This product bundles decorator 4.0.10 which is available under a "2-clause BSD"
+license. For details, see prometheus_client/decorator.py.
+```
+
+```
+# #########################     LICENSE     ############################ #
+
+# Copyright (c) 2005-2016, Michele Simionato
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are
+# met:
+
+#   Redistributions of source code must retain the above copyright
+#   notice, this list of conditions and the following disclaimer.
+#   Redistributions in bytecode form must reproduce the above copyright
+#   notice, this list of conditions and the following disclaimer in
+#   the documentation and/or other materials provided with the
+#   distribution.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+# BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+# OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+# TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+# USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+# DAMAGE.
+```

@@ -5,6 +5,7 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 ## [Unreleased]
 
 ### Added
+- M10.1b Prometheus metrics (REQ-01): HTTP latency by method, route template and status; capture runs in the last 24 hours by outcome, items changed in the last hour, output failures in the last 24 hours by kind, sources unhealthy for 24 hours, and queue depth, refreshed every 30 s. Served by a separate listener, off unless `REGWATCH_METRICS_PORT` is set and bound to 127.0.0.1 by default; Compose sets 9464 on the container's internal networks only, publishes nothing, and the proxy never routes to it. prometheus-client 0.23.1 (Apache-2.0, BSD-2-Clause) registered with its notice (Refs: REQ-01, BL-146).
 - M10.1a `GET /api/v1/ready` (CP-34; REQ-01): 200 when the database answers a query, the queue a PING and the object store is writable, 503 with the failing dependency otherwise, for the orchestrator and the proxy's health check; public like `/health` and saying only ok or unavailable (Refs: REQ-01, BL-146).
 
 ## [G4] - 2026-11-21
