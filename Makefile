@@ -73,11 +73,11 @@ licenses: ## License inventory and allow-list check
 security: ## Bandit, Semgrep, pip-audit, pnpm audit, gitleaks
 	scripts/security-scan.sh
 
-backup: ## Back up PostgreSQL and the object store
-	@echo "make backup: lands with M10 operations hardening"; exit 1
+backup: ## Back up PostgreSQL and the object store to backups/<UTC time>/ (30 days kept)
+	COMPOSE="$(COMPOSE)" scripts/backup.sh
 
-restore: ## Restore from FILE=
-	@echo "make restore: lands with M10 operations hardening"; exit 1
+restore: ## Restore FILE=<backup dir> into this stack (destructive: needs CONFIRM=yes)
+	COMPOSE="$(COMPOSE)" scripts/restore.sh "$(FILE)"
 
 .PHONY: fixtures-check fixture-server
 fixtures-check: ## Validate the test corpus and run the fixture smoke tests (#12)
