@@ -78,8 +78,15 @@
     break-inside: avoid;
   }
 
+  /* Links, and text in the accent colour, print as dark ink: the theme's accent is light in the
+     dark and high-contrast themes and read at 2:1 on white (use testing U-M8-11). */
+  a,
+  .text-accent,
+  .text-text-muted {
+    color: #000000 !important;
+  }
+
   a {
-    color: inherit;
     text-decoration: underline;
   }
 }

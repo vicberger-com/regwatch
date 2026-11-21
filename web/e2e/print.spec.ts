@@ -61,3 +61,20 @@ test("the map prints light in the dark and high-contrast themes (U-M8-2)", async
     );
   }
 });
+
+test("links print in dark ink from every theme (U-M8-11)", async ({ page }) => {
+  await signInByKeyboard(page);
+  await page.getByRole("link", { name: "Items" }).click();
+  const link = page.getByRole("main").getByRole("link").first();
+  await expect(link).toBeVisible();
+  for (const theme of ["light", "dark", "high-contrast"]) {
+    await page.evaluate((t) => {
+      document.documentElement.dataset.theme = t;
+    }, theme);
+    await page.emulateMedia({ media: "print" });
+    expect(await link.evaluate((el) => getComputedStyle(el).color)).toBe(
+      "rgb(0, 0, 0)",
+    );
+    await page.emulateMedia({ media: "screen" });
+  }
+});
