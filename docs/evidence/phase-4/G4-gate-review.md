@@ -1,6 +1,6 @@
 # Gate G4 review: Phase 4 Reports and outputs (M7, M8)
 
-**Prepared by:** lead session · **Build under review:** `feat/M7-reports` (top of the Phase 4 stack, on `feat/M11-interests`) at the commit that adds this record · **Date:** 2026-11-21 · **Decision:** pending the owner. Mirror it as the comment `approved` on the `Gate G4` issue (docs/06-process.md 6.1).
+**Prepared by:** lead session · **Build under review:** `feat/M7-reports` (top of the Phase 4 stack, on `feat/M11-interests`) at the commit that adds this record · **Date:** 2026-11-21 · **Decision:** **approved by the owner on 2026-11-21** on the `Gate G4` issue, with the open items on their recommended defaults (the owner's standing instruction): the adversarial session is deferred to G5, as at G1 and G3; the manual screen-reader run moves to G5 with it; the M7 and M8 decisions, CP-32 and CP-33 are confirmed; the BL-144 minors follow in Phase 5.
 
 **Exit criterion (6.1):**
 - stock reports render to PDF and email;
@@ -14,7 +14,7 @@
 | Stock reports render to PDF and email | **Met** | M8 acceptance 1 and 2 (`M8-module-summary.md`): on the QA stack, a stock report becomes a PDF through Gotenberg, and the PDF has the preview's page count (`e2e/reports.spec.ts`); a stock report emailed to two allowed addresses arrives in Mailpit with its PDF, audited (`e2e/reports.spec.ts`). The jurisdiction profile for Germany is made from a screen since U-M7-1 was fixed (re-test, `use-testing/M7.md`). |
 | Custom layout saved and printed | **Met** | M7 acceptance 1 and 2 (the Puck builder: save, share, preview; `e2e/reports.spec.ts`, keyboard and axe). Printed three ways: browser printing with markings and page numbers on every page (`e2e/print.spec.ts`); a PDF; and network printing to an IPP printer (M8 acceptance 3, `e2e/printing.spec.ts` with CUPS's ippeveprinter on QA). |
 | Use testing round 2 | **Done, with findings fixed** | `docs/evidence/phase-4/use-testing/M7.md` and `M8.md`, an independent tester session, 73 screenshots. Round 2: M7 4 of 7, M8 7 of 11 journeys passed, one blocker and six majors. All seven were fixed and re-tested: the blocker and every major fixed. U-M7-2 is partly fixed (no thumbnails, the preview pane below the list); U-M8-3 was not reproducible in a UI session and is covered by a test. All three realistic-day scenarios pass in the re-test. A new major found then (U-M8-11, faint links on paper) is fixed. Eleven minors and three new minors stay in BL-144. |
-| Screen-reader journey (moved here from G3) | **Pending the owner** | The structure is in place, and axe passes on every e2e journey. The manual run with a screen reader needs a person. |
+| Screen-reader journey (moved here from G3) | **Deferred to G5** at approval | The structure is in place, and axe passes on every e2e journey. The manual run with a screen reader needs a person. |
 
 ## Checklist (docs/07-testing-quality.md 7.8)
 
@@ -30,7 +30,7 @@
 | License scan clean; register and notices updated | **Yes** | 702 allowed, 0 failing. New in P4: Puck, Jinja2, 0BSD (ADR-0003 amendment 4), ippx 0.1.1 (MIT, wheel checked against its tag), CUPS ippeveprinter (Apache-2.0, a QA-only separate service). |
 | CHANGELOG release section cut; BACKLOG decisions recorded; CP issues summarised | **At the gate** | BL-140 (M7), BL-143 (M8), BL-144 (use testing), BL-145 (network printing); CP-30 to CP-33. |
 | Questioning-period issues closed or assumptions recorded | **Recorded** | The M7 and M8 bank defaults on the owner's standing instruction, except M8 question 3, which the owner decided (BL-15). |
-| Owner comment `approved` | **Pending** | |
+| Owner comment `approved` | **Approved 2026-11-21** on the `Gate G4` issue | |
 
 ## Owner actions before approval
 
