@@ -45,6 +45,9 @@ services:
       - .env
       - path: index.env
         required: false
+      # CP-33: printers are checked when saved, here too (the `print-test` printer, dev and QA).
+      - path: print-test.env
+        required: false
     command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     # CP-23: `fetch` gives outbound internet (and DNS) for the save-time source address
     # check; nothing is published, and SafeFetcher refuses every non-public address.

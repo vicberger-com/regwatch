@@ -5,6 +5,7 @@
 # calling (unprivileged) user, who can read the credential file, with no capabilities, and keeps its own IPC namespace.
 #   E2E_BASE_URL     the stack under test (required): a loopback address, or with
 #                    E2E_ALLOW_REMOTE=1 an https one; setup adds a test source and two items there
+#   E2E_PRINT_TEST   set to run the acceptance 3 journey against the print-test profile's printer
 #   E2E_CREDENTIALS  a file with the lines "admin email: …" and "admin password: …" (required),
 #                    kept outside web/ (which is mounted into the container)
 set -euo pipefail
@@ -25,7 +26,7 @@ exec docker run --rm --network host --shm-size=2g \
   --user "$(id -u):$(id -g)" -e HOME=/tmp --cap-drop ALL --security-opt no-new-privileges \
   -e E2E_BASE_URL="$base" -e E2E_CREDENTIALS=/creds/admin.txt -e CI=1 \
   -e E2E_ALLOW_REMOTE="${E2E_ALLOW_REMOTE:-}" -e E2E_CANARY="${E2E_CANARY:-}" \
-  -e E2E_MAILPIT_URL="${E2E_MAILPIT_URL:-}" \
+  -e E2E_MAILPIT_URL="${E2E_MAILPIT_URL:-}" -e E2E_PRINT_TEST="${E2E_PRINT_TEST:-}" \
   -v "$root/web:/work:ro" -v "$(realpath "$creds"):/creds/admin.txt:ro" \
   -w /work "$image" \
   node node_modules/@playwright/test/cli.js test --output=/tmp/e2e-results "$@"
