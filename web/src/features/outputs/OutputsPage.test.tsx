@@ -299,3 +299,82 @@ describe("new output (M8.6b)", () => {
     });
   });
 });
+
+describe("stock report settings (use testing U-M7-1)", () => {
+  it("asks for the jurisdiction of a jurisdiction profile and sends it", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [
+        200,
+        {
+          ...ADMIN,
+          permissions: ["outputs.pdf", "reports.print", "items.read"],
+        },
+      ],
+      "GET /outputs": [200, page([])],
+      "GET /reports/templates": [
+        200,
+        [
+          {
+            key: "jurisdiction-profile",
+            label: "Jurisdiction profile",
+            version: 1,
+            parameters: [
+              {
+                key: "jurisdiction",
+                label: "Jurisdiction",
+                type: "jurisdiction",
+                required: true,
+              },
+              {
+                key: "period_days",
+                label: "Days covered",
+                type: "period_days",
+                default: 90,
+              },
+            ],
+          },
+        ],
+      ],
+      "GET /me/interest-options": [
+        200,
+        {
+          facets: [],
+          jurisdictions: [{ code: "DE", name: "Germany" }],
+          regions: [],
+        },
+      ],
+      "POST /outputs": [202, { ...JOB, status: "queued" }],
+    });
+    renderAt("/outputs");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "New output" }),
+    );
+    const form = screen.getByRole("form", { name: "New output" });
+    await userEvent.selectOptions(
+      within(form).getByRole("combobox", { name: "Report" }),
+      await within(form).findByRole("option", { name: "Jurisdiction profile" }),
+    );
+    const place = await within(form).findByRole("combobox", {
+      name: "Jurisdiction",
+    });
+    expect(
+      within(form).getByRole("button", { name: "Request" }),
+    ).toBeDisabled();
+    await userEvent.selectOptions(
+      place,
+      await within(place).findByRole("option", { name: "Germany" }),
+    );
+    expect(
+      within(form).getByRole("combobox", { name: "Days covered (optional)" }),
+    ).toHaveValue("90");
+    await userEvent.click(
+      within(form).getByRole("button", { name: "Request" }),
+    );
+    await within(form).findByText(/Requested\./);
+    expect(api.calls.find((c) => c.key === "POST /outputs")?.body).toEqual({
+      kind: "pdf",
+      source: { report_template_key: "jurisdiction-profile" },
+      params: { period_days: 90, jurisdiction: "DE" },
+    });
+  });
+});

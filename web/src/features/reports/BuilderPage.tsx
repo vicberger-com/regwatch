@@ -6,12 +6,14 @@ import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useId, useState } from "react";
 
 import { viewsQuery } from "@/features/me/api";
+import { defaults, ParamFields, type Params } from "./ParamFields";
 import { problemText } from "@/lib/auth/session";
 
 import {
   fieldsQuery,
   layoutQuery,
   previewHtml,
+  templatesQuery,
   useSaveLayout,
   asLayout,
   type ReportLayout,
@@ -45,6 +47,16 @@ function Settings({
   const [data, setData] = useState<Record<string, unknown>>(layout.layout);
   const [preview, setPreview] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<unknown>(null);
+  // A layout made from a stock report previews with that report's settings (U-M7-1).
+  const templates = useQuery({
+    ...templatesQuery,
+    enabled: Boolean(layout.based_on_template_key),
+  });
+  const defs = templates.data?.find(
+    (t) => t.key === layout.based_on_template_key,
+  )?.parameters;
+  const [params, setParams] = useState<Params | null>(null);
+  const values = params ?? defaults(defs);
 
   const body = {
     name,
@@ -182,6 +194,9 @@ function Settings({
             shared saved view, or search words)
           </label>
         )}
+        <div className="sm:col-span-2">
+          <ParamFields defs={defs} values={values} onChange={setParams} />
+        </div>
         <div className="flex gap-2 sm:col-span-2">
           {mine && (
             <button type="submit" className={button} disabled={save.isPending}>
@@ -193,7 +208,10 @@ function Settings({
             className={button}
             onClick={() => {
               setPreviewError(null);
-              previewHtml(layout.id).then(setPreview, setPreviewError);
+              previewHtml(
+                layout.id,
+                defs && defs.length > 0 ? values : {},
+              ).then(setPreview, setPreviewError);
             }}
           >
             Preview the saved version

@@ -8,6 +8,12 @@ import { useId, useState, type FormEvent } from "react";
 
 import { viewsQuery } from "@/features/me/api";
 import { layoutsQuery } from "@/features/reports/api";
+import {
+  defaults,
+  missing,
+  ParamFields,
+  type Params,
+} from "@/features/reports/ParamFields";
 import { problemText } from "@/lib/auth/session";
 
 import { templatesQuery, useCreateOutput, type OutputRequest } from "./api";
@@ -56,7 +62,21 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
     enabled: props.can("items.read") && kind === "csv",
   });
   const create = useCreateOutput();
+  const [params, setParams] = useState<Params>({});
   if (kinds.length === 0) return null;
+  // A stock report, or a layout made from one, asks for its settings (U-M7-1).
+  const [type, value = ""] = source.split(":", 2);
+  const templateKey =
+    type === "t"
+      ? value
+      : type === "l"
+        ? layouts.data?.find((l) => l.id === value)?.based_on_template_key
+        : undefined;
+  const defs =
+    kind === "csv"
+      ? undefined
+      : templates.data?.find((t) => t.key === templateKey)?.parameters;
+  const lacking = missing(defs, params);
 
   // One address a line; blank lines and repeats dropped. The server checks each again.
   const addresses = [
@@ -71,8 +91,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (tooMany) return;
-    const [type, value = ""] = source.split(":", 2);
+    if (tooMany || lacking.length > 0) return;
     const body: OutputRequest = {
       kind,
       source:
@@ -90,6 +109,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
         ...(subject.trim() ? { subject: subject.trim() } : {}),
         copies: 1,
       };
+    if (defs && defs.length > 0) body.params = params;
     if (repeat) body.schedule = { cron };
     create.mutate(body);
   };
@@ -163,11 +183,20 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
           value={kind === "csv" && source === "" ? "all" : source}
           onChange={(e) => {
             setSource(e.target.value);
+            const [t, v = ""] = e.target.value.split(":", 2);
+            const key =
+              t === "t"
+                ? v
+                : layouts.data?.find((l) => l.id === v)?.based_on_template_key;
+            setParams(
+              defaults(templates.data?.find((x) => x.key === key)?.parameters),
+            );
           }}
         >
           {kind === "csv" ? csvSources : pdfSources}
         </select>
       </label>
+      <ParamFields defs={defs} values={params} onChange={setParams} />
       {kind === "email" && (
         <>
           <label className="flex flex-col gap-1">
@@ -244,7 +273,7 @@ export function NewOutput(props: { can: (permission: string) => boolean }) {
         <button
           type="submit"
           className="rounded border border-border px-3 py-1 disabled:opacity-50"
-          disabled={create.isPending || tooMany}
+          disabled={create.isPending || tooMany || lacking.length > 0}
         >
           {repeat ? "Schedule" : "Request"}
         </button>

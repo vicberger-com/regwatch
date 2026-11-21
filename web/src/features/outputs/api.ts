@@ -84,12 +84,4 @@ export function useCreateOutput() {
   });
 }
 
-export const templatesQuery = queryOptions({
-  queryKey: ["reports", "templates"],
-  queryFn: async () => {
-    const result = await api.GET("/reports/templates");
-    if (!result.response.ok || result.data === undefined) throw failure(result);
-    return result.data;
-  },
-  staleTime: 5 * 60_000,
-});
+export { templatesQuery } from "@/features/reports/api";

@@ -117,6 +117,60 @@ describe("reports (M7.4)", () => {
     expect(frame.getAttribute("srcdoc")).toContain("Rendered");
   });
 
+  it("previews a layout made from a stock report with its settings (U-M7-1)", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [
+        200,
+        { ...BUILDER, permissions: [...BUILDER.permissions, "reports.print"] },
+      ],
+      "GET /reports/layouts/l1": [
+        200,
+        { ...LAYOUT, based_on_template_key: "jurisdiction-profile" },
+      ],
+      "GET /reports/fields": [200, []],
+      "GET /views": [200, []],
+      "GET /reports/templates": [
+        200,
+        [
+          {
+            key: "jurisdiction-profile",
+            label: "Jurisdiction profile",
+            parameters: [
+              {
+                key: "jurisdiction",
+                label: "Jurisdiction",
+                type: "jurisdiction",
+                required: true,
+              },
+            ],
+          },
+        ],
+      ],
+      "GET /me/interest-options": [
+        200,
+        {
+          facets: [],
+          jurisdictions: [{ code: "DE", name: "Germany" }],
+          regions: [],
+        },
+      ],
+      "POST /reports/layouts/l1/preview": [200, "<p>Germany</p>"],
+    });
+    renderAt("/reports/l1");
+    const place = await screen.findByRole("combobox", { name: "Jurisdiction" });
+    await userEvent.selectOptions(
+      place,
+      await within(place).findByRole("option", { name: "Germany" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Preview the saved version" }),
+    );
+    await screen.findByTitle("Report preview");
+    expect(
+      api.calls.find((c) => c.key === "POST /reports/layouts/l1/preview")?.body,
+    ).toEqual({ jurisdiction: "DE" });
+  });
+
   it("is only for those who build reports", async () => {
     fakeApi({
       "GET /auth/me": [200, { ...ADMIN, permissions: ["items.read"] }],

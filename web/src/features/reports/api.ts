@@ -85,12 +85,26 @@ export function useDeleteLayout() {
 }
 
 /** The server-rendered preview (M7.2): HTML shown in a sandboxed frame, never inline. */
-export async function previewHtml(id: string): Promise<string> {
+export async function previewHtml(
+  id: string,
+  params: Record<string, unknown> = {},
+): Promise<string> {
   const result = await api.POST("/reports/layouts/{id}/preview", {
     params: { path: { id } },
+    body: params, // a stock report's settings, such as its jurisdiction (U-M7-1)
     parseAs: "text",
   });
   if (!result.response.ok || typeof result.data !== "string")
     throw failure(result);
   return result.data;
 }
+
+export const templatesQuery = queryOptions({
+  queryKey: ["reports", "templates"],
+  queryFn: async () => {
+    const result = await api.GET("/reports/templates");
+    if (!result.response.ok || result.data === undefined) throw failure(result);
+    return result.data;
+  },
+  staleTime: 5 * 60_000,
+});
