@@ -67,3 +67,35 @@ async def test_repeated_calls_share_one_probe(
     for _ in range(5):
         assert (await admin.get(_api("/ready"))).status_code == 503
     assert calls == 1  # kept for READY_CACHE_S
+
+
+async def test_the_queue_probe_authenticates() -> None:
+    """The stack's Valkey has a password (BL-90): a bare PING answers NOAUTH. Found by the
+    M10.2 restore drill, where /ready was 503 on a healthy stack."""
+    import asyncio
+    import subprocess
+    import uuid
+
+    from regwatch.api import services
+    from tests.integration.test_valkey_rate import VALKEY_IMAGE, _docker
+
+    name = f"regwatch-it-valkey-auth-{uuid.uuid4().hex[:8]}"
+    secret = uuid.uuid4().hex
+    await asyncio.to_thread(_docker, "run", "-d", "--rm", "--name", name, "-p", "127.0.0.1::6379",
+                            VALKEY_IMAGE, "valkey-server", "--requirepass", secret)  # fmt: skip
+    try:
+        mapped = await asyncio.to_thread(_docker, "port", name, "6379/tcp")
+        port = int(mapped.splitlines()[0].rsplit(":", 1)[1])
+        url = f"redis://default:{secret}@127.0.0.1:{port}/0"
+        for _ in range(50):
+            if await services.probe_queue(url) == "ok":
+                break
+            await asyncio.sleep(0.2)
+        assert await services.probe_queue(url) == "ok"
+        assert await services.probe_queue(f"redis://:{secret}@127.0.0.1:{port}/0") == "ok"
+        assert await services.probe_queue(f"redis://127.0.0.1:{port}/0") == "unavailable"
+        assert await services.probe_queue(f"redis://default:wrong@127.0.0.1:{port}/0") == (
+            "unavailable")  # fmt: skip
+    finally:
+        await asyncio.to_thread(subprocess.run, ["docker", "rm", "-f", name],
+                                capture_output=True, check=False)  # fmt: skip
