@@ -1,0 +1,35 @@
+# Production reverse proxy (M10.3; docs/08-security-compliance.md 8.2; BL-76): TLS for
+# REGWATCH_SITE_ADDRESS (a public name gets a certificate automatically; `localhost` uses
+# Caddy's own CA), the web app as static files, /api/* to the API, and the production headers:
+# no 'unsafe-inline' anywhere in the CSP, HSTS, and nothing framed.
+{
+	admin 127.0.0.1:2019
+}
+
+{$REGWATCH_SITE_ADDRESS} {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		# "?": a route may allow framing by this site only (the report preview, CP-35).
+		?X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		# "?" keeps a route's own, stricter policy (the sandboxed logo, CP-07; the artifacts).
+		?Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+	}
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

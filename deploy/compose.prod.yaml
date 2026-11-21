@@ -1,0 +1,186 @@
+# Production stack (M10.3; REQ-01; BL-146). Run from the repository root:
+#   docker compose -f deploy/compose.prod.yaml up -d --build
+# Differences from the development stack (compose.yaml):
+# - release images: the API's `runtime` target, and the web app built into the proxy;
+# - read-only root filesystems, with tmpfs only where a process must write;
+# - no source mounts, no reload, one API process a container (the metrics' single registry);
+# - no Mailpit, no test printer, no `print-test.env`, REGWATCH_ENV=production;
+# - TLS and the production headers in Caddyfile.prod (no 'unsafe-inline').
+# Only the proxy publishes ports, on REGWATCH_PUBLISH_ADDRESS (127.0.0.1 unless set): an
+# operator sets the host's public address deliberately (deploy/README.md, production).
+name: regwatch-prod
+
+x-app: &app
+  build:
+    context: ../api
+    target: runtime
+  image: regwatch-api:release
+  env_file: [.env]
+  environment:
+    REGWATCH_ENV: production
+  networks: [regwatch]
+  read_only: true
+  tmpfs: ["/tmp"]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  proxy:
+    build:
+      context: ../web
+      dockerfile: ../deploy/proxy/Dockerfile
+    image: regwatch-proxy:release
+    environment:
+      REGWATCH_SITE_ADDRESS: ${REGWATCH_SITE_ADDRESS:?set the site's name, or localhost to try it}
+    ports:
+      - "${REGWATCH_PUBLISH_ADDRESS:-127.0.0.1}:80:80"
+      - "${REGWATCH_PUBLISH_ADDRESS:-127.0.0.1}:443:443"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      regwatch: { ipv4_address: 10.89.0.2 }  # REGWATCH_TRUSTED_PROXIES names it (BL-73)
+      edge: {}
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    env_file:
+      - .env
+      - path: index.env
+        required: false
+    environment:
+      REGWATCH_ENV: production
+      REGWATCH_METRICS_PORT: "9464"  # internal networks only; not published, not proxied
+      REGWATCH_METRICS_BIND: "0.0.0.0"
+    command: ["regwatch-api", "--host", "0.0.0.0", "--port", "8000"]
+    networks: [regwatch, fetch]
+    volumes:
+      - objectstore:/data/objectstore
+    depends_on:
+      db: { condition: service_healthy }
+      queue: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ready', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    env_file:
+      - .env
+      - path: index-worker.env
+        required: false
+    command: ["regwatch-worker"]
+    networks: [regwatch, fetch]
+    volumes:
+      - objectstore:/data/objectstore
+    depends_on:
+      api: { condition: service_healthy }
+
+  beat:
+    <<: *app
+    command: ["regwatch-beat"]
+    depends_on:
+      api: { condition: service_healthy }
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    env_file: [.env, db.env]
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+
+  db:
+    image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
+    environment:
+      POSTGRES_USER: regwatch
+      POSTGRES_DB: regwatch
+    env_file: db.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    networks: [regwatch]
+    read_only: true
+    tmpfs: ["/tmp", "/var/run/postgresql"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "regwatch", "-d", "regwatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  queue:
+    image: valkey/valkey:9@sha256:3add1a336a920ea54770a001ab6feb3da5fceea96a40373a3a2cd469b815f0b7
+    networks: [regwatch]
+    env_file: queue.env
+    command:
+      - sh
+      - -c
+      - >-
+        : "$${VALKEY_PASSWORD:?set in deploy/queue.env}";
+        umask 077;
+        printf 'user default off\nuser regwatch on >%s ~* &* +@all\n' "$$VALKEY_PASSWORD"
+        > /tmp/users.acl;
+        exec valkey-server --aclfile /tmp/users.acl
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes:
+      - queue-data:/data
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$VALKEY_PASSWORD\" valkey-cli --user regwatch ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  pdf:
+    image: gotenberg/gotenberg:8@sha256:13672f317b443c793e972b1bd2155ec62a3e7b6891b411e8196442cc053ee5f5
+    command: ["gotenberg", "--chromium-disable-javascript=true",
+              "--chromium-allow-list=^file:///tmp/.*", "--api-timeout=90s"]
+    networks: [regwatch]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  regwatch:
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
+          ip_range: 10.89.0.128/25
+  edge: {}
+  fetch: {}
+
+volumes:
+  pgdata:
+  objectstore:
+  queue-data:
+  caddy-data:
+  caddy-config:

@@ -104,3 +104,15 @@ def test_secrets_are_not_shown_in_repr(valid_env: dict[str, str]) -> None:
     text = repr(Settings())
     assert "a" * 64 not in text
     assert "pw@" not in text
+
+
+def test_the_test_printer_is_refused_in_production(
+    valid_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("REGWATCH_PRINT_TEST_PRINTER", "true")
+    assert Settings().print_test_printer  # development: allowed
+    monkeypatch.setenv("REGWATCH_ENV", "production")
+    with pytest.raises(ValidationError, match="development and QA only"):
+        Settings()

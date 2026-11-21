@@ -11,7 +11,7 @@ import re
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     # --- observability ---
     metrics_enabled: bool = True
     otel_exporter_otlp_endpoint: AnyHttpUrl | None = None
+
+    @model_validator(mode="after")
+    def _no_test_printer_in_production(self) -> Settings:
+        """The `print-test` printer skips the printer network checks (CP-33): never in
+        production (review of the test printer; M10.3)."""
+        if self.env == "production" and self.print_test_printer:
+            raise ValueError("REGWATCH_PRINT_TEST_PRINTER is for development and QA only")
+        return self
 
     @field_validator("secret_key", "secret_key_previous")
     @classmethod

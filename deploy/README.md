@@ -47,3 +47,36 @@ docker compose -f deploy/compose.yaml up
 ```
 
 Without the secret the build uses the image's public trust store.
+
+# Production stack (M10.3)
+
+`deploy/compose.prod.yaml` runs the release images: the API's `runtime` target, and the web app built into the Caddy proxy (`deploy/proxy/Dockerfile`). Root filesystems are read-only, with tmpfs only where a process writes. There are no source mounts, no Mailpit and no test printer, and `REGWATCH_ENV=production` is set.
+
+1. **Secrets:** create `deploy/.env`, `db.env` and `queue.env` from `docs/contracts/env.example`, through the secret store, never in the repository.
+   - Set `REGWATCH_BASE_URL` to the site's https address.
+   - In production the settings refuse `REGWATCH_PRINT_TEST_PRINTER`.
+2. **Name the site and the address to publish on:**
+   ```
+   export REGWATCH_SITE_ADDRESS=regwatch.example.com   # Caddy obtains its certificate
+   export REGWATCH_PUBLISH_ADDRESS=203.0.113.10        # 127.0.0.1 unless set
+   ```
+   Only the proxy publishes ports (80 for the redirect, 443). Publishing on a public address is a deliberate choice. The application is for signed-in users only, and every API route but the health, version, login and public branding routes needs a session. Keep `REGWATCH_PUBLISH_ADDRESS` at 127.0.0.1, behind an SSH tunnel or your own front proxy, until you mean to expose it.
+3. **Build and start:**
+   ```
+   docker compose -f deploy/compose.prod.yaml build
+   docker compose -f deploy/compose.prod.yaml up -d db queue
+   docker compose -f deploy/compose.prod.yaml --profile tools run --rm migrate
+   docker compose -f deploy/compose.prod.yaml run --rm --no-deps api regwatch-seed
+   docker compose -f deploy/compose.prod.yaml up -d
+   ```
+4. **Create the first administrator.** Feed the password on stdin, so it stays out of the shell history:
+   ```
+   docker compose -f deploy/compose.prod.yaml run --rm --no-deps -T api regwatch-admin create-user --email you@example.org --name "You" --role admin --password-stdin
+   ```
+5. **Check:**
+   - `https://<site>/api/v1/ready` answers `{"ready": true, …}`;
+   - the headers include HSTS and the CSP without `'unsafe-inline'`;
+   - sign in.
+6. **Back up nightly** with `COMPOSE="docker compose -f deploy/compose.prod.yaml" make backup`, and keep encrypted copies off the host (`docs/operations/restore-drill.md`).
+
+The API runs one process a container. Its metrics (port 9464) answer only on the internal networks, for an optional scraper. To use more CPU, scale the `api` service rather than adding processes inside it.
