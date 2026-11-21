@@ -74,6 +74,9 @@ services:
       - .env
       - path: index-worker.env
         required: false
+      # CP-33: REGWATCH_PRINT_TEST_PRINTER=true for the `print-test` printer (dev and QA only).
+      - path: print-test.env
+        required: false
     command: ["regwatch-worker"]
     # CP-23: the worker captures sources through SafeFetcher, so it needs outbound internet.
     networks: [regwatch, fetch]
@@ -252,8 +255,23 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # print-bridge (profile `print`) is deferred: ADR-0001 decision 6, BL-13, BL-15.
-  # Nothing is built for it until a CP issue settles the print path.
+  # A test IPP printer for development and QA only (CP-33; M8 acceptance 3): CUPS's
+  # ippeveprinter, unmodified (deploy/print-test/Dockerfile). Profile `print-test`. On the
+  # internal network only, with no published port: the worker reaches it by name, and only
+  # with REGWATCH_PRINT_TEST_PRINTER=true (print-test.env beside .env; never in production).
+  ippeveprinter:
+    build:
+      context: ./print-test
+    image: regwatch-print-test:dev
+    profiles: [print-test]
+    networks: [regwatch]
+    healthcheck:
+      test: ["CMD", "ipptool", "-q", "ipp://localhost:631/ipp/print", "get-printer-attributes.test"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
 
 networks:
   regwatch:
