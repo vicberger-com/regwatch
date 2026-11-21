@@ -11,7 +11,9 @@ import { signInByKeyboard } from "./session";
 test("a report is created, edited in Puck and previewed", async ({ page }) => {
   await signInByKeyboard(page);
   await page.goto("/reports");
-  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Reports", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "New report", exact: true }).click();
   await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/);
   const settings = page.getByRole("form", { name: "Report settings" });
