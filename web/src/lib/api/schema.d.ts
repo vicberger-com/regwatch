@@ -178,6 +178,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description CP-38 (BL-148): the second step of a password sign-in, after 401 mfa-required set the rw_mfa cookie: a code from the authenticator app, or a recovery code */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MfaCode"];
+                };
+            };
+            responses: {
+                /** @description The second step of a password sign-in: session cookie set (CP-38) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Me"];
+                    };
+                };
+                400: components["responses"]["Problem"];
+                401: components["responses"]["Problem"];
+                /** @description Account locked */
+                423: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sso": {
         parameters: {
             query?: never;
@@ -714,6 +766,45 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{id}/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description CP-38: removes the user's authenticator (a lost phone); their sessions end */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The user's authenticator removed; their sessions end (CP-38) */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["Problem"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -4104,6 +4195,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/mfa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description CP-38 (BL-148) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Whether two-factor sign-in is on (CP-38) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MfaStatus"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/mfa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description CP-38: the password again, then a new secret (a QR code as rows of 0 and 1, and text); on only after /me/mfa/confirm */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MfaPassword"];
+                };
+            };
+            responses: {
+                /** @description A new authenticator secret, to confirm (CP-38) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MfaSetup"];
+                    };
+                };
+                400: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/mfa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MfaCode"];
+                };
+            };
+            responses: {
+                /** @description On; the one-time recovery codes (CP-38) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecoveryCodes"];
+                    };
+                };
+                401: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/mfa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MfaChange"];
+                };
+            };
+            responses: {
+                /** @description Off (CP-38) */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["Problem"];
+                401: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/mfa/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["MfaChange"];
+                };
+            };
+            responses: {
+                /** @description New recovery codes; the old ones stop working (CP-38) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RecoveryCodes"];
+                    };
+                };
+                400: components["responses"]["Problem"];
+                401: components["responses"]["Problem"];
+                409: components["responses"]["Problem"];
+                429: components["responses"]["Problem"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/sessions": {
         parameters: {
             query?: never;
@@ -5016,6 +5312,30 @@ export interface components {
         InterestOption: {
             key: string;
             label: string;
+        };
+        MfaStatus: {
+            enabled: boolean;
+            /** Format: date-time */
+            confirmed_at?: string | null;
+            recovery_codes_left: number;
+        };
+        MfaPassword: {
+            password: string;
+        };
+        MfaSetup: {
+            secret: string;
+            otpauth_uri: string;
+            qr: string[];
+        };
+        MfaCode: {
+            code: string;
+        };
+        MfaChange: {
+            password: string;
+            code: string;
+        };
+        RecoveryCodes: {
+            recovery_codes: string[];
         };
         SessionInfo: {
             /** Format: uuid */

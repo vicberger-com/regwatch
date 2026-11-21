@@ -123,6 +123,9 @@ describe("user tab", () => {
       await screen.findByLabelText("Sign out after inactivity"),
       "480",
     );
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(await screen.findByText(/at most 240 minutes/)).toHaveAttribute(
+      "role",
+      "alert",
+    );
   });
 });

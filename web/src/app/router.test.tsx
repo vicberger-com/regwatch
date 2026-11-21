@@ -60,6 +60,46 @@ describe("sign-in flow", () => {
     ).toHaveAttribute("role", "alert");
   });
 
+  it("asks for the authenticator code after a right password (BL-148)", async () => {
+    const api = fakeApi({
+      "GET /auth/me": [401, problem(401)],
+      "POST /auth/login": [
+        401,
+        { ...problem(401), type: "https://regwatch/errors/mfa-required" },
+      ],
+      "POST /auth/mfa": (body) =>
+        (body as { code: string }).code === "123456"
+          ? [200, ADMIN]
+          : [
+              401,
+              {
+                ...problem(401, "The code is not valid. Enter a new one."),
+                type: "https://regwatch/errors/mfa-invalid",
+              },
+            ],
+    });
+    renderAt("/login?next=%2Fitems");
+    const user = await signIn();
+    const field = await screen.findByLabelText(
+      "Code from your authenticator app",
+    );
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    await user.type(field, "000000");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The code is not valid.",
+    );
+    await user.clear(field);
+    await user.type(field, " 123456 ");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Items" }),
+    ).toBeInTheDocument();
+    expect(
+      api.calls.filter((c) => c.key === "POST /auth/mfa").map((c) => c.body),
+    ).toEqual([{ code: "000000" }, { code: "123456" }]);
+  });
+
   it("tells non-administrators to use the organisation's account", async () => {
     fakeApi({
       "GET /auth/me": [401, problem(401)],

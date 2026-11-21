@@ -6,9 +6,11 @@ import { PublicFrame } from "@/app/PublicFrame";
 import {
   ApiProblem,
   loginErrorMessage,
+  needsCode,
   ssoErrorMessage,
   ssoQuery,
   useLogin,
+  useMfaSignIn,
 } from "@/lib/auth/session";
 
 /** `/login` (screens.md): email, password, sign-in button and an error live region; with
@@ -24,6 +26,8 @@ export function LoginPage({
   const navigate = useNavigate();
   const login = useLogin();
   const ssoOn = useQuery(ssoQuery).data === true;
+  const second = useMfaSignIn();
+  const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const error =
@@ -32,6 +36,84 @@ export function LoginPage({
       : login.error
         ? "Sign-in failed. Try again."
         : ssoErrorMessage(sso);
+
+  function finish(me: { must_change_password?: boolean }) {
+    setPassword("");
+    setCode("");
+    void navigate({
+      to: me.must_change_password ? "/change-password" : safeNext(next),
+    });
+  }
+
+  function submitCode(event: FormEvent) {
+    event.preventDefault();
+    second.mutate(code.trim(), { onSuccess: finish });
+  }
+
+  if (needsCode(login.error)) {
+    const codeError =
+      second.error instanceof ApiProblem
+        ? (second.error.problem.detail ??
+          loginErrorMessage(second.error.problem))
+        : second.error
+          ? "Sign-in failed. Try again."
+          : "";
+    const expired =
+      second.error instanceof ApiProblem &&
+      second.error.problem.type.endsWith("/mfa-expired");
+    return (
+      <PublicFrame screen="Sign in">
+        <div className="mx-auto max-w-sm rounded border border-border bg-surface p-6">
+          <h1 className="text-xl font-semibold">Sign in</h1>
+          <form
+            className="mt-4 flex flex-col gap-3"
+            onSubmit={submitCode}
+            noValidate
+          >
+            <label className="flex flex-col gap-1">
+              <span>Code from your authenticator app</span>
+              <input
+                type="text"
+                autoComplete="one-time-code"
+                required
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                }}
+                className="rounded border border-border bg-bg px-2 py-1"
+              />
+            </label>
+            <p className="text-sm text-text-muted">
+              Lost your phone? Enter one of your recovery codes instead.
+            </p>
+            <p role="alert" className="min-h-6 text-critical">
+              {codeError}
+            </p>
+            <button
+              type="submit"
+              disabled={second.isPending || !code.trim()}
+              className="rounded bg-accent px-3 py-2 font-semibold text-accent-contrast disabled:opacity-50"
+            >
+              {second.isPending ? "Checking…" : "Continue"}
+            </button>
+            {expired && (
+              <button
+                type="button"
+                className="rounded border border-border px-3 py-2 font-semibold"
+                onClick={() => {
+                  second.reset();
+                  login.reset();
+                  setCode("");
+                }}
+              >
+                Start again
+              </button>
+            )}
+          </form>
+        </div>
+      </PublicFrame>
+    );
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -44,6 +126,9 @@ export function LoginPage({
             ? "/change-password"
             : safeNext(next);
           void navigate({ to: target });
+        },
+        onError: (failed) => {
+          if (needsCode(failed)) setPassword(""); // not kept for the second step
         },
       },
     );

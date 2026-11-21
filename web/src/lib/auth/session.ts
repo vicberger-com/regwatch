@@ -71,6 +71,31 @@ export function useLogin() {
   });
 }
 
+/** The second step of a password sign-in (BL-148; CP-38): a code, or a recovery code. */
+export function useMfaSignIn() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (code: string) => {
+      const result = await api.POST("/auth/mfa", { body: { code } });
+      if (!result.response.ok || result.data === undefined)
+        throw failure(result);
+      return result.data;
+    },
+    onSuccess: (me) => {
+      forgetEverything(client);
+      client.setQueryData(meQuery.queryKey, me);
+    },
+    gcTime: 0,
+  });
+}
+
+/** True when the password was right and a code from the authenticator is needed next. */
+export function needsCode(error: unknown): boolean {
+  return (
+    error instanceof ApiProblem && error.problem.type.endsWith("/mfa-required")
+  );
+}
+
 export function useLogout() {
   const client = useQueryClient();
   return useMutation({

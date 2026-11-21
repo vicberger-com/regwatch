@@ -86,6 +86,16 @@ export function useResetPassword() {
   });
 }
 
+/** Removes a user's authenticator when their phone is lost (BL-148; CP-38). */
+export function useResetMfa() {
+  return useAdminMutation(async (id: string) => {
+    const result = await api.DELETE("/admin/users/{id}/mfa", {
+      params: { path: { id } },
+    });
+    if (!result.response.ok) throw failure(result);
+  });
+}
+
 export type Permission = Schemas["Permission"];
 
 export const permissionsQuery = queryOptions({

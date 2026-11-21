@@ -8,6 +8,7 @@ import {
   rolesQuery,
   usersQuery,
   useCreateUser,
+  useResetMfa,
   useResetPassword,
   useUpdateUser,
   type User,
@@ -24,6 +25,7 @@ export function UsersPage({ selfId }: { selfId: string }) {
   const roles = useQuery(rolesQuery);
   const update = useUpdateUser();
   const reset = useResetPassword();
+  const resetMfa = useResetMfa();
   // A temporary password is shown once, here, and dropped when the next action starts.
   const [editing, setEditing] = useState<User | null>(null);
   // Focus returns to the Edit button that opened the form (screens.md: dialogs return focus).
@@ -44,7 +46,7 @@ export function UsersPage({ selfId }: { selfId: string }) {
   } | null>(null);
 
   const error = problemText(
-    update.error ?? reset.error,
+    update.error ?? reset.error ?? resetMfa.error,
     "The change was refused.",
   );
 
@@ -120,7 +122,9 @@ export function UsersPage({ selfId }: { selfId: string }) {
                   key={u.id}
                   user={u}
                   isSelf={u.id === selfId}
-                  busy={update.isPending || reset.isPending}
+                  busy={
+                    update.isPending || reset.isPending || resetMfa.isPending
+                  }
                   onEdit={() => {
                     setSecret(null);
                     setNotice("");
@@ -136,6 +140,16 @@ export function UsersPage({ selfId }: { selfId: string }) {
                     if (!window.confirm(`${verb} ${u.email}?`)) return;
                     setSecret(null);
                     update.mutate({ id: u.id, body: { status } });
+                  }}
+                  onResetMfa={() => {
+                    const ask = `Reset two-factor sign-in for ${u.email}? They sign in with their password alone until they set it up again, and all their sessions end.`;
+                    if (!window.confirm(ask)) return;
+                    setSecret(null);
+                    resetMfa.mutate(u.id, {
+                      onSuccess: () => {
+                        setNotice(`Two-factor sign-in reset for ${u.email}.`);
+                      },
+                    });
                   }}
                   onReset={() => {
                     const ask = `Reset the password of ${u.email}? This ends all their sessions.`;
@@ -164,6 +178,7 @@ function Row(props: {
   busy: boolean;
   onStatus: (status: "active" | "disabled") => void;
   onReset: () => void;
+  onResetMfa: () => void;
   onEdit: () => void;
 }) {
   const { user, isSelf, busy } = props;
@@ -196,6 +211,17 @@ function Row(props: {
             onClick={props.onReset}
           >
             Reset password
+          </button>
+        )}
+        {!isSelf && (
+          <button
+            type="button"
+            className={button}
+            disabled={busy}
+            aria-label={`Reset two-factor sign-in for ${user.email}`}
+            onClick={props.onResetMfa}
+          >
+            Reset two-factor
           </button>
         )}
         {!isSelf && (

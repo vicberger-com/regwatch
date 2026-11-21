@@ -18,6 +18,7 @@ const DEFAULTS: Routes = {
   "GET /catalogue": [200, []],
   "GET /feed-requests": [200, []],
   "GET /me/groups": [200, []],
+  "GET /me/mfa": [200, { enabled: false, recovery_codes_left: 0 }],
   "GET /map/activity": [
     200,
     {

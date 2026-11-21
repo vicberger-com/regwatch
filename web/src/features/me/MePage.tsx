@@ -5,6 +5,7 @@ import { useId, type ReactNode } from "react";
 import { HelpTip } from "@/features/help/HelpTip";
 import { FeedsEditor } from "./FeedsEditor";
 import { InterestsEditor } from "./InterestsEditor";
+import { TwoFactor } from "./TwoFactor";
 import { meTopic } from "@/features/help/topics";
 import { hasPermission, problemText } from "@/lib/auth/session";
 
@@ -137,6 +138,9 @@ export function MePage() {
             Change your password
           </Link>
         </p>
+      </Section>
+      <Section id="two-factor" title="Two-factor sign-in">
+        <TwoFactor />
       </Section>
       {p && (
         <>
