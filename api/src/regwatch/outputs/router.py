@@ -88,7 +88,7 @@ async def create_output(
 
 @router.get("/outputs/{id}", tags=OUTPUTS, **spec(OutputJob, desc="Job", perm=PDF, stub=False))
 async def get_output(id: UUID, principal: CurrentPrincipal, db: DbSession) -> OutputJob:
-    return services.out(await services.get_job(db, id, principal))
+    return services.out(await services.get_job(db, id, principal), principal)
 
 
 @router.delete(
@@ -137,7 +137,7 @@ async def get_output_artifact(
     if data is None:
         raise ProblemError(404, "not-found", "The file is no longer kept.")
     kind = "application/pdf" if job.artifact_ref.endswith(".pdf") else "text/csv"
-    name = services.file_name(job, job.artifact_ref.rsplit(".", 1)[-1])
+    name = services.file_name(job, job.artifact_ref.rsplit(".", 1)[-1], principal)
     headers = {"Content-Disposition": f'attachment; filename="{name}"',
                "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                "Content-Security-Policy": "default-src 'none'"}  # fmt: skip

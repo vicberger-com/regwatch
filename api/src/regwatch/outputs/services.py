@@ -47,10 +47,21 @@ def _invalid(field: str, message: str) -> ProblemError:
                         errors=[ProblemFieldError(field=field, message=message)])  # fmt: skip
 
 
-def summary(job: OutputJob) -> str:
+def _named(job: OutputJob, viewer: Principal | None) -> str:
+    """The source's name, for its requester; for anyone else (``outputs.read_all``) only with
+    ``reports.read_all``, since a private layout's or view's name can itself be sensitive
+    (review of a280423). Stock report names are public."""
+    named = str((job.destination or {}).get("source_name") or "")
+    if (viewer is not None and job.requested_by != viewer.user.id and not job.report_template_key
+            and "reports.read_all" not in viewer.permissions):  # fmt: skip
+        return ""
+    return named
+
+
+def summary(job: OutputJob, viewer: Principal | None = None) -> str:
     """What the output was made from, by name (use testing U-M8-1): the name kept when it was
     requested, so the history says what was produced even after a rename or a deletion."""
-    named = str((job.destination or {}).get("source_name") or "")
+    named = _named(job, viewer)
     deleted = (job.query or {}).get(DELETED)
     if deleted:
         return f"{named} (deleted {deleted})" if named else f"deleted {deleted}"
@@ -63,19 +74,19 @@ def summary(job: OutputJob) -> str:
     return named or "a search"
 
 
-def file_name(job: OutputJob, extension: str) -> str:
+def file_name(job: OutputJob, extension: str, viewer: Principal | None = None) -> str:
     """``regwatch-<name>-<date>.<ext>``: letters, digits and hyphens only, so it is safe in a
     header and on any file system."""
     import re
 
-    named = str((job.destination or {}).get("source_name") or "output")
+    named = _named(job, viewer) or "output"
     slug = re.sub(r"[^a-z0-9]+", "-", named.lower().encode("ascii", "ignore").decode())
     when = (job.finished_at or job.created_at or datetime.now(UTC)).date().isoformat()
     return f"regwatch-{slug.strip('-')[:60] or 'output'}-{when}.{extension}"
 
 
-def out(job: OutputJob) -> JobOut:
-    source = summary(job)
+def out(job: OutputJob, viewer: Principal | None = None) -> JobOut:
+    source = summary(job, viewer)
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
         source_summary=source,
@@ -280,7 +291,7 @@ async def list_outputs(db: AsyncSession, principal: Principal, page: int, page_s
     rows = (await db.scalars(select(OutputJob).where(*where)
                              .order_by(OutputJob.created_at.desc(), OutputJob.id)
                              .offset((page - 1) * page_size).limit(page_size))).all()  # fmt: skip
-    return Page[JobOut](items=[out(r) for r in rows], total=total, page=page,
+    return Page[JobOut](items=[out(r, principal) for r in rows], total=total, page=page,
                         page_size=page_size)  # fmt: skip
 
 
