@@ -44,6 +44,15 @@ REFRESHED = Gauge("regwatch_metrics_refreshed_timestamp_seconds",
                   "When the business gauges were last refreshed", registry=REGISTRY)  # fmt: skip
 
 
+METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+
+
+def method_of(scope: Scope) -> str:
+    """A known method, or ``other``: a client's made-up methods add no series (review)."""
+    method = str(scope.get("method", "GET")).upper()
+    return method if method in METHODS else "other"
+
+
 def route_of(scope: Scope) -> str:
     """The matched route's template (``/api/v1/items/{id}``), or ``unmatched``."""
     route = scope.get("route")
@@ -72,7 +81,7 @@ class MetricsMiddleware:
         try:
             await self.app(scope, receive, sending)
         finally:
-            HTTP.labels(scope.get("method", "GET"), route_of(scope), str(status)).observe(
+            HTTP.labels(method_of(scope), route_of(scope), str(status)).observe(
                 time.perf_counter() - start)  # fmt: skip
 
 

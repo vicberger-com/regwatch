@@ -41,3 +41,13 @@ async def test_requests_are_timed_by_route_template() -> None:
 def test_the_listener_is_off_and_on_loopback_by_default() -> None:
     settings = Settings(**{k.removeprefix("REGWATCH_").lower(): v for k, v in VALID_ENV.items()})
     assert settings.metrics_port is None and settings.metrics_bind == "127.0.0.1"
+
+
+async def test_made_up_methods_add_no_series() -> None:
+    app = FastAPI()
+    app.add_middleware(metrics.MetricsMiddleware)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        for n in range(5):
+            await c.request(f"FOO{n}", "/x")
+    methods = {s.labels.get("method") for m in metrics.REGISTRY.collect() for s in m.samples}
+    assert not any(str(m).startswith("FOO") for m in methods) and "other" in methods

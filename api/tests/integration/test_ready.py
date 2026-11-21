@@ -48,3 +48,22 @@ async def test_not_ready_without_a_writable_store(no_store: None, admin: httpx.A
     assert got.status_code == 503
     assert (got.json()["ready"], got.json()["object_store"], got.json()["db"]) == (
         False, "unavailable", "ok")  # fmt: skip
+
+
+async def test_repeated_calls_share_one_probe(
+    no_store: None, admin: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from regwatch.api import services
+
+    calls = 0
+    real = services.probe_db_query
+
+    async def counted(factory: object) -> str:
+        nonlocal calls
+        calls += 1
+        return await real(factory)
+
+    monkeypatch.setattr(services, "probe_db_query", counted)
+    for _ in range(5):
+        assert (await admin.get(_api("/ready"))).status_code == 503
+    assert calls == 1  # kept for READY_CACHE_S
