@@ -808,7 +808,8 @@ async def admin_create_user(
     return UserWithPasswordOut(**out.model_dump(exclude_unset=True), temporary_password=temporary)
 
 
-async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID | None = None) -> int:
+async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID | None = None,
+                          operator: str = "operator") -> int:  # fmt: skip
     """Revoke every live session, or one user's (``regwatch-admin revoke-sessions``; M10.6): the
     incident runbook's sign-everyone-out, since rotating secrets signs no one out. Audited."""
     where: list[Any] = [UserSession.revoked_at.is_(None)]
@@ -819,7 +820,7 @@ async def revoke_sessions(db: AsyncSession, user_id: uuid.UUID | None = None) ->
     count = len(done.scalars().all())
     audit(db, "session.revoke_all", "user" if user_id else "session",
           str(user_id) if user_id else None,
-          after={"sessions": count, "by": "operator"})  # fmt: skip
+          after={"sessions": count, "by": operator})  # fmt: skip
     await db.commit()
     return count
 

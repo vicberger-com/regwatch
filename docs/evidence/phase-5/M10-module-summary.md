@@ -2,7 +2,7 @@
 
 **Branch:** `feat/M10-operations` (on `feat/M7-reports`, after G4) · **Date:** 2026-11-21 · **Status:**
 - **Acceptance:** all five criteria are met; criterion 2 is judged by the header set, until a public host can be scanned.
-- **Security:** every slice (10.1 to 10.6) and every fix is signed off by the independent reviewer, with the fixes re-verified. The last three commits (`e98bf8b`, `c0f6507`, `fb4bbcf`) are with the reviewer.
+- **Security:** every slice (10.1 to 10.6), every fix and the chaos and load commits are signed off by the independent reviewer, with the fixes re-verified.
 - **Tests:**
   - `make test-api`: 1,575 unit tests at 95.17% coverage, and 482 database tests with 1 skipped, at `f48c2cb`. Later changes were run on their own suites.
   - `make test-web` passes; `make lint` is clean.

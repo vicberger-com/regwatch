@@ -63,7 +63,8 @@ async def _revoke(url: str, email: str | None) -> int:
                 user_id = await db.scalar(select(User.id).where(User.email == check_email(email)))
                 if user_id is None:
                     raise ValueError("no account with that email address")
-            return await services.revoke_sessions(db, user_id)
+            # Who ran it, as the host knows them: anyone with a shell there can (M10.6 review).
+            return await services.revoke_sessions(db, user_id, f"operator:{getpass.getuser()}")
     finally:
         await engine.dispose()
 

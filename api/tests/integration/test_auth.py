@@ -417,3 +417,4 @@ async def test_revoke_sessions_signs_everyone_or_one_account_out(
         ))).scalars().all()  # fmt: skip
     await engine.dispose()
     assert [r["sessions"] for r in rows] == [1, 1]
+    assert all(r["by"].startswith("operator:") for r in rows)  # the OS user who ran it
