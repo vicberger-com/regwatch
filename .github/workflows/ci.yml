@@ -103,6 +103,8 @@ jobs:
           docker build -t regwatch-web:ci web  # the development image, still scanned (BL-60)
       - name: Every module imports in the release image (M10.4; the M10.3 packaging lesson)
         run: scripts/release-imports.sh regwatch-api:ci
+      - name: Alert rules, checked and unit-tested (M10.5; acceptance 4)
+        run: make monitoring-test
       - id: day
         run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

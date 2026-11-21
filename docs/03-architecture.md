@@ -150,7 +150,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | pycasbin (optional) | policy engine | Apache-2.0 | V `f858158` | dependency | M1 |
 | Caddy | reverse proxy | Apache-2.0 | V `72dd0fb` | service | M10 |
 | structlog, OpenTelemetry, prometheus-client | observability | MIT OR Apache-2.0, Apache-2.0, Apache-2.0 AND BSD-2-Clause | V `8174a86`, `ad75594`, `9b6b971` | dependency (prometheus-client 0.23.1 pinned, M10.1b) | M10 |
-| Grafana, Prometheus | dashboards (ops only) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece` | tooling | M10 |
+| Grafana, Prometheus | dashboards and alerts, the `monitoring` profile (ops only; M10.5) | AGPL-3.0, Apache-2.0 | V `752e346`, `bae3ece`; images grafana-oss 12.1.1 and prometheus v3.7.3 pinned by digest | separate services, unmodified, never bundled | M10 |
 | pytest, pytest-cov, Hypothesis | Python tests | MIT, MIT, MPL-2.0 | V `ae1d0ff`, `66c8a52`, `255a880` | tooling | tests |
 | pytest-asyncio | async tests (#27) | Apache-2.0 | V `e420349` | tooling | tests |
 | Schemathesis | property-based contract tests of the API against its OpenAPI document (#30) | MIT | V `5fac3a5` (v4.33.0) | tooling | tests |

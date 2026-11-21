@@ -168,6 +168,50 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Optional monitoring (M10.5; acceptance 4): `--profile monitoring`. Prometheus scrapes the
+  # API's internal metrics and evaluates monitoring/alerts.yml, with no published port. Grafana
+  # (AGPL-3.0, an unmodified separate service, never bundled: 3.5) shows the provisioned
+  # dashboard on 127.0.0.1:3000 only; reach it from elsewhere through an SSH tunnel. Its admin
+  # password comes from monitoring.env (GF_SECURITY_ADMIN_PASSWORD), required.
+  prometheus:
+    image: prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038  # v3.7.3
+    profiles: [monitoring]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=30d", "--web.listen-address=0.0.0.0:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks: [regwatch]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss@sha256:a1701c2180249361737a99a01bc770db39381640e4d631825d38ff4535efa47d  # 12.1.1
+    profiles: [monitoring]
+    env_file: monitoring.env
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SECURITY_COOKIE_SECURE: "false"  # loopback HTTP behind an SSH tunnel
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [regwatch, edge]
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
 networks:
   regwatch:
     internal: true
@@ -184,3 +228,5 @@ volumes:
   queue-data:
   caddy-data:
   caddy-config:
+  prometheus-data:
+  grafana-data:

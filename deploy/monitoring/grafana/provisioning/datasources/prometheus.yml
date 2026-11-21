@@ -1,0 +1,10 @@
+# Grafana's only data source: the profile's Prometheus on the internal network (M10.5).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: regwatch-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

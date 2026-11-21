@@ -1,0 +1,48 @@
+# Alert rules (M10.5; M10 acceptance 4). Tested with `promtool test rules alerts.test.yml`
+# (make monitoring-test). The gauges come from regwatch.core.metrics, refreshed every 30 s.
+groups:
+  - name: regwatch
+    rules:
+      - alert: SourceUnhealthyFor24Hours
+        # Counts enabled sources marked unhealthy with no good run in 24 hours (acceptance 4).
+        expr: regwatch_sources_unhealthy_24h > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} source(s) unhealthy for 24 hours"
+          description: "Open Settings, Sources, and look at the sources marked unhealthy and their last error."
+      - alert: OutputsFailing
+        expr: sum(regwatch_outputs_failed_24h) >= 5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} outputs failed in the last 24 hours"
+          description: "Check the Outputs history for the error classes (printer, mail server, PDF service)."
+      - alert: QueueBacklog
+        expr: max(regwatch_queue_depth) > 100
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "A task queue holds more than 100 tasks"
+          description: "Workers may be down or too few; check the worker containers."
+      - alert: CaptureFailingMostly
+        expr: >-
+          sum(regwatch_capture_runs_24h{status="failed"})
+          > 0.5 * sum(regwatch_capture_runs_24h)
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Most capture runs failed in the last 24 hours"
+      - alert: MetricsStale
+        expr: time() - regwatch_metrics_refreshed_timestamp_seconds > 300
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "The API has not refreshed its metrics for 5 minutes"
+          description: "The database or the queue may be unreachable; see /api/v1/ready."
+      - alert: ApiDown
+        expr: up{job="regwatch-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Prometheus cannot reach the API's metrics"

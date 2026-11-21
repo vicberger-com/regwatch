@@ -22,6 +22,7 @@ coverage/
 deploy/index.env
 deploy/index-worker.env
 deploy/print-test.env
+deploy/monitoring.env
 deploy/opensearch/generated/
 /backups/
 /sbom/

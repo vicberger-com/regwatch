@@ -1,0 +1,56 @@
+# promtool unit tests for alerts.yml (M10.5; acceptance 4: an alert fires when a source is
+# unhealthy for 24 hours).
+rule_files:
+  - alerts.yml
+evaluation_interval: 30s
+tests:
+  - interval: 1m
+    input_series:
+      - series: regwatch_sources_unhealthy_24h
+        values: "0 0 0 1 1 1 1 1 1 1 1 1"
+      - series: 'regwatch_outputs_failed_24h{kind="email"}'
+        values: "0x30"
+      - series: regwatch_metrics_refreshed_timestamp_seconds
+        values: "0+60x30"
+      - series: 'up{job="regwatch-api"}'
+        values: "1x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SourceUnhealthyFor24Hours
+        exp_alerts: []  # unhealthy for 2 minutes: pending, not firing
+      - eval_time: 9m
+        alertname: SourceUnhealthyFor24Hours
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "1 source(s) unhealthy for 24 hours"
+              description: "Open Settings, Sources, and look at the sources marked unhealthy and their last error."
+      - eval_time: 9m
+        alertname: OutputsFailing
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: MetricsStale
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: ApiDown
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: regwatch_metrics_refreshed_timestamp_seconds
+        values: "0x20"  # never refreshed after the start
+      - series: 'up{job="regwatch-api"}'
+        values: "0x20"
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: MetricsStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "The API has not refreshed its metrics for 5 minutes"
+              description: "The database or the queue may be unreachable; see /api/v1/ready."
+      - eval_time: 3m
+        alertname: ApiDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: regwatch-api }
+            exp_annotations:
+              summary: "Prometheus cannot reach the API's metrics"

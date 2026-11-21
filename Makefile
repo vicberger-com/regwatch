@@ -5,7 +5,7 @@ UNIT_MARKERS := not integration and not security and not perf
 # the Compose stack and run in test-integration only.
 DB_MARKERS := integration and not stack
 
-.PHONY: help dev stop migrate seed lint lint-api lint-web test test-api test-web sbom \
+.PHONY: help dev stop migrate seed lint lint-api lint-web test test-api test-web sbom monitoring-test \
         test-unit test-integration e2e openapi licenses security backup restore env
 
 help: ## List targets
@@ -66,6 +66,14 @@ openapi: ## Export the live OpenAPI document, diff it with the contract, regener
 
 connectors: ## Regenerate the admin UI's connector forms from docs/contracts/connectors.yaml
 	cd api && uv run python -I ../scripts/gen_connector_forms.py
+
+monitoring-test: ## Check and unit-test the alert rules with promtool (M10.5)
+	docker run --rm --entrypoint promtool -v "$(CURDIR)/deploy/monitoring:/m:ro" -w /m \
+		prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038 \
+		check rules alerts.yml
+	docker run --rm --entrypoint promtool -v "$(CURDIR)/deploy/monitoring:/m:ro" -w /m \
+		prom/prometheus@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038 \
+		test rules alerts.test.yml
 
 sbom: ## CycloneDX SBOMs of the release images and the lockfiles into sbom/ (M10.4)
 	docker build --target runtime -t regwatch-api:release api
