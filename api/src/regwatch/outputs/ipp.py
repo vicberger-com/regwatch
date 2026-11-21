@@ -95,10 +95,17 @@ def networks_of(values: Iterable[str]) -> list[Network]:
     return [ipaddress.ip_network(v.strip(), strict=False) for v in values if v.strip()]
 
 
-def allowed(address: str, networks: list[Network]) -> bool:
+def address_of(address: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    """The address, an IPv4-mapped IPv6 one as its IPv4 form, so every check sees one value
+    (review of 4f325f7: a mapped address skipped the own-network check)."""
     ip = ipaddress.ip_address(address)
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
+        return ip.ipv4_mapped
+    return ip
+
+
+def allowed(address: str, networks: list[Network]) -> bool:
+    ip = address_of(address)
     if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
         return False
     return any(ip in n for n in networks if n.version == ip.version)
@@ -185,20 +192,23 @@ async def stack_addresses() -> set[str]:
 async def resolve(target: Target, networks: list[Network]) -> str:
     """One checked address of the printer; a ``PrinterError`` unless every answer is allowed."""
     try:
-        found = {str(ipaddress.ip_address(target.host))}
+        found = {str(address_of(target.host))}
     except ValueError:
-        found = await lookup(target.host)
+        found = {str(address_of(a)) for a in await lookup(target.host)}
     if not found:
         raise PrinterError("printer-not-found", "the printer's name does not resolve")
     if not networks:
         raise PrinterError("printer-address-refused", "no printer networks are allowed yet: an "
                            "administrator sets outputs.printer_networks")  # fmt: skip
-    own = await stack_addresses()
+    own = {address_of(a) for a in await stack_addresses()}
     mine = own_networks()
-    if not all(allowed(a, networks) and a not in own
-               and not any(ipaddress.ip_address(a) in n for n in mine if n.version ==
-                           ipaddress.ip_address(a).version)
-               for a in found):  # fmt: skip
+
+    def ok(text: str) -> bool:
+        ip = address_of(text)
+        return (allowed(text, networks) and ip not in own
+                and not any(ip in n for n in mine if n.version == ip.version))  # fmt: skip
+
+    if not all(ok(a) for a in found):
         raise PrinterError("printer-address-refused", "the printer's address is outside "
                            "the allowed printer networks")  # fmt: skip
     return sorted(found)[0]

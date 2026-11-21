@@ -135,9 +135,12 @@ async def test_a_name_must_resolve_entirely_inside_and_never_to_the_stack(
     by_ip = ipp.parse("ipps://10.90.0.3/", allow_plain=False)
     with pytest.raises(ipp.PrinterError):
         await ipp.resolve(by_ip, nets)
-    for inside in ("10.90.0.77", "10.90.0.1"):  # the worker's own subnet and its gateway
+    for inside in ("10.90.0.77", "10.90.0.1", "[::ffff:10.90.0.77]", "[::ffff:10.90.0.3]"):
+        # the worker's own subnet, its gateway, and both again as IPv4-mapped IPv6 addresses
         with pytest.raises(ipp.PrinterError):
             await ipp.resolve(ipp.parse(f"ipps://{inside}/", allow_plain=False), nets)
+    mapped = ipp.parse("ipps://[::ffff:10.20.0.7]/", allow_plain=False)
+    assert await ipp.resolve(mapped, nets) == "10.20.0.7"  # one value for every check
     with pytest.raises(ipp.PrinterError, match="no printer networks"):
         await ipp.resolve(ipp.parse("ipps://10.20.0.7/", allow_plain=False), [])  # the default
     del dns["printer.example.internal"]
