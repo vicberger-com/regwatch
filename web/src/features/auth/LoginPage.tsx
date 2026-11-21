@@ -37,12 +37,13 @@ export function LoginPage({
         ? "Sign-in failed. Try again."
         : ssoErrorMessage(sso);
 
-  function finish(me: { must_change_password?: boolean }) {
+  function finish(me: {
+    must_change_password?: boolean;
+    mfa_setup_required?: boolean;
+  }) {
     setPassword("");
     setCode("");
-    void navigate({
-      to: me.must_change_password ? "/change-password" : safeNext(next),
-    });
+    void navigate({ to: landing(me, next) });
   }
 
   function submitCode(event: FormEvent) {
@@ -122,9 +123,7 @@ export function LoginPage({
       {
         onSuccess: (me) => {
           setPassword("");
-          const target = me.must_change_password
-            ? "/change-password"
-            : safeNext(next);
+          const target = landing(me, next);
           void navigate({ to: target });
         },
         onError: (failed) => {
@@ -196,6 +195,17 @@ export function LoginPage({
       </div>
     </PublicFrame>
   );
+}
+
+/** Where a sign-in leads: a forced password change, then a forced two-factor set-up (CP-40),
+ * then the page the user asked for. */
+export function landing(
+  me: { must_change_password?: boolean; mfa_setup_required?: boolean },
+  next: string | undefined,
+): string {
+  if (me.must_change_password) return "/change-password";
+  if (me.mfa_setup_required) return "/setup-two-factor";
+  return safeNext(next);
 }
 
 /** Only same-site paths are followed after sign-in (no open redirect). */

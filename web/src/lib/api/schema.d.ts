@@ -4547,6 +4547,8 @@ export interface components {
             status?: components["schemas"]["UserStatus"];
         };
         Me: components["schemas"]["User"] & {
+            /** @description CP-40 (BL-148): auth.mfa_required covers this account and it has no authenticator yet; until set up, only /auth/me, /auth/logout and /me/mfa (GET, setup, confirm) answer, others 403 mfa-setup-required */
+            mfa_setup_required?: boolean;
             permissions?: string[];
             preferences?: components["schemas"]["Preferences"];
         };

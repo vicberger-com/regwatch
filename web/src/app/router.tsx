@@ -1,7 +1,8 @@
 /**
  * Routes (TanStack Router, code-based). Every route except `/login` needs a session: the
  * guard asks `GET /auth/me` once (cached by TanStack Query) and sends anonymous visitors to
- * `/login?next=…` and users with a temporary password to `/change-password`. The API enforces
+ * `/login?next=…`, users with a temporary password to `/change-password`, and accounts
+ * `auth.mfa_required` covers to `/setup-two-factor` (CP-40). The API enforces
  * the same rules; the guard only keeps the UI from showing screens that would answer 401/403.
  */
 import { QueryClient } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ import {
 } from "@tanstack/react-router";
 
 import { ChangePasswordPage } from "@/features/auth/ChangePasswordPage";
+import { SetupTwoFactorPage } from "@/features/me/SetupTwoFactorPage";
 import { GroupsPage } from "@/features/admin/GroupsPage";
 import { BuilderPage } from "@/features/reports/BuilderPage";
 import { OutputsPage } from "@/features/outputs/OutputsPage";
@@ -82,6 +84,15 @@ const authedRoute = createRoute({
       // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw redirect({ to: "/change-password" });
     }
+    if (
+      !me.must_change_password &&
+      me.mfa_setup_required &&
+      location.pathname !== "/setup-two-factor"
+    ) {
+      // BL-148 (CP-40): an account the policy covers sets up two-factor first.
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw redirect({ to: "/setup-two-factor" });
+    }
     return { me };
   },
   component: AppShell,
@@ -111,6 +122,13 @@ const changePasswordRoute = createRoute({
     const { me } = authedRoute.useRouteContext();
     return <ChangePasswordPage forced={me.must_change_password ?? false} />;
   },
+});
+
+const setupTwoFactorRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/setup-two-factor",
+  staticData: { title: "Set up two-factor sign-in" },
+  component: SetupTwoFactorPage,
 });
 
 /** Shown in place of a page the user's roles do not allow; the API refuses it too. */
@@ -382,6 +400,7 @@ export const routeTree = rootRoute.addChildren([
   authedRoute.addChildren([
     homeRoute,
     changePasswordRoute,
+    setupTwoFactorRoute,
     itemsRoute,
     itemRoute,
     meRoute,

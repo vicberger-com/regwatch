@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { safeNext } from "@/features/auth/LoginPage";
+import { landing, safeNext } from "@/features/auth/LoginPage";
 import {
   hasPermission,
   loginErrorMessage,
@@ -58,6 +58,61 @@ describe("sign-in flow", () => {
     expect(
       await screen.findByText(/There is no account for you here yet/),
     ).toHaveAttribute("role", "alert");
+  });
+
+  it("sends an account the policy covers to set up two-factor first (CP-40)", async () => {
+    let me: unknown = { ...ADMIN, mfa_setup_required: true };
+    fakeApi({
+      "GET /auth/me": () => [200, me],
+      "GET /me/mfa": [200, { enabled: false, recovery_codes_left: 0 }],
+      "POST /me/mfa/setup": [
+        200,
+        {
+          secret: "JBSWY3DPEHPK3PXP",
+          otpauth_uri: "otpauth://totp/x",
+          qr: ["1"],
+        },
+      ],
+      "POST /me/mfa/confirm": () => {
+        me = { ...ADMIN, mfa_setup_required: false };
+        return [200, { recovery_codes: ["abcde-fghjk"] }];
+      },
+    });
+    const user = userEvent.setup();
+    const router = renderAt("/items");
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Set up two-factor sign-in",
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/setup-two-factor");
+    await user.type(
+      await screen.findByLabelText("Password"),
+      "my password 1234",
+    );
+    await user.click(screen.getByRole("button", { name: "Set up" }));
+    await user.type(
+      await screen.findByLabelText("Code from your authenticator app"),
+      "123456",
+    );
+    await user.click(screen.getByRole("button", { name: "Turn on" }));
+    await user.click(
+      await screen.findByRole("button", { name: "I have saved them" }),
+    );
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Map" }),
+    ).toBeInTheDocument();
+  });
+
+  it("leads a sign-in to the forced steps in order", () => {
+    expect(
+      landing({ must_change_password: true, mfa_setup_required: true }, "/x"),
+    ).toBe("/change-password");
+    expect(landing({ mfa_setup_required: true }, "/x")).toBe(
+      "/setup-two-factor",
+    );
+    expect(landing({}, "/items")).toBe("/items");
   });
 
   it("asks for the authenticator code after a right password (BL-148)", async () => {

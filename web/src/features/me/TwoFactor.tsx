@@ -107,7 +107,7 @@ function Labelled(props: {
   );
 }
 
-export function TwoFactor() {
+export function TwoFactor({ onSaved }: { onSaved?: () => void } = {}) {
   const client = useQueryClient();
   const status = useQuery(mfaQuery);
   const [password, setPassword] = useState("");
@@ -183,6 +183,7 @@ export function TwoFactor() {
         codes={codes}
         onDone={() => {
           setCodes(null);
+          onSaved?.();
         }}
       />
     );
