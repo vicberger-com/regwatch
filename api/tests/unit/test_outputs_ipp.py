@@ -13,7 +13,7 @@ import pytest
 from regwatch.outputs import ipp
 
 PDF = b"%PDF-1.7 test"
-PRIVATE = list(ipp.DEFAULT_NETWORKS)
+PRIVATE = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]  # as an admin may set
 
 
 class MockPrinter:
@@ -56,6 +56,14 @@ def _names(table: dict[str, set[str]]) -> Callable[[str], object]:
 
 
 @pytest.fixture(autouse=True)
+def own(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The worker's own networks, as /proc/net/route would give them in the stack."""
+    nets = ["10.90.0.0/24", "10.90.0.1/32"]
+    monkeypatch.setattr(ipp, "own_networks", lambda: ipp.networks_of(nets))
+    return nets
+
+
+@pytest.fixture(autouse=True)
 def dns(monkeypatch: pytest.MonkeyPatch) -> dict[str, set[str]]:
     table = {"printer.example.internal": {"10.20.0.7"}, "db": {"10.90.0.3"}}
     monkeypatch.setattr(ipp, "lookup", _names(table))
@@ -73,6 +81,8 @@ def dns(monkeypatch: pytest.MonkeyPatch) -> dict[str, set[str]]:
         ("ipps://localhost/ipp/print", "own services"),
         ("ipps://ippeveprinter/ipp/print", "own services"),
         ("ipps://printer.example.internal:99999/", "a port"),
+        ("ipps://printer.example.internal:8080/", "port 631"),  # another service's port
+        ("ipps://10.20.0.7:22/", "port 631"),
         ("ipps://printer\n.example.internal/", "one line"),
     ],
 )
@@ -125,6 +135,11 @@ async def test_a_name_must_resolve_entirely_inside_and_never_to_the_stack(
     by_ip = ipp.parse("ipps://10.90.0.3/", allow_plain=False)
     with pytest.raises(ipp.PrinterError):
         await ipp.resolve(by_ip, nets)
+    for inside in ("10.90.0.77", "10.90.0.1"):  # the worker's own subnet and its gateway
+        with pytest.raises(ipp.PrinterError):
+            await ipp.resolve(ipp.parse(f"ipps://{inside}/", allow_plain=False), nets)
+    with pytest.raises(ipp.PrinterError, match="no printer networks"):
+        await ipp.resolve(ipp.parse("ipps://10.20.0.7/", allow_plain=False), [])  # the default
     del dns["printer.example.internal"]
     with pytest.raises(ipp.PrinterError) as missing:
         await ipp.resolve(target, nets)
@@ -175,3 +190,83 @@ def test_tls_keeps_the_full_default_policy() -> None:
     assert ipp.CIPHERS == "DEFAULT:@SECLEVEL=2"
     pinned = ipp._tls("ab" * 32)  # noqa: SLF001
     assert pinned.fingerprint == "ab" * 32 and pinned.ciphers == ipp.CIPHERS
+
+
+ROUTE = """Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT
+eth0\t00000000\t01005A0A\t0003\t0\t0\t0\t00000000\t0\t0\t0
+eth0\t00005A0A\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
+"""
+ROUTE6 = (
+    "fd000000000000000000000000000000 40 00000000000000000000000000000000 00 "
+    "00000000000000000000000000000000 00000100 00000001 00000000 00000001 eth0\n"
+    "00000000000000000000000000000000 00 00000000000000000000000000000000 00 "
+    "fd000000000000000000000000000001 00000400 00000001 00000000 00000003 eth0\n"
+)
+
+
+def test_the_workers_own_networks_come_from_its_routes() -> None:
+    assert [str(n) for n in ipp._routes_v4(ROUTE)] == ["10.90.0.1/32", "10.90.0.0/24"]  # noqa: SLF001
+    assert [str(n) for n in ipp._routes_v6(ROUTE6)] == ["fd00::/64", "fd00::1/128"]  # noqa: SLF001
+
+
+def test_without_its_own_networks_nothing_is_printed(
+    monkeypatch: pytest.MonkeyPatch, valid_env: dict[str, str]
+) -> None:
+    import builtins
+
+    from regwatch.core.settings import get_settings
+
+    monkeypatch.undo()  # the real own_networks
+    for key, value in valid_env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("REGWATCH_STACK_NETWORKS", raising=False)
+    get_settings.cache_clear()
+    real_open = builtins.open
+
+    def no_proc(path: object, *args: object, **kwargs: object) -> object:
+        if str(path).startswith("/proc/net/"):
+            raise FileNotFoundError(path)
+        return real_open(path, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(builtins, "open", no_proc)
+    with pytest.raises(ipp.PrinterError) as unknown:
+        ipp.own_networks()
+    assert unknown.value.error_class == "stack-unknown"
+
+
+def test_the_stack_networks_can_be_given(monkeypatch: pytest.MonkeyPatch, valid_env: dict[str, str]
+                                         ) -> None:  # fmt: skip
+    from regwatch.core.settings import get_settings
+
+    monkeypatch.undo()
+    for key, value in valid_env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("REGWATCH_STACK_NETWORKS", '["10.89.0.0/24"]')
+    get_settings.cache_clear()
+    assert [str(n) for n in ipp.own_networks()] == ["10.89.0.0/24"]
+    get_settings.cache_clear()
+
+
+async def test_a_printer_that_answers_slowly_is_cut_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    import anyio
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await anyio.sleep(5)
+        return httpx.Response(200)
+
+    monkeypatch.setattr(ipp, "TOTAL_S", 0.2)
+    monkeypatch.setattr(ipp, "transport_factory", lambda verify: httpx.MockTransport(slow))
+    with pytest.raises(ipp.PrinterError) as failed:
+        await _send()
+    assert failed.value.error_class == "printer-unavailable"
+
+
+def test_ippx_is_the_reviewed_version() -> None:
+    """``send`` replaces ippx's private ``_http`` client, which 0.1.1 uses for every request
+    and closes on exit (review of 182bf1c): an upgrade must re-check that, so it fails here."""
+    import inspect
+    from importlib.metadata import version
+
+    assert version("ippx") == "0.1.1"
+    source = inspect.getsource(ippx.AsyncIppClient)
+    assert "self._http.post(self._http_url" in source and "self._http.aclose()" in source

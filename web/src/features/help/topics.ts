@@ -336,8 +336,8 @@ const SETTINGS: Topic[] = [
     "Settings",
     "outputs.printer_networks",
     "Allowed printer networks",
-    "The networks a printer's address must be in, one per line (the private ranges by default).",
-    "Every address a printer's name resolves to must fall in one of these, and never on this computer, a link-local or multicast address, or one of the application's own services. Narrow it to your printers' subnets where you can.",
+    "The networks a printer's address must be in, one per line, such as 10.20.0.0/16. Empty by default, which allows no printer.",
+    "Every address a printer's name resolves to must fall in one of these, and never on this computer, a link-local or multicast address, the server's own networks, or one of the application's own services. Printers use port 631 or 443 only. List your printers' subnets, as narrow as you can.",
   ),
   T(
     "Settings",

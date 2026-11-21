@@ -34,7 +34,16 @@ def printer(monkeypatch: pytest.MonkeyPatch) -> MockPrinter:
         return {"printer.example.internal": {"10.20.0.7"}}.get(host, set())
 
     monkeypatch.setattr(ipp, "lookup", lookup)
+    monkeypatch.setattr(ipp, "own_networks", lambda: ipp.networks_of(["10.90.0.0/24"]))
     return fake
+
+
+@pytest.fixture(autouse=True)
+async def printer_networks(admin: httpx.AsyncClient) -> None:
+    """Empty by default (review of 182bf1c): this office's printers are in 10.20.0.0/16."""
+    got = await admin.put(_api("/admin/settings/outputs.printer_networks"),
+                          json={"value": ["10.20.0.0/16"]})  # fmt: skip
+    assert got.status_code == 200, got.text
 
 
 async def _flag(admin: httpx.AsyncClient, on: bool) -> None:

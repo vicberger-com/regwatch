@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     smtp_from: str = "regwatch@example.com"
     # --- printing (CP-33) ---
     print_test_printer: bool = False  # the `print-test` profile's ippeveprinter (dev and QA)
+    # The worker's own networks, never printers; read from the kernel's routes when unset.
+    stack_networks: list[str] | None = None
 
     # --- sidecar services (internal fixed-URL client, ADR-0001) ---
     pdf_url: AnyHttpUrl = AnyHttpUrl("http://pdf:3000")

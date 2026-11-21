@@ -6,13 +6,14 @@ host an administrator chose, never one a user chose:
 - ``ipps://`` with certificate verification, or the printer's pinned SHA-256 fingerprint for a
   self-signed certificate; ``ipp://`` (clear text) only with ``outputs.printer_plain_ipp``, and
   then sent to the address checked here, so DNS cannot move it (rebinding).
-- The address must resolve, every answer, into ``outputs.printer_networks`` (the private
-  ranges by default) and never to loopback, link-local, multicast or unspecified addresses,
-  nor to an address of the stack's own services (whose network is private too); their names
-  are refused outright. Checked when a printer is saved and before each
-  send.
-- No user information in the URL, no query or fragment, no redirects, one attempt, 30 s, and a
-  printer's answer is read to at most ``MAX_ANSWER`` bytes (ippx reads whole answers).
+- The address must resolve, every answer, into ``outputs.printer_networks`` (empty by
+  default: an administrator names the printers' subnets), and never to a loopback,
+  link-local, multicast or unspecified address, into a network the worker itself is on (its
+  routes and gateways), or to an address of the stack's own services, whose names are refused
+  outright; only ports 631 and 443. Checked when a printer is saved and before each send.
+- No user information in the URL, no query or fragment, no redirects, one attempt, 30 s a
+  phase and 60 s a job, and a printer's answer is read to at most ``MAX_ANSWER`` bytes (ippx
+  reads whole answers).
 - TLS keeps the full default policy (``SECLEVEL=2``), not ippx's relaxed default for old
   printers.
 """
@@ -32,9 +33,11 @@ import ippx
 from regwatch.core.schemas import has_control
 
 MAX_ANSWER = 1_000_000
-TIMEOUT_S = 30.0
+TIMEOUT_S = 30.0  # each phase of a call (connect, each read)
+TOTAL_S = 60.0  # a whole job, however slowly a printer answers (review of 182bf1c)
 CIPHERS = "DEFAULT:@SECLEVEL=2"
-DEFAULT_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
+PORTS = frozenset({631, 443})  # IPP and IPP over HTTPS: never another service's port
+Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 # deploy/compose.yaml's services: never a printer, whatever the networks allow.
 STACK_NAMES = frozenset({"localhost", "proxy", "api", "web", "worker", "beat", "db", "queue",
                          "pdf", "search", "translate", "mailpit", "ippeveprinter"})  # fmt: skip
@@ -82,15 +85,17 @@ def parse(url: str, allow_plain: bool, allow_test_printer: bool = False) -> Targ
         raise ValueError("a printer host name or address")
     if host in STACK_NAMES and not (allow_test_printer and host == TEST_PRINTER):
         raise ValueError("not one of the application's own services")
+    if port not in PORTS:
+        raise ValueError("port 631 (IPP) or 443")
     path = parts.path or "/ipp/print"
     return Target(parts.scheme, host, port, path)
 
 
-def networks_of(values: Iterable[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+def networks_of(values: Iterable[str]) -> list[Network]:
     return [ipaddress.ip_network(v.strip(), strict=False) for v in values if v.strip()]
 
 
-def allowed(address: str, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
+def allowed(address: str, networks: list[Network]) -> bool:
     ip = ipaddress.ip_address(address)
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
@@ -109,6 +114,65 @@ async def lookup(host: str) -> set[str]:
     return {str(info[4][0]) for info in infos}
 
 
+def _routes_v4(text: str) -> list[Network]:
+    """``/proc/net/route``: every routed network and gateway (little-endian hex)."""
+    found: list[Network] = []
+    for line in text.splitlines()[1:]:
+        cols = line.split()
+        if len(cols) < 8:
+            continue
+        dest, gateway, mask = (ipaddress.IPv4Address(int(c, 16).to_bytes(4, "little"))
+                               for c in (cols[1], cols[2], cols[7]))  # fmt: skip
+        if int(mask):  # the default route (0/0) is not a subnet of the stack's
+            found.append(ipaddress.ip_network(f"{dest}/{mask}", strict=False))
+        if int(gateway):
+            found.append(ipaddress.ip_network(f"{gateway}/32"))
+    return found
+
+
+def _routes_v6(text: str) -> list[Network]:
+    """``/proc/net/ipv6_route``: destination, prefix length, next hop, in hex."""
+    found: list[Network] = []
+    for line in text.splitlines():
+        cols = line.split()
+        if len(cols) < 10 or cols[-1] == "lo":
+            continue
+        dest = ipaddress.IPv6Address(int(cols[0], 16))
+        prefix, hop = int(cols[1], 16), ipaddress.IPv6Address(int(cols[4], 16))
+        if prefix and not dest.is_multicast and not dest.is_link_local:
+            found.append(ipaddress.ip_network(f"{dest}/{prefix}", strict=False))
+        if int(hop) and not hop.is_link_local:
+            found.append(ipaddress.ip_network(f"{hop}/128"))
+    return found
+
+
+def own_networks() -> list[Network]:
+    """The networks the worker itself is on, with their gateways: never printers (review of
+    182bf1c). ``REGWATCH_STACK_NETWORKS`` when set; else the kernel's route tables. Fails
+    closed: without either, nothing can be checked, so nothing is printed."""
+    from regwatch.core.settings import get_settings
+
+    given = get_settings().stack_networks
+    if given:
+        return networks_of(given)
+    found: list[Network] = []
+    read = False
+    for path, parse_routes in (
+        ("/proc/net/route", _routes_v4),
+        ("/proc/net/ipv6_route", _routes_v6),
+    ):
+        try:
+            with open(path, encoding="ascii") as routes:  # noqa: PTH123 - a kernel table
+                found += parse_routes(routes.read())
+            read = True
+        except OSError:
+            continue
+    if not read:
+        raise PrinterError("stack-unknown", "the server's own networks could not be read; set "
+                           "REGWATCH_STACK_NETWORKS")  # fmt: skip
+    return found
+
+
 async def stack_addresses() -> set[str]:
     """The addresses of the application's own services, on the stack's private network: a
     printer is never one of them, whatever the allowed networks say."""
@@ -118,8 +182,7 @@ async def stack_addresses() -> set[str]:
     return found
 
 
-async def resolve(target: Target, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]
-                  ) -> str:  # fmt: skip
+async def resolve(target: Target, networks: list[Network]) -> str:
     """One checked address of the printer; a ``PrinterError`` unless every answer is allowed."""
     try:
         found = {str(ipaddress.ip_address(target.host))}
@@ -127,8 +190,15 @@ async def resolve(target: Target, networks: list[ipaddress.IPv4Network | ipaddre
         found = await lookup(target.host)
     if not found:
         raise PrinterError("printer-not-found", "the printer's name does not resolve")
+    if not networks:
+        raise PrinterError("printer-address-refused", "no printer networks are allowed yet: an "
+                           "administrator sets outputs.printer_networks")  # fmt: skip
     own = await stack_addresses()
-    if not all(allowed(a, networks) and a not in own for a in found):
+    mine = own_networks()
+    if not all(allowed(a, networks) and a not in own
+               and not any(ipaddress.ip_address(a) in n for n in mine if n.version ==
+                           ipaddress.ip_address(a).version)
+               for a in found):  # fmt: skip
         raise PrinterError("printer-address-refused", "the printer's address is outside "
                            "the allowed printer networks")  # fmt: skip
     return sorted(found)[0]
@@ -191,16 +261,17 @@ async def send(*, ipp_url: str, tls_sha256: str | None, pdf: bytes, job_name: st
         follow_redirects=False, headers={"Content-Type": "application/ipp",
                                          "Accept": "application/ipp"})  # fmt: skip
     try:
-        async with client:
-            job = await client.print_job(
-                pdf, document_format="application/pdf", job_name=job_name[:200],
-                job_attributes={"copies": copies, "media": media})  # fmt: skip
+        with anyio.fail_after(TOTAL_S):
+            async with client:
+                job = await client.print_job(
+                    pdf, document_format="application/pdf", job_name=job_name[:200],
+                    job_attributes={"copies": copies, "media": media})  # fmt: skip
     except PrinterError:
         raise
     except ippx.IppResponseError as exc:
         raise PrinterError("printer-refused", f"the printer refused the job ({exc})"[:300]) \
             from None  # fmt: skip
-    except (ippx.IppError, httpx.HTTPError, ssl.SSLError, OSError) as exc:
+    except (ippx.IppError, httpx.HTTPError, ssl.SSLError, OSError, TimeoutError) as exc:
         raise PrinterError("printer-unavailable", "the printer could not be reached "
                            f"({type(exc).__name__})") from None  # fmt: skip
     return int(job.job_id)
