@@ -36,6 +36,7 @@ dependencies = [
     "jinja2>=3.1,<4",
     "ippx==0.1.1",  # network printing (CP-33, BL-15), register 3.6; wrapped in outputs/ipp.py
     "prometheus-client==0.23.1",
+    "packaging==26.3",  # kombu's Redis transport imports it without declaring it (M10.3); register 3.6
 ]
 
 [project.scripts]

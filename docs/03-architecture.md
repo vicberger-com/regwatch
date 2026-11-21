@@ -85,6 +85,7 @@ Verification status: **V** means an agent opened the LICENSE file in the project
 | pgvector | vector index (optional) | PostgreSQL | V `f37c13f` | dependency | M5 |
 | Celery 5.7.0 | task queue and Beat scheduler (ADR-0006) | BSD-3; its rendered docs are CC BY-SA 4.0, not in the wheel | V `3f4d8d7`, `6fcdbf9` (v5.7.0), R-01 C4 | dependency | M3 |
 | kombu 5.7.0, amqp 5.4.2, billiard 4.3.2, vine 5.1.0 | Celery's messaging, AMQP client (installed, unused with the Valkey broker), worker pool and promises | BSD-3 | V `703e96f`, `9d4a51a`, `895817a`, `8c08b39`, R-01 C5 to C8 | dependency | M3 |
+| packaging 26.3 | version parsing, imported by kombu's Redis transport without kombu declaring it (M10.3: the release image's worker failed without it) | Apache-2.0 OR BSD-2-Clause | PyPI metadata 2026-11-21 | dependency, pinned | M10 |
 | click-didyoumean 0.3.1, click-plugins 1.1.1.2, click-repl 0.4.1, prompt-toolkit 3.0.53, wcwidth 0.9.4 | Celery's command line | MIT, BSD-3, MIT, BSD-3, MIT (wcwidth's Unicode tables carry a no-conditions notice) | V `e571cc8`, `4ac07e5`, `4cc38ff`, `583b341`, `2a8edf1`, R-01 C9 to C13 | dependency | M3 |
 | python-dateutil 2.9.0.post0, six 1.17.0, tzlocal 5.4.5 | Celery's schedule and time-zone handling | Apache-2.0 AND BSD-3, MIT, MIT | V `1ae8077`, `ebd9b3a`, `ab833e7`, R-01 C14 to C16 | dependency | M3 |
 | Valkey | broker and cache | BSD-3 | V `29173b6` | service | M3 |
