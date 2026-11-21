@@ -55,6 +55,25 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "423": { description: Account locked, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
         "429": { $ref: "#/components/responses/Problem" }
+  /auth/sso:
+    get:
+      tags: [auth]
+      security: []
+      description: "CP-37 (M1b): whether the login page offers sign-in with the organisation's account"
+      responses: { "200": { description: Whether sign-in with the organisation's account is on (CP-37), content: { application/json: { schema: { $ref: "#/components/schemas/SsoStatus" } } } } }
+  /auth/oidc/login:
+    get:
+      tags: [auth]
+      security: []
+      description: "CP-37 (M1b; ADR-0007): the authorization-code flow with PKCE; sets a short-lived signed state cookie"
+      parameters: [ { name: next, in: query, schema: { type: string, maxLength: 500 } } ]
+      responses: { "302": { description: To the identity provider (CP-37; M1b) }, "404": { $ref: "#/components/responses/Problem" } }
+  /auth/oidc/callback:
+    get:
+      tags: [auth]
+      security: []
+      parameters: [ { name: code, in: query, schema: { type: string, maxLength: 2048 } }, { name: state, in: query, schema: { type: string, maxLength: 256 } }, { name: error, in: query, schema: { type: string, maxLength: 256 } } ]
+      responses: { "302": { description: "Back from the identity provider: signed in, or to the login page with the reason (CP-37)" } }
   /auth/logout:
     post:
       tags: [auth]
@@ -566,6 +585,10 @@ components:
     Health:
       type: object
       properties: { status: { type: string, enum: [ok, degraded, down] }, version: { type: string }, db: { type: string }, queue: { type: string }, checked_at: { type: string, format: date-time } }
+    SsoStatus:
+      type: object
+      required: [enabled]
+      properties: { enabled: { type: boolean } }
     Ready:
       type: object
       required: [ready, db, queue, object_store, checked_at]

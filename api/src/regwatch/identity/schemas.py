@@ -205,3 +205,9 @@ class GroupWrite(BaseModel):
     )
     roles: RoleKeys = UNSET
     interests: Interests = UNSET
+
+
+class SsoStatus(BaseModel):
+    """CP-37 ``GET /auth/sso``: whether the login page offers the organisation's sign-in."""
+
+    enabled: bool

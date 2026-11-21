@@ -48,6 +48,7 @@ gated = (
     schemathesis.openapi.from_asgi("/api/v1/openapi.json", _app(gated=True))
     .exclude(path="/health")
     .exclude(path="/ready")  # reads the database: tests/integration/test_ready.py
+    .exclude(path_regex="^/auth/(sso|oidc/)")  # read the flag: tests/integration/test_oidc.py
     .exclude(path="/branding/logo")
     .exclude(path="/branding/public")
     .exclude(path="/legal")

@@ -522,6 +522,12 @@ async def login(
         await db.commit()
         raise account_locked() if locked else invalid_credentials()
 
+    if await sso_enabled(db, settings):  # G0 Q2: with SSO on, passwords for administrators only
+        roles, _ = await roles_and_permissions(db, user.id)
+        if ADMIN_ROLE not in roles:
+            await db.commit()
+            forgive(rate_ticket)  # a right password is not a failure
+            raise ProblemError(403, "sso-required", "Sign in with your organisation's account.")
     if security.needs_rehash(user.password_hash):
         user.password_hash = await security.hash_password_async(password)
     user.failed_logins = 0
@@ -536,6 +542,72 @@ async def login(
     forgive(rate_ticket)  # only failures count toward the failure limits
     roles, perms = await roles_and_permissions(db, user.id)
     return to_me(user, roles, perms)
+
+
+async def sso_enabled(db: AsyncSession, settings: Settings) -> bool:
+    """``auth.oidc`` on and the provider configured (M1b)."""
+    from regwatch.admin.models import FeatureFlag
+    from regwatch.identity import oidc
+
+    flag = await db.get(FeatureFlag, oidc.FLAG)
+    return bool(flag and flag.enabled) and oidc.configured(settings)
+
+
+ADMIN_ROLE = "admin"
+PRIVILEGED = {"users.manage", "roles.manage"}
+
+
+async def sso_sign_in(db: AsyncSession, request: Request, response: Response,
+                      settings: Settings, identity: Any) -> None:  # fmt: skip
+    """Sign in the person the provider vouched for (M1b; ADR-0007 G0 Q1 to Q3). By their
+    subject; on a first sign-in, an existing account by a verified email, linked and audited;
+    never a new account. The account must be active, as for a password sign-in."""
+    from regwatch.identity.oidc import SsoError
+
+    ip = client_ip(request)
+    now = _now()
+    user = await db.scalar(select(User).where(User.external_subject == identity.key)
+                           .with_for_update())  # fmt: skip
+    if user is None:
+        if not (identity.email_verified and identity.email):
+            audit(db, "auth.sso_refused", "user", None, ip=ip,
+                  after={"reason": "no_verified_email"})  # fmt: skip
+            await db.commit()
+            raise SsoError("unknown", "the provider gave no verified email address")
+        user = await db.scalar(select(User).where(func.lower(User.email) == identity.email)
+                               .with_for_update())  # fmt: skip
+        if user is None or user.external_subject is not None:
+            audit(db, "auth.sso_refused", "user", user.id if user else None, ip=ip,
+                  after={"reason": "no_account" if user is None else "linked_elsewhere",
+                         "email_sha256": email_digest(identity.email)})  # fmt: skip
+            await db.commit()
+            raise SsoError("unknown", "no account for this person; ask an administrator")
+        roles, permissions = await roles_and_permissions(db, user.id)
+        if ADMIN_ROLE in roles or PRIVILEGED & set(permissions):
+            # An administrator's account is linked by another administrator, never by an email
+            # the provider vouches for (M1b review Low 1).
+            digest = email_digest(identity.email)
+            audit(db, "auth.sso_refused", "user", user.id, ip=ip,
+                  after={"reason": "privileged", "email_sha256": digest})  # fmt: skip
+            await db.commit()
+            raise SsoError("unknown", "an administrator's account is linked by an administrator")
+        user.external_subject = identity.key
+        audit(db, "auth.sso_linked", "user", user.id, ip=ip,
+              after={"email_sha256": email_digest(identity.email)})  # fmt: skip
+    if user.status == "locked" and user.locked_until is not None and user.locked_until <= now:
+        user.status, user.locked_until, user.failed_logins = "active", None, 0
+    if user.status != "active":
+        audit(db, "auth.sso_refused", "user", user.id, ip=ip, after={"reason": user.status})
+        await db.commit()
+        raise SsoError("inactive", "this account is not active")
+    cfg = await auth_settings(db)
+    user.last_login_at = now
+    user.must_change_password = False  # the provider holds the credential
+    await revoke_token(db, request.cookies.get(settings.session_cookie_name))  # fixation
+    token, sess = await create_session(db, user, request, cfg)
+    audit(db, "auth.login", "session", sess.id, actor=user.id, ip=ip, after={"method": "sso"})
+    await db.commit()
+    set_session_cookie(response, settings, token, None)
 
 
 async def logout(db: AsyncSession, principal: Principal, request: Request) -> None:

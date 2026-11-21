@@ -9,13 +9,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import RedirectResponse
 
 from regwatch.core.db import DbSession
 from regwatch.core.routing import Paging, Tags, spec
 from regwatch.core.schemas import Page
 from regwatch.core.settings import Settings, get_settings
-from regwatch.identity import groups, services
+from regwatch.identity import groups, oidc, services
 from regwatch.identity.permissions import CurrentPrincipal
 from regwatch.identity.schemas import (
     Group,
@@ -30,6 +31,7 @@ from regwatch.identity.schemas import (
     Role,
     RoleWrite,
     SessionInfo,
+    SsoStatus,
     TemporaryPassword,
     User,
     UserCreate,
@@ -57,6 +59,65 @@ async def login(
     return await services.login(
         db, request, response, settings, body.email, body.password, body.remember_me
     )
+
+
+@router.get("/auth/sso", tags=AUTH,
+            **spec(SsoStatus, desc="Whether sign-in with the organisation's account is on (CP-37)",
+                   public=True, stub=False))  # fmt: skip
+async def sso_status(db: DbSession, settings: SettingsDep) -> SsoStatus:
+    return SsoStatus(enabled=await services.sso_enabled(db, settings))
+
+
+@router.get(
+    "/auth/oidc/login", tags=AUTH,
+    **spec(status=302, desc="To the identity provider (CP-37; M1b)", public=True, errors=(404,),
+           stub=False),
+)  # fmt: skip
+async def oidc_login(
+    db: DbSession, settings: SettingsDep, next: Annotated[str | None, Query(max_length=500)] = None
+) -> Response:  # noqa: A002
+    if not await services.sso_enabled(db, settings):
+        raise oidc.unavailable()
+    try:
+        url, cookie = await oidc.start(settings, next)
+    except oidc.SsoError as exc:
+        return RedirectResponse(f"/login?sso={exc.reason}", status_code=302)
+    response = RedirectResponse(url, status_code=302)
+    response.set_cookie(oidc.STATE_COOKIE, cookie, max_age=oidc.STATE_MAX_AGE_S,
+                        path="/api/v1/auth/oidc", secure=True, httponly=True,
+                        samesite="lax")  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get(
+    "/auth/oidc/callback", tags=AUTH,
+    **spec(status=302, desc="Back from the identity provider: signed in, or to the login page "
+           "with the reason (CP-37)", public=True, stub=False),
+)  # fmt: skip
+async def oidc_callback(
+    request: Request, db: DbSession, settings: SettingsDep,
+    code: Annotated[str | None, Query(max_length=2048)] = None,
+    state: Annotated[str | None, Query(max_length=256)] = None,
+    error: Annotated[str | None, Query(max_length=256)] = None,
+) -> Response:  # fmt: skip
+    if not await services.sso_enabled(db, settings):
+        raise oidc.unavailable()
+    target = "/login?sso=refused"
+    response = RedirectResponse(target, status_code=302)
+    try:
+        if error:
+            raise oidc.SsoError("refused", "the provider refused the sign-in")
+        identity, next_path = await oidc.finish(
+            settings, request.cookies.get(oidc.STATE_COOKIE), state, code)  # fmt: skip
+        response = RedirectResponse(next_path, status_code=302)
+        await services.sso_sign_in(db, request, response, settings, identity)
+    except oidc.SsoError as exc:
+        response = RedirectResponse(f"/login?sso={exc.reason}", status_code=302)
+    response.delete_cookie(oidc.STATE_COOKIE, path="/api/v1/auth/oidc", secure=True,
+                           httponly=True, samesite="lax")  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.post(
