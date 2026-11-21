@@ -8,6 +8,7 @@ Valkey. Both use a short timeout and never raise.
 from __future__ import annotations
 
 import asyncio
+import ssl
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Any
@@ -82,18 +83,21 @@ async def probe_queue(queue_url: str) -> DependencyState:
     except ValueError:
         return "unavailable"
     parts = urlsplit(queue_url)
-    if parts.password is None:
+    secure = parts.scheme in ("rediss", "valkeys")  # TLS before anything, AUTH included (review)
+    if parts.password is None and not secure:
         ok = await _exchange(host, port, _resp("PING"), b"+PONG")
         return "ok" if ok else "unavailable"
-    auth = (_resp("AUTH", unquote(parts.username or "default"), unquote(parts.password))
-            if parts.username else _resp("AUTH", unquote(parts.password)))  # fmt: skip
+    auth = b"" if parts.password is None else (
+        _resp("AUTH", unquote(parts.username or "default"), unquote(parts.password))
+        if parts.username else _resp("AUTH", unquote(parts.password)))  # fmt: skip
     writer = None
     try:
         async with asyncio.timeout(PROBE_TIMEOUT_S):
-            reader, writer = await asyncio.open_connection(host, port)
+            reader, writer = await asyncio.open_connection(
+                host, port, ssl=ssl.create_default_context() if secure else None)  # fmt: skip
             writer.write(auth + _resp("PING"))
             await writer.drain()
-            authed = (await reader.readline()).startswith(b"+OK")
+            authed = not auth or (await reader.readline()).startswith(b"+OK")
             pong = (await reader.readline()).startswith(b"+PONG")
             return "ok" if authed and pong else "unavailable"
     except (OSError, TimeoutError, ValueError):

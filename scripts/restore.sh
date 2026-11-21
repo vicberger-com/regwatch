@@ -11,6 +11,14 @@ read -r -a compose <<< "${COMPOSE:-docker compose -f deploy/compose.yaml}"
 src="${1:?usage: restore.sh <backup directory>}"
 [[ -f "$src/SHA256SUMS" && -f "$src/MANIFEST" ]] || { echo "$src is not a backup directory" >&2; exit 2; }
 (cd "$src" && sha256sum --quiet -c SHA256SUMS) || { echo "the backup's sums do not match" >&2; exit 2; }
+# The archive may hold only regular files and directories, at relative paths without `..`
+# (review of 9943bc9): no links, devices or paths that leave the store, whatever tar allows.
+if tar -tvf "$src/objectstore.tar" | cut -c1 | grep -qv '^[-d]$'; then
+  echo "the object store archive holds something other than files and directories" >&2; exit 2
+fi
+if tar -tf "$src/objectstore.tar" | grep -qE '^/|(^|/)\.\.(/|$)'; then
+  echo "the object store archive holds a path outside the store" >&2; exit 2
+fi
 if [[ "${CONFIRM:-}" != "yes" ]]; then
   echo "This replaces the database and the object store of: ${compose[*]}" >&2
   echo "Run again with CONFIRM=yes to proceed." >&2
@@ -23,8 +31,18 @@ echo "==> database"
 "${compose[@]}" exec -T db sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --single-transaction' < "$src/db.dump"
 echo "==> object store"
-"${compose[@]}" run --rm --no-deps -T --entrypoint sh api -c \
-  'find /data/objectstore -mindepth 1 -delete && tar -C /data/objectstore -xf -' < "$src/objectstore.tar"
+# Extracted beside the store first, swapped in only once whole: a failed extract leaves the
+# store as it was (the database is already restored; re-run the restore to finish).
+trap 'echo "restore stopped: the database is restored; the object store is unchanged. Fix the cause and run the restore again; the application stays stopped." >&2' ERR
+"${compose[@]}" run --rm --no-deps -T --entrypoint sh api -c '
+  set -e
+  staging=/data/objectstore/.restoring
+  rm -rf "$staging" && mkdir "$staging"
+  tar -C "$staging" --no-same-owner --no-same-permissions -xf -
+  find /data/objectstore -mindepth 1 -maxdepth 1 ! -name .restoring -exec rm -rf {} +
+  find "$staging" -mindepth 1 -maxdepth 1 -exec mv {} /data/objectstore/ \;
+  rmdir "$staging"' < "$src/objectstore.tar"
+trap - ERR
 echo "==> starting the application"
 "${compose[@]}" start api worker beat
 

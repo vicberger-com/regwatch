@@ -8,6 +8,8 @@
 
 Backups older than 30 days (`BACKUP_KEEP_DAYS`) are removed when a new one is made. Nightly: run `make backup` from cron on the host, for example at 02:00. Copy the directory off the host: an S3-compatible target is BL-79.
 
+**A backup is as sensitive as the database.** It holds every item, users' addresses and password hashes, and the audit log. On the host it is readable by its owner only. Keep backups only where operators alone can write: the sums show a backup is whole, not who made it, and a restore runs what the dump holds. **Encrypt every copy that leaves the host** (for example `age -r <operator key>` or GPG, with the key kept away from the backups), and keep the sums of off-host copies signed or beside the key. The restore refuses an archive holding anything but files and directories, or a path outside the store.
+
 ## Restore on a clean host, step by step
 
 1. **Install the release.** Clone or unpack it, copy `deploy/.env`, `deploy/db.env` and `deploy/queue.env` from the secret store, and install Docker with the Compose plugin.
@@ -57,3 +59,5 @@ Without `CONFIRM=yes`, the restore stops before any change and says what it woul
 **Result: identical counts.**
 
 **Found by the drill:** `/ready` answered 503 on the restored stack, because the queue probe sent PING without AUTH, and the stack's Valkey has a password. The same bug made `/health` report the queue unavailable. It is fixed in `4fc1014`, with a test against a Valkey with a password. After the fix, `/ready` answered `200 {"ready": true, "db": "ok", "queue": "ok", "object_store": "ok"}`.
+
+**Second drill, after the review's fixes (2026-11-21):** the restore checks the archive first and swaps the store in only after a complete extraction. Counts identical; no staging directory left; the project and the backup copy removed. A crafted archive with a symbolic link, and one with a `../` path, were refused before any change (exit 2).
