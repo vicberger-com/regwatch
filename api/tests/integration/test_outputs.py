@@ -3,6 +3,7 @@ QA stack; the M7 reviews' rules for M8)."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -92,6 +93,10 @@ async def test_a_pdf_is_rendered_and_downloaded_by_its_owner(
     assert got.status_code == 200 and got.content == PDF
     assert got.headers["content-type"] == "application/pdf"
     assert got.headers["content-disposition"].startswith("attachment;")
+    assert re.search(
+        r'filename="regwatch-mine-\d{4}-\d\d-\d\d\.pdf"', got.headers["content-disposition"]
+    )  # named, not an id (U-M8-1)
+    assert shown["source_summary"] == "report Mine"
     forged = await ana.get(parts.path + "?" + parts.query.replace("sig=", "sig=0"))
     assert forged.status_code == 403
     expired = await ana.get(parts.path + "?exp=1&sig=" + parts.query.split("sig=")[1])
@@ -507,7 +512,7 @@ async def test_a_printed_layout_can_still_be_deleted(
     assert gone.status_code == 204, gone.text
     kept = (await admin.get(_api(f"/outputs/{done}"))).json()
     assert kept["status"] == "sent" and kept["artifact_available"]
-    assert kept["source_summary"] == "deleted layout"
+    assert kept["source_summary"] == "Mine (deleted layout)"  # its name kept (U-M8-1)
     stopped = (await admin.get(_api(f"/outputs/{sid}"))).json()
     assert (stopped["status"], stopped["error_class"]) == ("cancelled", "source-deleted")
     from regwatch.core.models import AuditLog

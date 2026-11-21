@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from regwatch.core.db import session_factory
@@ -46,17 +47,22 @@ async def source(db: AsyncSession, job: Any, principal: Principal) -> QuerySourc
     if missing := [p for p in NEEDS if p not in principal.permissions]:
         raise ProblemError(403, "forbidden", f"CSV exports need {' and '.join(missing)}.")
     if job.saved_view_id is not None:  # 409 once the view is no longer visible to them
+        from regwatch.search.models import SavedView
+
         query = await data_source_query(
             db, ReportDataSource(saved_view_id=job.saved_view_id), principal
         )
+        name = str(await db.scalar(select(SavedView.name).where(
+            SavedView.id == job.saved_view_id)) or "saved view")  # fmt: skip
     elif job.query is not None and "deleted_source" not in job.query:
         query = Query.model_validate(job.query)
+        name = "all items" if not (query.q or query.model_fields_set & {"filters"}) else "search"
     else:
         raise ProblemError(404, "not-found", "The exported saved view was deleted.")
     check(query.model_copy(update={"page": 1, "page_size": 1}))  # a 400 for a bad query
     wanted = export.columns(query)
     await resolve_terms(db, query.filters)  # an unknown facet is a 400
-    return QuerySource(query=query, columns=wanted)
+    return QuerySource(query=query, columns=wanted, name=name)
 
 
 async def build(db: AsyncSession, src: QuerySource,

@@ -47,12 +47,35 @@ def _invalid(field: str, message: str) -> ProblemError:
                         errors=[ProblemFieldError(field=field, message=message)])  # fmt: skip
 
 
-def out(job: OutputJob) -> JobOut:
+def summary(job: OutputJob) -> str:
+    """What the output was made from, by name (use testing U-M8-1): the name kept when it was
+    requested, so the history says what was produced even after a rename or a deletion."""
+    named = str((job.destination or {}).get("source_name") or "")
     deleted = (job.query or {}).get(DELETED)
-    source = (f"layout {job.report_layout_id}" if job.report_layout_id
-              else f"stock report {job.report_template_key}" if job.report_template_key
-              else "saved view" if job.saved_view_id
-              else f"deleted {deleted}" if deleted else "query")  # fmt: skip
+    if deleted:
+        return f"{named} (deleted {deleted})" if named else f"deleted {deleted}"
+    if job.report_layout_id:
+        return f"report {named}" if named else "a report"
+    if job.report_template_key:
+        return f"stock report {named or job.report_template_key}"
+    if job.saved_view_id:
+        return f"saved view {named}" if named else "a saved view"
+    return named or "a search"
+
+
+def file_name(job: OutputJob, extension: str) -> str:
+    """``regwatch-<name>-<date>.<ext>``: letters, digits and hyphens only, so it is safe in a
+    header and on any file system."""
+    import re
+
+    named = str((job.destination or {}).get("source_name") or "output")
+    slug = re.sub(r"[^a-z0-9]+", "-", named.lower().encode("ascii", "ignore").decode())
+    when = (job.finished_at or job.created_at or datetime.now(UTC)).date().isoformat()
+    return f"regwatch-{slug.strip('-')[:60] or 'output'}-{when}.{extension}"
+
+
+def out(job: OutputJob) -> JobOut:
+    source = summary(job)
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, requested_by=job.requested_by,
         source_summary=source,
@@ -154,6 +177,7 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
     elif "saved_view_id" in chosen or "query" in chosen:
         raise _invalid("source", "a PDF or email prints a report layout or a stock report")
     layout = await check_source(db, job, principal)
+    job.destination = {**destination, "source_name": str(layout.name)[:200]}  # U-M8-1
     if job.kind != "csv":
         from regwatch.search.schemas import Query
 

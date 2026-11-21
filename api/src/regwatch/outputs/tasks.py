@@ -121,7 +121,7 @@ async def run_job(db: AsyncSession, job_id: uuid.UUID, kind: str) -> str:
         except pdf.PdfError as exc:
             return await fail(exc.error_class, exc.message)
     if kind == "email":
-        name = f"regwatch-{job.id}.pdf"
+        name = services.file_name(job, "pdf")
         done = set(destination.get("sent", []))  # those a failed attempt already reached
         try:
             for to in [r for r in recipients if mail.hashed(r) not in done]:

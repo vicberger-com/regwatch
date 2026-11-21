@@ -25,7 +25,7 @@ test("a CSV export appears in the history and downloads (M8.4, M8.6)", async ({
   const newest = page.getByRole("tabpanel").getByRole("row").nth(1);
   await expect(newest).toContainText("Done", { timeout: 60_000 });
   const download = newest.getByRole("link", {
-    name: /^Download CSV of query, /,
+    name: /^Download CSV of all items, /,
   });
   const [file] = await Promise.all([
     page.waitForEvent("download"),

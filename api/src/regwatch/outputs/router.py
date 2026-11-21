@@ -137,7 +137,7 @@ async def get_output_artifact(
     if data is None:
         raise ProblemError(404, "not-found", "The file is no longer kept.")
     kind = "application/pdf" if job.artifact_ref.endswith(".pdf") else "text/csv"
-    name = f"regwatch-{job.id}.{job.artifact_ref.rsplit('.', 1)[-1]}"
+    name = services.file_name(job, job.artifact_ref.rsplit(".", 1)[-1])
     headers = {"Content-Disposition": f'attachment; filename="{name}"',
                "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                "Content-Security-Policy": "default-src 'none'"}  # fmt: skip

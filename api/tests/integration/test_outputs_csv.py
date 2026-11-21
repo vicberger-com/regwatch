@@ -56,7 +56,7 @@ async def test_a_query_is_exported_escaped_into_the_history(
     query = {"q": tag, "sort": "title_asc", "columns": ["title", "summary", "jurisdictions"]}
     made = await _csv(admin, {"query": query})
     assert made.status_code == 202, made.text
-    assert made.json()["source_summary"] == "query"
+    assert made.json()["source_summary"] == "search"
     assert await tasks.run_csv(db, uuid.UUID(made.json()["id"])) == "sent"
     got = await _file(admin, made.json()["id"])
     assert got.status_code == 200 and got.headers["content-type"].startswith("text/csv")
@@ -84,7 +84,7 @@ async def test_a_saved_view_is_exported_while_its_owner_can_see_it(
     sid = (await _csv(admin, {"saved_view_id": vid}, schedule=WEEKLY)).json()["id"]
     assert (await admin.delete(_api(f"/views/{vid}"))).status_code == 204  # detached (5dec58d)
     kept = (await admin.get(_api(f"/outputs/{made.json()['id']}"))).json()
-    assert (kept["status"], kept["source_summary"]) == ("sent", "deleted saved view")
+    assert (kept["status"], kept["source_summary"]) == ("sent", "Recent (deleted saved view)")
     stopped = (await admin.get(_api(f"/outputs/{sid}"))).json()
     assert (stopped["status"], stopped["error_class"]) == ("cancelled", "source-deleted")
 
