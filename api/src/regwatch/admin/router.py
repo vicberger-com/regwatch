@@ -117,6 +117,7 @@ async def list_settings(db: DbSession) -> list[Setting]:
 async def put_setting(
     key: str, body: SettingWrite, principal: CurrentPrincipal, request: Request, db: DbSession
 ) -> Setting:
+    services.require_sign_in_rights(key, principal.permissions)  # G5 review, Low 1
     return await services.put_setting(db, key, body.value, principal.user.id, client_ip(request))
 
 
@@ -141,6 +142,7 @@ async def update_feature_flag(
     request: Request,
     db: DbSession,
 ) -> FeatureFlag:
+    services.require_sign_in_rights(key, principal.permissions)  # auth.oidc (G5 review, Low 1)
     return await services.set_flag(db, key, body.enabled, principal.user.id, client_ip(request))
 
 

@@ -47,8 +47,10 @@ def _user(**kw: Any) -> User:
     return User(**{**base, **kw})
 
 
-def _principal(perms: set[str], **kw: Any) -> services.Principal:
-    return services.Principal(_user(**kw), uuid.uuid4(), ("viewer",), frozenset(perms))
+def _principal(perms: set[str], mfa_setup_required: bool = False,
+               **kw: Any) -> services.Principal:  # fmt: skip
+    return services.Principal(_user(**kw), uuid.uuid4(), ("viewer",), frozenset(perms),
+                              mfa_setup_required)  # fmt: skip
 
 
 async def _get(app: FastAPI, path: str, **kw: Any) -> httpx.Response:
@@ -129,6 +131,28 @@ async def test_temporary_password_allows_only_the_change(
     assert resp.status_code == 403
     assert resp.json()["type"].endswith("/password-change-required")
     assert (await _get(app, "/auth/me", cookies={"rw_session": "t"})).status_code == 200
+
+
+async def test_mfa_setup_allows_only_the_setup_routes(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CP-40: an account auth.mfa_required covers, with no authenticator yet."""
+    _resolve_to(monkeypatch, _principal({"items.read"}, mfa_setup_required=True))
+    resp = await _get(app, "/jurisdictions", cookies={"rw_session": "t"})
+    assert resp.status_code == 403 and resp.json()["type"].endswith("/mfa-setup-required")
+    assert (await _get(app, "/auth/me", cookies={"rw_session": "t"})).status_code == 200
+
+
+async def test_the_temporary_password_comes_before_the_mfa_setup(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two forced steps are exclusive (CP-40 review finding 1)."""
+    both = _principal({"items.read"}, mfa_setup_required=True, must_change_password=True)
+    _resolve_to(monkeypatch, both)
+    resp = await _get(app, "/me/mfa", cookies={"rw_session": "t"})
+    assert resp.json()["type"].endswith("/password-change-required")
+    me = await _get(app, "/auth/me", cookies={"rw_session": "t"})
+    assert me.status_code == 200 and me.json()["mfa_setup_required"] is True
 
 
 def test_current_principal_without_gate_is_401() -> None:

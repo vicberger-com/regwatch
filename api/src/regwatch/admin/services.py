@@ -212,6 +212,21 @@ async def put_setting(
     return _setting_out(defn, row)
 
 
+# Settings and flags that weaken or change sign-in: changed only by someone who also manages
+# users and roles, so settings.manage alone cannot undo their protections (G5 review, Low 1).
+SIGN_IN_GUARD = frozenset({"users.manage", "roles.manage"})
+
+
+def sign_in_setting(key: str) -> bool:
+    return key.startswith(("auth.", "sessions."))
+
+
+def require_sign_in_rights(key: str, held: frozenset[str]) -> None:
+    if sign_in_setting(key) and not SIGN_IN_GUARD <= held:
+        raise ProblemError(403, "forbidden", "Changing sign-in settings also needs users.manage "
+                           "and roles.manage.")  # fmt: skip
+
+
 def _flag_out(row: FeatureFlag) -> FeatureFlagOut:
     return FeatureFlagOut(key=row.key, enabled=row.enabled, description=row.description)
 

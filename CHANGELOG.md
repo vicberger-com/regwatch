@@ -4,6 +4,14 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+### Security
+- G5 application-level security review, Medium 1:
+  - **The problem:** checking a schedule walks a year of runs (about 0.3 s), and it ran on the API's event loop before the request's cheap checks, with no limit, so a stream of failing requests could stall the API.
+  - **The fix:** it now runs in a worker thread, after the source and kind checks, at most 10 times a minute per user, failed attempts included. It also stops at the first gap under an hour.
+- G5 review, Low 1:
+  - `settings.manage` alone no longer changes sign-in settings (`auth.*`, `sessions.*`) or the `auth.oidc` flag; that also needs `users.manage` and `roles.manage`.
+  - `settings.manage` now counts as privileged: it is covered by `auth.mfa_required=admins`, and an account holding it is never linked by email.
+
 ### Added
 - `auth.mfa_required` (BL-148 (f); CP-40): `none` (the default, so an upgrade locks no one out), `admins`, or `everyone`.
   - **Who it covers:** `admins` means the admin role and anyone holding `users.manage` or `roles.manage`; `everyone` means every account with a password. A session signed in through the organisation's provider is exempt, because the provider holds its second factor; a password session is covered even when the account is linked (`session.method`, migration 0013).

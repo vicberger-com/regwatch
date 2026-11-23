@@ -605,7 +605,9 @@ async def sso_enabled(db: AsyncSession, settings: Settings) -> bool:
 
 
 ADMIN_ROLE = "admin"
-PRIVILEGED = {"users.manage", "roles.manage"}
+# Who can take over accounts or weaken sign-in: never linked by email (M1b), covered by the
+# "admins" two-factor policy (CP-40). settings.manage changes the sign-in settings (G5 review).
+PRIVILEGED = {"users.manage", "roles.manage", "settings.manage"}
 
 
 async def sso_sign_in(db: AsyncSession, request: Request, response: Response,

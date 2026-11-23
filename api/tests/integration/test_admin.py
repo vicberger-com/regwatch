@@ -480,3 +480,29 @@ async def test_audit_export_reads_in_batches(
     resp = await admin.get(_api("/admin/audit/export"), params={"entity_type": "setting"})
     ids = [line.split(",")[0].strip('"') for line in resp.text.split("\r\n")[1:] if line]
     assert len(ids) == len(set(ids)) == listed["total"]
+
+
+async def test_settings_manage_alone_cannot_change_sign_in(admin: httpx.AsyncClient) -> None:
+    """G5 security review, Low 1: a custom role with settings.manage but not users.manage and
+    roles.manage changes other settings, never the sign-in ones; and it counts as privileged
+    for the "admins" two-factor policy."""
+    role = {"key": "settings_only", "label": "Settings only", "permissions": ["settings.manage"]}
+    assert (await admin.post(_api("/admin/roles"), json=role)).status_code == 201
+    holder = await _as_new_user(admin, "set@example.org", ["settings_only"])
+    for key, value in (("auth.mfa_required", "none"), ("auth.lockout_threshold", 50),
+                       ("sessions.absolute_lifetime_hours", 48)):  # fmt: skip
+        refused = await holder.put(_api(f"/admin/settings/{key}"), json={"value": value})
+        assert refused.status_code == 403, key
+    flag = await holder.patch(_api("/admin/feature-flags/auth.oidc"), json={"enabled": True})
+    assert flag.status_code == 403
+    other = await holder.put(_api("/admin/settings/map.default_encoding"),
+                             json={"value": "count"})  # fmt: skip
+    assert other.status_code == 200
+    assert (await holder.patch(_api("/admin/feature-flags/search.internet"),
+                               json={"enabled": False})).status_code == 200  # fmt: skip
+    # The full administrator still changes them; under "admins" the holder is covered.
+    policy = await admin.put(_api("/admin/settings/auth.mfa_required"), json={"value": "admins"})
+    assert policy.status_code == 200
+    me = (await holder.get(_api("/auth/me"))).json()
+    assert me["mfa_setup_required"] is True
+    await holder.aclose()
