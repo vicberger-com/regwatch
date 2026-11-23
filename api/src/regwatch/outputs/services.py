@@ -19,6 +19,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import anyio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -164,8 +165,6 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
 
     if body.kind.value not in KINDS_NOW:
         raise _invalid("kind", "PDF, email, CSV or print")
-    planned = (await _schedule(db, body.schedule, principal)
-               if body.schedule is not None else None)  # fmt: skip
     chosen = body.source.model_dump(exclude_unset=True)
     if len(chosen) != 1:
         raise _invalid("source", "exactly one of report_layout_id, report_template_key, "
@@ -192,6 +191,9 @@ async def create_output(db: AsyncSession, body: OutputRequest, principal: Princi
             raise _invalid("source", "a CSV exports a query or a saved view")
     elif "saved_view_id" in chosen or "query" in chosen:
         raise _invalid("source", "a PDF or email prints a report layout or a stock report")
+    # The costly schedule check comes after the cheap checks above (G5 review, Medium 1).
+    planned = (await _schedule(db, body.schedule, principal)
+               if body.schedule is not None else None)  # fmt: skip
     layout = await check_source(db, job, principal)
     job.destination = {**destination, "source_name": str(layout.name)[:200]}  # U-M8-1
     if job.kind != "csv":
@@ -229,8 +231,15 @@ async def _schedule(db: AsyncSession, schedule: OutputSchedule,
         (principal.user.preferences or {}).get("timezone") or "UTC")  # fmt: skip
     if "cron" not in schedule.model_fields_set:
         raise _invalid("schedule.cron", "a cron expression is required")
+    key = f"sched:{principal.user.id}"
+    if schedules.checks.count(key) >= schedules.CHECK_RATE:
+        wait = str(schedules.checks.retry_after(key))
+        raise ProblemError(429, "rate-limited", "Too many schedules checked; try again shortly.",
+                           headers={"Retry-After": wait})  # fmt: skip
+    schedules.checks.hit(key)  # counted whatever the outcome, so failures cost too
     try:
-        first = schedules.check(schedule.cron, str(zone))
+        # A year of runs: in a worker thread, so the event loop keeps serving (Medium 1).
+        first = await anyio.to_thread.run_sync(schedules.check, schedule.cron, str(zone))
     except ValueError as exc:
         raise _invalid("schedule", str(exc)) from None
     if await schedules.count_active(db, principal.user.id) >= schedules.MAX_SCHEDULES:

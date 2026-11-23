@@ -60,6 +60,9 @@ def gotenberg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Goten
 
     monkeypatch.setattr(tasks, "enqueue", enqueue)
     render.renders.clear()
+    from regwatch.outputs import schedules
+
+    schedules.checks.clear()
     yield fake
 
 
@@ -375,6 +378,7 @@ async def test_the_bypass_addresses_are_refused(admin: httpx.AsyncClient, smtp: 
     assert smtp.sent == []
 
 
+HOURLY = {"cron": "0 * * * *", "timezone": "Europe/Berlin"}
 WEEKLY = {"cron": "0 7 * * 1", "timezone": "Europe/Berlin"}
 
 
@@ -423,6 +427,26 @@ async def test_bad_schedules_are_refused(
 ) -> None:
     got = await _pdf(admin, {"report_template_key": "source-health"}, schedule=schedule)
     assert got.status_code == 422 and message in got.text, got.text
+
+
+async def test_schedule_checks_are_limited_and_come_after_the_cheap_checks(
+    admin: httpx.AsyncClient, gotenberg: Gotenberg
+) -> None:
+    """G5 security review, Medium 1: a failing request no longer costs a schedule check, and
+    the check is limited per user whatever its outcome."""
+    from regwatch.outputs import schedules
+
+    me = (await admin.get(_api("/auth/me"))).json()["id"]
+    key = f"sched:{me}"
+    no_source = {"kind": "pdf", "source": {}, "schedule": HOURLY}
+    bad_source = await admin.post(_api("/outputs"), json=no_source)
+    assert bad_source.status_code == 422 and "source" in bad_source.text
+    assert schedules.checks.count(key) == 0  # refused before the costly check
+    answers = [(await _pdf(admin, {"report_template_key": "source-health"},
+                           schedule={"cron": "*/5 * * * *", "timezone": "UTC"})).status_code
+               for _ in range(schedules.CHECK_RATE + 1)]  # fmt: skip
+    assert answers[:-1] == [422] * schedules.CHECK_RATE  # failures count too
+    assert answers[-1] == 429
 
 
 async def test_schedules_are_capped_need_their_permission_and_pause(

@@ -11,6 +11,9 @@ What it holds to (M8.1 review, BL-143 f):
 - Each run is checked against the owner's *current* account and rights; a schedule whose owner
   is no longer active, or whose report they can no longer see, is paused and audited; so is
   one whose run fails for a reason that would fail every run (``PAUSE_ON``).
+- Checking a schedule walks a year of runs (about 0.3 s for an hourly one), so it runs in a
+  worker thread, after the request's cheap checks, and at most ``CHECK_RATE`` times a minute a
+  user, failed attempts included (G5 security review, Medium 1).
 - Due schedules are claimed with ``SKIP LOCKED`` and their next run is set in the same
   transaction, so none runs twice; scheduled runs count in the owner's hourly limit.
 """
@@ -27,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from regwatch.capture.schedule import CronError, next_run, parse_cron
 from regwatch.core.errors import ProblemError
 from regwatch.core.services import audit
+from regwatch.identity.services import SlidingWindow
 from regwatch.outputs.models import OutputJob
 
 MAX_SCHEDULES = 10
@@ -34,6 +38,8 @@ MIN_GAP = timedelta(hours=1)
 TICK_BATCH = 50
 CHECKED_SPAN = timedelta(days=366)  # every gap in a year, so both clock changes are in it
 _MAX_RUNS = 9000  # an hourly schedule makes at most 8784 runs a year
+CHECK_RATE = 10  # schedule checks a minute, per user, whatever their outcome
+checks = SlidingWindow(60.0)
 
 
 def check(cron: str, timezone: str, now: datetime | None = None) -> datetime:
@@ -47,19 +53,20 @@ def check(cron: str, timezone: str, now: datetime | None = None) -> datetime:
     except CronError:
         raise ValueError("five cron fields, such as 0 7 * * 1 for Mondays at 07:00") from None
     start = now or datetime.now(UTC)
-    runs: list[datetime] = []
+    first: datetime | None = None
+    previous: datetime | None = None
     at = start
     for _ in range(_MAX_RUNS):
         nxt = next_run(cron, None, zone.key, at)
         if nxt is None or nxt > start + CHECKED_SPAN:
             break
-        runs.append(nxt)
-        at = nxt
-    if not runs:
+        if previous is not None and nxt - previous < MIN_GAP:
+            raise ValueError("at least an hour between runs")  # stops at the first short gap
+        first = first or nxt
+        previous = at = nxt
+    if first is None:
         raise ValueError("this schedule never runs")
-    if any(b - a < MIN_GAP for a, b in zip(runs, runs[1:], strict=False)):
-        raise ValueError("at least an hour between runs")
-    return runs[0]
+    return first
 
 
 async def count_active(db: AsyncSession, user_id: Any) -> int:
