@@ -48,6 +48,9 @@ TIMEOUT_S = 10.0
 MAX_ANSWER = 512 * 1024
 ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"]
 CACHE_S = 3600.0
+# How the client proves itself at the token endpoint (RFC 6749 2.3.1): a method name, not a
+# secret; the secret comes from the settings.
+CLIENT_AUTH = "client_secret_basic"  # noqa: S105  # nosec B105
 _log = structlog.get_logger("regwatch.oidc")
 
 
@@ -260,7 +263,7 @@ async def finish(settings: Settings, cookie: str | None, state: str | None,
         client_id=settings.oidc_client_id,
         client_secret=secret.get_secret_value() if secret else None,
         redirect_uri=redirect_uri(settings), timeout=TIMEOUT_S, follow_redirects=False,
-        transport=_transport(), token_endpoint_auth_method="client_secret_basic")  # noqa: S106  # fmt: skip
+        transport=_transport(), token_endpoint_auth_method=CLIENT_AUTH)  # fmt: skip
     try:
         async with client:
             token = await client.fetch_token(found.token_endpoint, code=code,
