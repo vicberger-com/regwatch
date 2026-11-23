@@ -4,6 +4,8 @@ All notable changes to this project are recorded here. Format: Keep a Changelog;
 
 ## [Unreleased]
 
+## [G5] - 2026-11-23
+
 ### Security
 - G5 application-level security review, Medium 1:
   - **The problem:** checking a schedule walks a year of runs (about 0.3 s), and it ran on the API's event loop before the request's cheap checks, with no limit, so a stream of failing requests could stall the API.

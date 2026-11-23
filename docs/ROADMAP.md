@@ -11,7 +11,7 @@
 | P2 Capture and processing (M3, M4, M5) | done: G2 approved 2026-11-19 (acceptance 3 judged sequentially; the 10-user run continues under BL-118) |
 | P3 Interface (M6, M9; M11 added) | done: G3 approved 2026-11-20 (adversarial session deferred to G5; manual screen-reader run in use testing round 2) |
 | P4 Reports and outputs (M7, M8) | done: G4 approved 2026-11-21 (network printing by the owner's BL-15 decision; the adversarial session and the manual screen-reader run deferred to G5) |
-| P5 Hardening (M10; M1b optional) | started 2026-11-21 |
+| P5 Hardening (M10; M1b optional) | done: G5 approved 2026-11-23 on the evidence in hand (the application-level security review signed off; the adversarial session and the screen-reader run moved to G6; the release candidate tag follows the merge to `main`) |
 | P6 | not started |
 
 ## 1. Owner actions (now)

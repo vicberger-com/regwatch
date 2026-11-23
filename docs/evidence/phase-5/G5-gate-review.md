@@ -1,6 +1,10 @@
 # Gate G5 review: Phase 5 Hardening and operations (M10, M1b)
 
-**Prepared by:** lead session · **Build under review:** `feat/M10-operations` (top of the stack, on `feat/M7-reports`) at the commit that adds this record · **Date:** 2026-11-23 · **Decision:** **waiting for the owner**.
+**Prepared by:** lead session · **Build under review:** `feat/M10-operations` (top of the stack, on `feat/M7-reports`) at the commit that adds this record · **Date:** 2026-11-23 · **Decision:** **approved by the owner on 2026-11-23**, on the evidence in hand: the application-level security review (signed off, with Medium 1 and Low 1 fixed and re-verified), the restore drill, the ZAP full scan and the per-slice reviews. Moved to G6, in the pilot:
+- the adversarial session. An automated attacker session against QA was stopped by the AI model's usage safeguards before it made any request, and QA was left unchanged;
+- the screen-reader run.
+
+Still for the owner: peer review on the pull requests, and the release candidate tag `v1.0.0-rc.1` after the merge to `main`.
 
 **Exit criterion (`docs/06-process.md`, P5):**
 - an application-level security review, an adversarial analysis and peer review, signed;
@@ -12,7 +16,7 @@
 | Part | Status | Evidence |
 | --- | --- | --- |
 | Application-level security review | **Signed off** | An independent reviewer, separate from the per-slice reviews, reviewed the whole application at `d3ce162` against `docs/08-security-compliance.md`, 8.1 and 8.2. <ul><li>**Medium 1:** the schedule check could stall the API. Fixed in `9d422a1`.</li><li>**Low 1:** `settings.manage` alone could weaken sign-in. Fixed in `2c22f00`.</li><li>Both fixes re-verified and signed off.</li><li>Four Info points stay in BL-150: the API's internet egress, the `pdf` sidecar's network and root, the metrics bind, the implicit TLS 1.2 minimum, and the missing log-redaction processor.</li></ul>The controls table is below. |
-| Adversarial analysis | **Not yet: the owner's session** | G1, G3 and G4 deferred it to here. It is to run against QA (`docs/07-testing-quality.md` 7.7). Automated attacks are done: a ZAP full scan of the production stack found 141 passes, 0 failures and 2 known warnings (below). That scan was unauthenticated; the signed-in attack paths are the session's. |
+| Adversarial analysis | **Moved to G6 by the owner (2026-11-23)** | G1, G3 and G4 deferred it to here. It is to run against QA (`docs/07-testing-quality.md` 7.7). Automated attacks are done: a ZAP full scan of the production stack found 141 passes, 0 failures and 2 known warnings (below). That scan was unauthenticated; the signed-in attack paths are the session's. |
 | Peer review | **Not yet: on the pull requests** | Due on each PR once the stack is pushed. The branch is not on GitHub yet. |
 | Restore drill | **Passed** (M10) | `docs/operations/restore-drill.md`: QA restored into a fresh project twice, with identical counts, in 18 s. |
 | Release candidate tagged | **Not yet: the owner** | `release.yml` builds the images and SBOMs for a `vX.Y.Z` tag on `main`. It needs the stack merged to `main`, the tag ruleset for `v*` (M10), and the tag `v1.0.0-rc.1`. |
@@ -48,7 +52,7 @@
 | License scan clean; register and notices updated | **Yes** | 708 allowed, 0 failing. New in P5: <ul><li>Authlib, joserfc, cryptography, pyotp and segno;</li><li>Keycloak (a QA-only service);</li><li>Prometheus and Grafana (an optional profile);</li><li>Tailwind 4 and daisyUI (on the parked branch).</li></ul> |
 | CHANGELOG release section cut; BACKLOG decisions recorded; CP issues summarised | **At the gate** | BL-146 (M10), BL-147 (M1b), BL-148 (TOTP), BL-149 (UI, parked), BL-150 (the review's Info points); CP-34 to CP-40. |
 | Questioning-period issues closed or assumptions recorded | **Recorded** | The M10 and M1b defaults, on the owner's standing instruction (`ASSUMPTIONS.md`). |
-| Owner comment `approved` | **Waiting** | |
+| Owner comment `approved` | **Approved 2026-11-23** | The adversarial session and the screen-reader run move to G6; peer review and the release candidate tag follow the push. |
 
 ## ZAP full scan (production stack, unauthenticated)
 
